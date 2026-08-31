@@ -84,6 +84,49 @@ UGUI shaders should also include the usual Unity UI stencil, color mask, clip
 rect, softness, and alpha clip properties if they need to work under `Mask`,
 `RectMask2D`, or material modifiers.
 
+## XR Single-Pass Instanced
+
+Caller-provided rectangle shaders own their vertex entry point, so they do not
+automatically inherit NowUI's stereo setup. To route geometry to both eye
+slices under XR single-pass instanced rendering, mirror the packaged rectangle
+shaders:
+
+```hlsl
+#pragma multi_compile_instancing
+
+struct appdata
+{
+    float4 vertex : POSITION;
+    // Custom vertex streams...
+    UNITY_VERTEX_INPUT_INSTANCE_ID
+};
+
+struct v2f
+{
+    float4 vertex : SV_POSITION;
+    // Custom interpolators...
+    UNITY_VERTEX_OUTPUT_STEREO
+};
+
+v2f vert(appdata v)
+{
+    v2f o;
+    UNITY_SETUP_INSTANCE_ID(v);
+    UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+    // Populate the remaining output fields...
+    return o;
+}
+```
+
+Call `UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i)` at the start of the fragment
+function when it reads `unity_StereoEyeIndex` or samples a stereo screen-space
+texture. The packaged shaders keep this setup in place for per-eye fragment
+work.
+
+Keep `#pragma multi_compile_instancing` alongside this vertex plumbing. Custom
+vertex/fragment shaders need it to generate the instanced variant used by XR
+single-pass-instanced rendering; the macros alone do not create that variant.
+
 ## Shader Mask Opt-In
 
 The mask rect in these vertex layouts is the legacy rectangular clip. Packaged

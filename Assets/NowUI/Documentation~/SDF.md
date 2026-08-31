@@ -447,6 +447,10 @@ supported way to retain that plumbing while changing the pixels is the
 versioned [`NowSdfShaderV2.cginc`](../Extensions/Sdf/NowSdfShaderV2.cginc)
 implementation. Start from a complete example below: its ShaderLab properties,
 render state, stencil block, pragmas, and include are part of the contract.
+The versioned V1 and V2 includes provide the XR single-pass-instanced vertex
+plumbing, but each ShaderLab wrapper must still declare
+`#pragma multi_compile_instancing` so Unity generates the instanced shader
+variant. Keep that pragma exactly as shown in the complete examples.
 
 The current material ABI is version 2. `NowSdf.MaterialAbiVersion` exposes the
 numeric version, and `NowSdf.MaterialAbiProperty` exposes the required shader

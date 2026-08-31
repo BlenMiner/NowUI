@@ -1635,6 +1635,7 @@ public class NowWorldGraphicTests
             Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassMode"), 0.001f);
             Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
             Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassUseSceneDepth"), 0.001f);
+            Assert.IsTrue(material.IsKeywordEnabled("NOWUI_GLASS_SCENE_DEPTH"));
 
             graphic.ApplyGlassBackdropTexture(Texture2D.whiteTexture, Texture2D.blackTexture);
             material = go.GetComponent<MeshRenderer>().sharedMaterial;
@@ -1651,9 +1652,70 @@ public class NowWorldGraphicTests
             Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassMode"), 0.001f);
             Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
             Assert.AreEqual(0f, material.GetFloat("_NowMaterialGlassUseSceneDepth"), 0.001f);
+            Assert.IsFalse(material.IsKeywordEnabled("NOWUI_GLASS_SCENE_DEPTH"));
         }
         finally
         {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    public void WorldGlassMaterialBindsArrayBackdrops(int volumeDepth)
+    {
+        if (!SystemInfo.supports2DArrayTextures)
+            Assert.Ignore("The active graphics device does not support 2D texture arrays.");
+
+        var go = new GameObject("Now World Stereo Glass");
+        RenderTexture backdrop = null;
+        RenderTexture sharpBackdrop = null;
+
+        try
+        {
+            var descriptor = new RenderTextureDescriptor(32, 16, RenderTextureFormat.ARGB32, 0)
+            {
+                dimension = TextureDimension.Tex2DArray,
+                volumeDepth = volumeDepth,
+                vrUsage = volumeDepth > 1 ? VRTextureUsage.TwoEyes : VRTextureUsage.DeviceSpecific,
+                msaaSamples = 1
+            };
+            var layout = NowGlassTextureLayout.FromDescriptor(descriptor);
+            backdrop = NowGlassBackdropSurface.CreateTexture(32, 16, "Stereo Glass Backdrop Test", layout);
+            sharpBackdrop = NowGlassBackdropSurface.CreateTexture(32, 16, "Stereo Glass Sharp Test", layout);
+            var graphic = go.AddComponent<GlassWorldGraphic>();
+            graphic.glassBackdropMode = NowWorldGlassBackdropMode.Camera;
+            graphic.RebuildNowUI();
+            graphic.ApplyGlassBackdropTexture(backdrop, sharpBackdrop);
+
+            var material = go.GetComponent<MeshRenderer>().sharedMaterial;
+
+            Assert.NotNull(material);
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassUseBackdrop"), 0.001f);
+            Assert.AreEqual(1f, material.GetFloat("_NowMaterialGlassUseStereoBackdrop"), 0.001f);
+            Assert.AreEqual(
+                volumeDepth,
+                material.GetFloat("_NowMaterialGlassBackdropSliceCount"),
+                0.001f);
+            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowMaterialBackdropTex"));
+            Assert.AreSame(Texture2D.blackTexture, material.GetTexture("_NowMaterialGlassSharpBackdropTex"));
+            Assert.AreSame(backdrop, material.GetTexture("_NowMaterialBackdropArrayTex"));
+            Assert.AreSame(sharpBackdrop, material.GetTexture("_NowMaterialGlassSharpBackdropArrayTex"));
+        }
+        finally
+        {
+            if (backdrop != null)
+            {
+                backdrop.Release();
+                Object.DestroyImmediate(backdrop);
+            }
+
+            if (sharpBackdrop != null)
+            {
+                sharpBackdrop.Release();
+                Object.DestroyImmediate(sharpBackdrop);
+            }
+
             Object.DestroyImmediate(go);
         }
     }

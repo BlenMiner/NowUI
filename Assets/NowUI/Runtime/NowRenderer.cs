@@ -129,6 +129,15 @@ namespace NowUI
             Draw(commandBuffer, _drawList, target, targetWidth, targetHeight);
         }
 
+        public void Draw(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier target,
+            in RenderTextureDescriptor targetDescriptor)
+        {
+            ThrowIfDisposed();
+            Draw(commandBuffer, _drawList, target, targetDescriptor);
+        }
+
         public static void Draw(CommandBuffer commandBuffer, NowDrawList drawList)
         {
             if (commandBuffer == null)
@@ -173,6 +182,39 @@ namespace NowUI
             int targetWidth,
             int targetHeight)
         {
+            Draw(
+                commandBuffer,
+                drawList,
+                new NowRenderTargetContext(target, targetWidth, targetHeight));
+        }
+
+        public static void Draw(
+            CommandBuffer commandBuffer,
+            NowDrawList drawList,
+            RenderTargetIdentifier target,
+            in RenderTextureDescriptor targetDescriptor)
+        {
+            Draw(commandBuffer, drawList, new NowRenderTargetContext(target, targetDescriptor));
+        }
+
+        internal static void Draw(
+            CommandBuffer commandBuffer,
+            NowDrawList drawList,
+            RenderTargetIdentifier target,
+            in RenderTextureDescriptor targetDescriptor,
+            Vector4 sourceScaleOffset)
+        {
+            Draw(
+                commandBuffer,
+                drawList,
+                new NowRenderTargetContext(target, targetDescriptor, sourceScaleOffset));
+        }
+
+        static void Draw(
+            CommandBuffer commandBuffer,
+            NowDrawList drawList,
+            in NowRenderTargetContext targetContext)
+        {
             if (commandBuffer == null)
                 throw new ArgumentNullException(nameof(commandBuffer));
 
@@ -182,13 +224,13 @@ namespace NowUI
             if (!drawList.hasGeometry)
                 return;
 
-            commandBuffer.SetRenderTarget(target);
+            NowGlassRenderer.SetRenderTarget(commandBuffer, targetContext);
             DrawBatches(
                 commandBuffer,
                 drawList.mesh,
                 drawList.batches,
                 drawList.size,
-                new NowRenderTargetContext(target, targetWidth, targetHeight),
+                targetContext,
                 0,
                 int.MaxValue,
                 false,

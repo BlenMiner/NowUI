@@ -11,6 +11,7 @@
     "com.unity.test-framework.performance": "3.2.0",
     "com.unity.timeline": "1.8.11",
     "com.unity.ugui": "2.0.0",
+    "com.unity.xr.mock-hmd": "1.5.0-exp.3",
     "com.unity.modules.accessibility": "1.0.0",
     "com.unity.modules.adaptiveperformance": "1.0.0",
     "com.unity.modules.ai": "1.0.0",

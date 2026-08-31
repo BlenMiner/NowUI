@@ -9,14 +9,88 @@ namespace NowUI
         public readonly RenderTargetIdentifier target;
         public readonly int width;
         public readonly int height;
+        public readonly NowGlassTextureLayout layout;
+
+        /// <summary>
+        /// Maps logical target UVs into the backing texture allocation. This is
+        /// identity for ordinary render textures and the RTHandle viewport scale
+        /// for dynamically-scaled HDRP targets.
+        /// </summary>
+        public readonly Vector4 sourceScaleOffset;
+
+        public readonly bool overrideViewport;
+
         public readonly bool isValid;
 
         public NowRenderTargetContext(RenderTargetIdentifier target, int width, int height)
+            : this(target, width, height, default)
+        {
+        }
+
+        public NowRenderTargetContext(
+            RenderTargetIdentifier target,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout)
+            : this(
+                target,
+                width,
+                height,
+                layout,
+                new Vector4(1f, 1f, 0f, 0f),
+                false)
+        {
+        }
+
+        public NowRenderTargetContext(
+            RenderTargetIdentifier target,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout,
+            Vector4 sourceScaleOffset)
+            : this(target, width, height, layout, sourceScaleOffset, true)
+        {
+        }
+
+        public NowRenderTargetContext(
+            RenderTargetIdentifier target,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout,
+            Vector4 sourceScaleOffset,
+            bool overrideViewport)
         {
             this.target = target;
             this.width = Mathf.Max(1, width);
             this.height = Mathf.Max(1, height);
+            this.layout = layout;
+            this.sourceScaleOffset = sourceScaleOffset;
+            this.overrideViewport = overrideViewport;
             isValid = width > 0 && height > 0;
+        }
+
+        public NowRenderTargetContext(
+            RenderTargetIdentifier target,
+            in RenderTextureDescriptor descriptor)
+            : this(
+                target,
+                descriptor.width,
+                descriptor.height,
+                NowGlassTextureLayout.FromDescriptor(descriptor))
+        {
+        }
+
+        public NowRenderTargetContext(
+            RenderTargetIdentifier target,
+            in RenderTextureDescriptor descriptor,
+            Vector4 sourceScaleOffset)
+            : this(
+                target,
+                descriptor.width,
+                descriptor.height,
+                NowGlassTextureLayout.FromDescriptor(descriptor),
+                sourceScaleOffset)
+        {
         }
     }
 
@@ -95,11 +169,20 @@ namespace NowUI
 
         static readonly int _blurDirectionId = Shader.PropertyToID("_NowBlurDirection");
         static readonly int _blurSourceTexId = Shader.PropertyToID("_NowBlurSourceTex");
+        static readonly int _blurSourceArrayTexId = Shader.PropertyToID("_NowBlurSourceArrayTex");
+        static readonly int _blurSourceMsaaTexId = Shader.PropertyToID("_NowBlurSourceMSAATex");
+        static readonly int _blurSourceMsaaArrayTexId = Shader.PropertyToID("_NowBlurSourceMSAAArrayTex");
+        static readonly int _blurSourceSliceId = Shader.PropertyToID("_NowBlurSourceSlice");
         static readonly int _blurSourceScaleOffsetId = Shader.PropertyToID("_NowBlurSourceScaleOffset");
         static readonly int _blurTexelSizeId = Shader.PropertyToID("_NowBlurTexelSize");
         static readonly int _backdropTexId = Shader.PropertyToID("_NowBackdropTex");
+        static readonly int _backdropArrayTexId = Shader.PropertyToID("_NowBackdropArrayTex");
+        static readonly int _sharpBackdropTexId = Shader.PropertyToID("_NowGlassSharpBackdropTex");
+        static readonly int _sharpBackdropArrayTexId = Shader.PropertyToID("_NowGlassSharpBackdropArrayTex");
         static readonly int _backdropUvTransformId = Shader.PropertyToID("_NowBackdropUVTransform");
         static readonly int _useBackdropId = Shader.PropertyToID("_NowGlassUseBackdrop");
+        static readonly int _useStereoBackdropId = Shader.PropertyToID("_NowGlassUseStereoBackdrop");
+        static readonly int _backdropSliceCountId = Shader.PropertyToID("_NowGlassBackdropSliceCount");
         static readonly int _sourceId = Shader.PropertyToID("_NowGlassSource");
         static readonly int _scratchId = Shader.PropertyToID("_NowGlassScratch");
 
@@ -138,28 +221,52 @@ namespace NowUI
             var quality = GetBatchQuality(batch);
             var capture = GetCaptureRect(batch.bounds, drawSize, context.width, context.height, batch.data.x);
             var plan = GetBlurPlan(batch.data.x, capture.width, capture.height, quality);
+            var singleSampledLayout = context.layout.AsSingleSampled();
 
-            commandBuffer.GetTemporaryRT(_sourceId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+            GetTemporaryRT(commandBuffer, _sourceId, plan.width, plan.height, singleSampledLayout);
             commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-            BlitBlur(commandBuffer, context.target, _sourceId, context.width, context.height, blurMaterial, capture.sourceScaleOffset);
+            CopySource(
+                commandBuffer,
+                context.target,
+                _sourceId,
+                context.width,
+                context.height,
+                blurMaterial,
+                ComposeSourceScaleOffset(capture.sourceScaleOffset, context.sourceScaleOffset),
+                context.layout);
 
             if (plan.iterations > 0)
             {
-                commandBuffer.GetTemporaryRT(_scratchId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+                GetTemporaryRT(commandBuffer, _scratchId, plan.width, plan.height, singleSampledLayout);
 
                 for (int i = 0; i < plan.iterations; ++i)
                 {
                     float passStep = plan.step;
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(passStep, 0f, 0f, 0f));
-                    BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial);
+                    BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial, singleSampledLayout);
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(0f, passStep, 0f, 0f));
-                    BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial);
+                    BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial, singleSampledLayout);
                 }
             }
 
-            commandBuffer.SetRenderTarget(context.target);
+            SetRenderTarget(commandBuffer, context);
             commandBuffer.SetViewProjectionMatrices(Matrix4x4.identity, projection);
-            commandBuffer.SetGlobalTexture(_backdropTexId, _sourceId);
+            if (context.layout.isArray)
+            {
+                commandBuffer.SetGlobalTexture(_backdropArrayTexId, _sourceId);
+                commandBuffer.SetGlobalTexture(_sharpBackdropArrayTexId, _sourceId);
+                commandBuffer.SetGlobalTexture(_backdropTexId, Texture2D.blackTexture);
+                commandBuffer.SetGlobalTexture(_sharpBackdropTexId, Texture2D.blackTexture);
+                commandBuffer.SetGlobalFloat(_useStereoBackdropId, 1f);
+                commandBuffer.SetGlobalFloat(_backdropSliceCountId, context.layout.sliceCount);
+            }
+            else
+            {
+                commandBuffer.SetGlobalTexture(_backdropTexId, _sourceId);
+                commandBuffer.SetGlobalTexture(_sharpBackdropTexId, _sourceId);
+                commandBuffer.SetGlobalFloat(_useStereoBackdropId, 0f);
+                commandBuffer.SetGlobalFloat(_backdropSliceCountId, 1f);
+            }
             commandBuffer.SetGlobalVector(_backdropUvTransformId, capture.backdropUvTransform);
             commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
             commandBuffer.DrawMesh(
@@ -170,6 +277,8 @@ namespace NowUI
                 0,
                 NowMaskShader.GetPropertyBlock(batch.maskState));
             commandBuffer.SetGlobalFloat(_useBackdropId, 0f);
+            commandBuffer.SetGlobalFloat(_useStereoBackdropId, 0f);
+            commandBuffer.SetGlobalFloat(_backdropSliceCountId, 1f);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
 
             if (plan.iterations > 0)
@@ -294,6 +403,25 @@ namespace NowUI
             int sourceHeight,
             Vector4 sourceScaleOffset)
         {
+            return CopyBackdropRegion(
+                commandBuffer,
+                source,
+                destination,
+                sourceWidth,
+                sourceHeight,
+                sourceScaleOffset,
+                default);
+        }
+
+        internal static bool CopyBackdropRegion(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int sourceWidth,
+            int sourceHeight,
+            Vector4 sourceScaleOffset,
+            in NowGlassTextureLayout layout)
+        {
             if (commandBuffer == null)
                 return false;
 
@@ -301,19 +429,26 @@ namespace NowUI
 
             if (blurMaterial == null)
             {
-                commandBuffer.Blit(source, destination);
+                if (layout.sourceRequiresExplicitResolve)
+                {
+                    ClearCopyDestination(commandBuffer, destination, layout);
+                    return false;
+                }
+
+                BlitCopyFallback(commandBuffer, source, destination, sourceScaleOffset, layout);
                 return false;
             }
 
             commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-            BlitBlur(
+            CopySource(
                 commandBuffer,
                 source,
                 destination,
                 Mathf.Max(1, sourceWidth),
                 Mathf.Max(1, sourceHeight),
                 blurMaterial,
-                sourceScaleOffset);
+                sourceScaleOffset,
+                layout);
             return true;
         }
 
@@ -329,6 +464,62 @@ namespace NowUI
             NowRect captureRect,
             out NowGlassBlurPlan plan)
         {
+            return CopyAndBlurBackdrop(
+                commandBuffer,
+                source,
+                destination,
+                width,
+                height,
+                radius,
+                quality,
+                host,
+                captureRect,
+                default,
+                out plan);
+        }
+
+        internal static bool CopyAndBlurBackdrop(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int width,
+            int height,
+            float radius,
+            NowGlassBlurQuality quality,
+            string host,
+            NowRect captureRect,
+            in NowGlassTextureLayout layout,
+            out NowGlassBlurPlan plan)
+        {
+            return CopyAndBlurBackdrop(
+                commandBuffer,
+                source,
+                destination,
+                width,
+                height,
+                radius,
+                quality,
+                host,
+                captureRect,
+                layout,
+                new Vector4(1f, 1f, 0f, 0f),
+                out plan);
+        }
+
+        internal static bool CopyAndBlurBackdrop(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int width,
+            int height,
+            float radius,
+            NowGlassBlurQuality quality,
+            string host,
+            NowRect captureRect,
+            in NowGlassTextureLayout layout,
+            Vector4 sourceScaleOffset,
+            out NowGlassBlurPlan plan)
+        {
             quality = NowGlassSettings.Resolve(quality);
             plan = GetBlurPlan(radius, width, height, quality);
 
@@ -339,7 +530,15 @@ namespace NowUI
 
             if (blurMaterial == null)
             {
-                commandBuffer.Blit(source, destination);
+                if (layout.sourceRequiresExplicitResolve)
+                    ClearCopyDestination(commandBuffer, destination, layout);
+                else
+                    BlitCopyFallback(
+                        commandBuffer,
+                        source,
+                        destination,
+                        sourceScaleOffset,
+                        layout);
                 RecordDiagnostics(
                     host,
                     quality,
@@ -357,32 +556,49 @@ namespace NowUI
             if (plan.iterations == 0 && plan.downsample == 1)
             {
                 commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-                BlitBlur(commandBuffer, source, destination, width, height, blurMaterial);
+                CopySource(
+                    commandBuffer,
+                    source,
+                    destination,
+                    width,
+                    height,
+                    blurMaterial,
+                    sourceScaleOffset,
+                    layout);
                 RecordDiagnostics(host, quality, NowGlassFallbackReason.None, radius, width, height, width, height, captureRect, plan);
                 return true;
             }
 
-            commandBuffer.GetTemporaryRT(_sourceId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+            var singleSampledLayout = layout.AsSingleSampled();
+            GetTemporaryRT(commandBuffer, _sourceId, plan.width, plan.height, singleSampledLayout);
             commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-            BlitBlur(commandBuffer, source, _sourceId, width, height, blurMaterial);
+            CopySource(
+                commandBuffer,
+                source,
+                _sourceId,
+                width,
+                height,
+                blurMaterial,
+                sourceScaleOffset,
+                layout);
 
             bool finalPassWritesDestination = plan.iterations > 0 && plan.downsample == 1;
 
             if (plan.iterations > 0)
             {
-                commandBuffer.GetTemporaryRT(_scratchId, plan.width, plan.height, 0, FilterMode.Bilinear, RenderTextureFormat.ARGB32);
+                GetTemporaryRT(commandBuffer, _scratchId, plan.width, plan.height, singleSampledLayout);
 
                 for (int i = 0; i < plan.iterations; ++i)
                 {
                     float passStep = plan.step;
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(passStep, 0f, 0f, 0f));
-                    BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial);
+                    BlitBlur(commandBuffer, _sourceId, _scratchId, plan.width, plan.height, blurMaterial, singleSampledLayout);
                     commandBuffer.SetGlobalVector(_blurDirectionId, new Vector4(0f, passStep, 0f, 0f));
 
                     if (finalPassWritesDestination && i == plan.iterations - 1)
-                        BlitBlur(commandBuffer, _scratchId, destination, plan.width, plan.height, blurMaterial);
+                        BlitBlur(commandBuffer, _scratchId, destination, plan.width, plan.height, blurMaterial, singleSampledLayout);
                     else
-                        BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial);
+                        BlitBlur(commandBuffer, _scratchId, _sourceId, plan.width, plan.height, blurMaterial, singleSampledLayout);
                 }
 
                 commandBuffer.ReleaseTemporaryRT(_scratchId);
@@ -391,7 +607,7 @@ namespace NowUI
             if (!finalPassWritesDestination)
             {
                 commandBuffer.SetGlobalVector(_blurDirectionId, Vector4.zero);
-                BlitBlur(commandBuffer, _sourceId, destination, plan.width, plan.height, blurMaterial);
+                BlitBlur(commandBuffer, _sourceId, destination, plan.width, plan.height, blurMaterial, singleSampledLayout);
             }
 
             commandBuffer.ReleaseTemporaryRT(_sourceId);
@@ -404,6 +620,7 @@ namespace NowUI
             if (commandBuffer != null)
             {
                 commandBuffer.SetGlobalFloat(_useBackdropId, 0f);
+                commandBuffer.SetGlobalFloat(_useStereoBackdropId, 0f);
                 commandBuffer.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
             }
         }
@@ -411,6 +628,7 @@ namespace NowUI
         internal static void DisableBackdropGlobal()
         {
             Shader.SetGlobalFloat(_useBackdropId, 0f);
+            Shader.SetGlobalFloat(_useStereoBackdropId, 0f);
             Shader.SetGlobalVector(_backdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
         }
 
@@ -421,6 +639,7 @@ namespace NowUI
 
             commandBuffer.SetGlobalTexture(_backdropTexId, texture);
             commandBuffer.SetGlobalVector(_backdropUvTransformId, uvTransform);
+            commandBuffer.SetGlobalFloat(_useStereoBackdropId, 0f);
             commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
         }
 
@@ -428,6 +647,7 @@ namespace NowUI
         {
             Shader.SetGlobalTexture(_backdropTexId, texture);
             Shader.SetGlobalVector(_backdropUvTransformId, uvTransform);
+            Shader.SetGlobalFloat(_useStereoBackdropId, 0f);
             Shader.SetGlobalFloat(_useBackdropId, texture != null ? 1f : 0f);
         }
 
@@ -584,7 +804,28 @@ namespace NowUI
                 sourceWidth,
                 sourceHeight,
                 blurMaterial,
-                new Vector4(1f, 1f, 0f, 0f));
+                new Vector4(1f, 1f, 0f, 0f),
+                default);
+        }
+
+        static void BlitBlur(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int sourceWidth,
+            int sourceHeight,
+            Material blurMaterial,
+            in NowGlassTextureLayout layout)
+        {
+            BlitBlur(
+                commandBuffer,
+                source,
+                destination,
+                sourceWidth,
+                sourceHeight,
+                blurMaterial,
+                new Vector4(1f, 1f, 0f, 0f),
+                layout);
         }
 
         static void BlitBlur(
@@ -596,7 +837,27 @@ namespace NowUI
             Material blurMaterial,
             Vector4 sourceScaleOffset)
         {
-            commandBuffer.SetGlobalTexture(_blurSourceTexId, source);
+            BlitBlur(
+                commandBuffer,
+                source,
+                destination,
+                sourceWidth,
+                sourceHeight,
+                blurMaterial,
+                sourceScaleOffset,
+                default);
+        }
+
+        static void BlitBlur(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int sourceWidth,
+            int sourceHeight,
+            Material blurMaterial,
+            Vector4 sourceScaleOffset,
+            in NowGlassTextureLayout layout)
+        {
             commandBuffer.SetGlobalVector(_blurSourceScaleOffsetId, sourceScaleOffset);
             commandBuffer.SetGlobalVector(
                 _blurTexelSizeId,
@@ -605,7 +866,204 @@ namespace NowUI
                     1f / Mathf.Max(1, sourceHeight),
                     Mathf.Max(1, sourceWidth),
                     Mathf.Max(1, sourceHeight)));
+
+            if (layout.isArray)
+            {
+                commandBuffer.SetGlobalTexture(_blurSourceArrayTexId, source);
+
+                for (int slice = 0; slice < layout.sliceCount; ++slice)
+                {
+                    commandBuffer.SetGlobalFloat(_blurSourceSliceId, slice);
+                    commandBuffer.SetRenderTarget(destination, 0, CubemapFace.Unknown, slice);
+                    commandBuffer.DrawProcedural(
+                        Matrix4x4.identity,
+                        blurMaterial,
+                        1,
+                        MeshTopology.Triangles,
+                        3,
+                        1);
+                }
+
+                commandBuffer.SetGlobalFloat(_blurSourceSliceId, 0f);
+                return;
+            }
+
+            commandBuffer.SetGlobalTexture(_blurSourceTexId, source);
             commandBuffer.Blit(source, destination, blurMaterial, 0);
+        }
+
+        static void CopySource(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            int sourceWidth,
+            int sourceHeight,
+            Material blurMaterial,
+            Vector4 sourceScaleOffset,
+            in NowGlassTextureLayout layout)
+        {
+            if (layout.sourceRequiresExplicitResolve)
+            {
+                if (layout.isArray)
+                {
+                    ResolveMultisampledArray(
+                        commandBuffer,
+                        source,
+                        destination,
+                        blurMaterial,
+                        sourceScaleOffset,
+                        layout);
+                    return;
+                }
+
+                ResolveMultisampled2D(
+                    commandBuffer,
+                    source,
+                    destination,
+                    blurMaterial,
+                    sourceScaleOffset);
+                return;
+            }
+
+            BlitBlur(
+                commandBuffer,
+                source,
+                destination,
+                sourceWidth,
+                sourceHeight,
+                blurMaterial,
+                sourceScaleOffset,
+                layout);
+        }
+
+        static void ResolveMultisampled2D(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            Material blurMaterial,
+            Vector4 sourceScaleOffset)
+        {
+            commandBuffer.SetGlobalTexture(_blurSourceMsaaTexId, source);
+            commandBuffer.SetGlobalVector(_blurSourceScaleOffsetId, sourceScaleOffset);
+            commandBuffer.SetRenderTarget(destination);
+            commandBuffer.DrawProcedural(
+                Matrix4x4.identity,
+                blurMaterial,
+                3,
+                MeshTopology.Triangles,
+                3,
+                1);
+        }
+
+        static void ClearCopyDestination(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier destination,
+            in NowGlassTextureLayout layout)
+        {
+            SetRenderTarget(commandBuffer, destination, layout.AsSingleSampled());
+            commandBuffer.ClearRenderTarget(false, true, Color.clear);
+        }
+
+        static void ResolveMultisampledArray(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            Material blurMaterial,
+            Vector4 sourceScaleOffset,
+            in NowGlassTextureLayout layout)
+        {
+            commandBuffer.SetGlobalTexture(_blurSourceMsaaArrayTexId, source);
+            commandBuffer.SetGlobalVector(_blurSourceScaleOffsetId, sourceScaleOffset);
+
+            for (int slice = 0; slice < layout.sliceCount; ++slice)
+            {
+                commandBuffer.SetGlobalFloat(_blurSourceSliceId, slice);
+                commandBuffer.SetRenderTarget(destination, 0, CubemapFace.Unknown, slice);
+                commandBuffer.DrawProcedural(
+                    Matrix4x4.identity,
+                    blurMaterial,
+                    2,
+                    MeshTopology.Triangles,
+                    3,
+                    1);
+            }
+
+            commandBuffer.SetGlobalFloat(_blurSourceSliceId, 0f);
+        }
+
+        static void BlitCopyFallback(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier source,
+            RenderTargetIdentifier destination,
+            Vector4 sourceScaleOffset,
+            in NowGlassTextureLayout layout)
+        {
+            var scale = new Vector2(sourceScaleOffset.x, sourceScaleOffset.y);
+            var offset = new Vector2(sourceScaleOffset.z, sourceScaleOffset.w);
+
+            if (layout.isArray)
+            {
+                for (int slice = 0; slice < layout.sliceCount; ++slice)
+                    commandBuffer.Blit(source, destination, scale, offset, slice, slice);
+
+                return;
+            }
+
+            commandBuffer.Blit(source, destination, scale, offset);
+        }
+
+        static void GetTemporaryRT(
+            CommandBuffer commandBuffer,
+            int id,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout)
+        {
+            var descriptor = NowGlassBackdropSurface.CreateDescriptor(width, height, layout);
+            commandBuffer.GetTemporaryRT(id, descriptor, FilterMode.Bilinear);
+        }
+
+        internal static void SetRenderTarget(
+            CommandBuffer commandBuffer,
+            RenderTargetIdentifier target,
+            in NowGlassTextureLayout layout)
+        {
+            if (layout.isArray)
+            {
+                commandBuffer.SetRenderTarget(
+                    target,
+                    0,
+                    CubemapFace.Unknown,
+                    RenderTargetIdentifier.AllDepthSlices);
+                return;
+            }
+
+            commandBuffer.SetRenderTarget(target);
+        }
+
+        internal static void SetRenderTarget(
+            CommandBuffer commandBuffer,
+            in NowRenderTargetContext context)
+        {
+            SetRenderTarget(commandBuffer, context.target, context.layout);
+
+            if (context.overrideViewport)
+                commandBuffer.SetViewport(new Rect(0f, 0f, context.width, context.height));
+        }
+
+        /// <summary>
+        /// Composes a crop in logical target UVs with the logical target's
+        /// location inside its backing allocation.
+        /// </summary>
+        internal static Vector4 ComposeSourceScaleOffset(
+            Vector4 logicalRegion,
+            Vector4 allocationScaleOffset)
+        {
+            return new Vector4(
+                logicalRegion.x * allocationScaleOffset.x,
+                logicalRegion.y * allocationScaleOffset.y,
+                logicalRegion.z * allocationScaleOffset.x + allocationScaleOffset.z,
+                logicalRegion.w * allocationScaleOffset.y + allocationScaleOffset.w);
         }
 
         static NowGlassCaptureRect FullCaptureRect(NowRect fullRect, int targetWidth, int targetHeight)

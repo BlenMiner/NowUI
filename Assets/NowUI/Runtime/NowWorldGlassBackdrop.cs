@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+#if NOWUI_XR
+using UnityEngine.XR;
+#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -16,8 +19,6 @@ namespace NowUI
 
     public static class NowWorldGlassBackdrop
     {
-        static readonly int _backdropTexId = Shader.PropertyToID("_NowBackdropTex");
-
         static readonly int _useBackdropId = Shader.PropertyToID("_NowGlassUseBackdrop");
 
         static readonly Dictionary<Camera, CameraState> _states = new Dictionary<Camera, CameraState>();
@@ -25,6 +26,10 @@ namespace NowUI
         static readonly List<Camera> _staleCameras = new List<Camera>(4);
 
         static readonly List<NowWorldGraphic> _worldContributors = new List<NowWorldGraphic>(16);
+
+#if NOWUI_XR
+        static readonly List<XRDisplaySubsystem> _xrDisplays = new List<XRDisplaySubsystem>(2);
+#endif
 
         static bool _callbacksRegistered;
 
@@ -40,6 +45,8 @@ namespace NowUI
 
             public int lastSceneDepthFrame = -1;
 
+            public long populateSequence;
+
             public readonly List<RequestState> requests = new List<RequestState>(4);
 
             public readonly List<SharedBackdropState> sharedBackdrops = new List<SharedBackdropState>(4);
@@ -52,6 +59,12 @@ namespace NowUI
             public RenderTexture texture;
 
             public RenderTexture sharpTexture;
+
+            // A material may still sample the previous allocation until the
+            // replacement capture has executed and ApplyReadyTextures binds it.
+            public RenderTexture retiredTexture;
+
+            public RenderTexture retiredSharpTexture;
 
             public bool textureReady;
 
@@ -71,7 +84,9 @@ namespace NowUI
 
             public int lastUsedFrame = -1;
 
-            public int lastSharpUsedFrame = -1;
+            public long lastPopulatedSequence = -1;
+
+            public long lastSharpPopulatedSequence = -1;
 
             public NowWorldGlassBackdropMode mode;
 
@@ -87,6 +102,10 @@ namespace NowUI
             public RenderTexture backdrop;
 
             public RenderTexture source;
+
+            public RenderTexture retiredBackdrop;
+
+            public RenderTexture retiredSource;
 
             public bool backdropReady;
 
@@ -239,6 +258,51 @@ namespace NowUI
             int width,
             int height)
         {
+            var sourceDescriptor = GetCameraSourceDescriptor(camera, width, height);
+
+#if NOWUI_XR
+            // MultiPass exposes a flat bound-MS intermediate even when the XR
+            // provider target is already single-sampled. In SPI, however, the
+            // logical CameraTarget is the provider's sampled texture array; keep
+            // that descriptor unless the provider itself explicitly sets bindMS.
+            bool requiresXrMsaaFallback = TryGetBuiltinXrMsaaSourceSamples(
+                camera,
+                sourceDescriptor,
+                out int sourceMsaaSamples);
+
+            if (RequiresBuiltinXrColorMsaaOverride(
+                    requiresXrMsaaFallback,
+                    sourceDescriptor.dimension))
+            {
+                sourceDescriptor.msaaSamples = sourceMsaaSamples;
+                sourceDescriptor.bindMS = true;
+            }
+#endif
+
+            return PopulateCommandBuffer(commandBuffer, camera, source, sourceDescriptor);
+        }
+
+        public static bool PopulateCommandBuffer(
+            CommandBuffer commandBuffer,
+            Camera camera,
+            RenderTargetIdentifier source,
+            in RenderTextureDescriptor sourceDescriptor)
+        {
+            return PopulateCommandBuffer(
+                commandBuffer,
+                camera,
+                source,
+                sourceDescriptor,
+                new Vector4(1f, 1f, 0f, 0f));
+        }
+
+        internal static bool PopulateCommandBuffer(
+            CommandBuffer commandBuffer,
+            Camera camera,
+            RenderTargetIdentifier source,
+            in RenderTextureDescriptor sourceDescriptor,
+            Vector4 sourceScaleOffset)
+        {
             if (commandBuffer == null ||
                 camera == null ||
                 !_states.TryGetValue(camera, out var state) ||
@@ -247,11 +311,12 @@ namespace NowUI
                 return false;
             }
 
-            width = Mathf.Max(1, width);
-            height = Mathf.Max(1, height);
+            int width = Mathf.Max(1, sourceDescriptor.width);
+            int height = Mathf.Max(1, sourceDescriptor.height);
+            var layout = NowGlassTextureLayout.FromDescriptor(sourceDescriptor);
             int frame = Time.frameCount;
+            long populateSequence = ++state.populateSequence;
             bool populated = false;
-            RenderTexture lastBackdrop = null;
 
             for (int i = 0; i < state.requests.Count; ++i)
             {
@@ -275,6 +340,9 @@ namespace NowUI
                         source,
                         width,
                         height,
+                        layout,
+                        sourceScaleOffset,
+                        populateSequence,
                         request,
                         out var sharedBackdrop,
                         out var sharedSharpBackdrop,
@@ -283,23 +351,33 @@ namespace NowUI
                     if (sharedBackdropReady)
                         request.requester.ApplyGlassBackdropTexture(sharedBackdrop, sharedSharpBackdrop);
 
-                    lastBackdrop = sharedBackdrop;
                     populated = true;
                     continue;
                 }
 
-                EnsureBackdropTexture(request, width, height);
+                EnsureBackdropTexture(request, width, height, layout);
                 bool needsSharpSource = request.requiresSceneDepth && blur;
+                var backdropSourceLayout = layout;
+                var backdropSourceScaleOffset = sourceScaleOffset;
 
                 if (includeWorld || needsSharpSource)
                 {
-                    EnsureSourceTexture(request, width, height);
-                    commandBuffer.Blit(source, request.source);
+                    EnsureSourceTexture(request, width, height, layout);
+                    NowGlassRenderer.CopyBackdropRegion(
+                        commandBuffer,
+                        source,
+                        request.source,
+                        width,
+                        height,
+                        sourceScaleOffset,
+                        layout);
 
                     if (includeWorld)
                         RenderWorldContributors(commandBuffer, camera, request);
 
                     backdropSource = request.source;
+                    backdropSourceLayout = layout.AsSingleSampled();
+                    backdropSourceScaleOffset = new Vector4(1f, 1f, 0f, 0f);
                 }
 
                 bool requestBackdropReady =
@@ -307,7 +385,14 @@ namespace NowUI
                     (!needsSharpSource || IsTextureReady(request.sourceReady, request.sourceReadyFrame, frame));
 
                 if (!blur)
-                    commandBuffer.Blit(backdropSource, request.backdrop);
+                    NowGlassRenderer.CopyBackdropRegion(
+                        commandBuffer,
+                        backdropSource,
+                        request.backdrop,
+                        width,
+                        height,
+                        backdropSourceScaleOffset,
+                        backdropSourceLayout);
                 else
                     NowGlassRenderer.CopyAndBlurBackdrop(
                         commandBuffer,
@@ -319,6 +404,8 @@ namespace NowUI
                         request.quality,
                         "World",
                         new NowRect(0f, 0f, width, height),
+                        backdropSourceLayout,
+                        backdropSourceScaleOffset,
                         out _);
 
                 if (requestBackdropReady)
@@ -332,15 +419,12 @@ namespace NowUI
                 if (includeWorld || needsSharpSource)
                     request.sourcePendingFrame = frame;
 
-                lastBackdrop = request.backdrop;
                 populated = true;
             }
 
             if (!populated)
                 return false;
 
-            commandBuffer.SetGlobalTexture(_backdropTexId, lastBackdrop);
-            commandBuffer.SetGlobalFloat(_useBackdropId, 1f);
             return true;
         }
 
@@ -350,6 +434,9 @@ namespace NowUI
             RenderTargetIdentifier source,
             int width,
             int height,
+            in NowGlassTextureLayout layout,
+            Vector4 sourceScaleOffset,
+            long populateSequence,
             RequestState request,
             out RenderTexture texture,
             out RenderTexture sharpTexture,
@@ -364,16 +451,23 @@ namespace NowUI
 
             var shared = GetSharedBackdropState(state, request.mode, request.blurRadius, request.quality);
             bool needsSharpTexture = request.requiresSceneDepth && ShouldBlur(request);
-            EnsureSharedTexture(shared, width, height, needsSharpTexture);
+            EnsureSharedTexture(shared, width, height, layout, needsSharpTexture);
             bool canApplyTexture =
                 IsTextureReady(shared.textureReady, shared.textureReadyFrame, Time.frameCount) &&
                 (!needsSharpTexture || IsTextureReady(shared.sharpTextureReady, shared.sharpTextureReadyFrame, Time.frameCount));
 
-            if (shared.lastUsedFrame != Time.frameCount)
+            if (shared.lastPopulatedSequence != populateSequence)
             {
                 if (!ShouldBlur(request))
                 {
-                    commandBuffer.Blit(source, shared.texture);
+                    NowGlassRenderer.CopyBackdropRegion(
+                        commandBuffer,
+                        source,
+                        shared.texture,
+                        width,
+                        height,
+                        sourceScaleOffset,
+                        layout);
                 }
                 else
                 {
@@ -387,15 +481,26 @@ namespace NowUI
                         request.quality,
                         "World",
                         new NowRect(0f, 0f, width, height),
+                        layout,
+                        sourceScaleOffset,
                         out _);
                 }
+
+                shared.lastPopulatedSequence = populateSequence;
             }
 
             shared.lastUsedFrame = Time.frameCount;
-            if (needsSharpTexture && shared.lastSharpUsedFrame != Time.frameCount)
+            if (needsSharpTexture && shared.lastSharpPopulatedSequence != populateSequence)
             {
-                commandBuffer.Blit(source, shared.sharpTexture);
-                shared.lastSharpUsedFrame = Time.frameCount;
+                NowGlassRenderer.CopyBackdropRegion(
+                    commandBuffer,
+                    source,
+                    shared.sharpTexture,
+                    width,
+                    height,
+                    sourceScaleOffset,
+                    layout);
+                shared.lastSharpPopulatedSequence = populateSequence;
             }
 
             texture = shared.texture;
@@ -569,13 +674,231 @@ namespace NowUI
             if (_worldContributors.Count == 0)
                 return;
 
-            commandBuffer.SetRenderTarget(request.source);
+            if (request.source.dimension == TextureDimension.Tex2DArray)
+            {
+                commandBuffer.SetRenderTarget(
+                    request.source,
+                    0,
+                    CubemapFace.Unknown,
+                    RenderTargetIdentifier.AllDepthSlices);
+            }
+            else
+            {
+                commandBuffer.SetRenderTarget(request.source);
+            }
 
             for (int i = 0; i < _worldContributors.Count; ++i)
                 _worldContributors[i].DrawBackdropContribution(commandBuffer);
 
             _worldContributors.Clear();
         }
+
+        public static RenderTextureDescriptor GetCameraSourceDescriptor(
+            Camera camera,
+            int fallbackWidth,
+            int fallbackHeight)
+        {
+            if (camera != null && camera.targetTexture != null)
+                return camera.targetTexture.descriptor;
+
+#if NOWUI_XR
+            if (TryGetLiveXrSourceDescriptor(camera, out var xrDescriptor))
+            {
+                return xrDescriptor;
+            }
+#endif
+
+            int msaaSamples = CameraCanUseMsaa(camera, SystemInfo.supportsMultisampledTextures)
+                ? Mathf.Max(1, QualitySettings.antiAliasing)
+                : 1;
+            return new RenderTextureDescriptor(
+                Mathf.Max(1, fallbackWidth),
+                Mathf.Max(1, fallbackHeight),
+                RenderTextureFormat.ARGB32,
+                0)
+            {
+                msaaSamples = msaaSamples,
+                dimension = TextureDimension.Tex2D,
+                volumeDepth = 1,
+                vrUsage = VRTextureUsage.None
+            };
+        }
+
+        /// <summary>
+        /// Built-in XR can bind an unresolved multisampled depth surface to
+        /// _CameraDepthTexture. That resource cannot be declared safely from its
+        /// allocation descriptor, so the world-glass shader uses fixed-function
+        /// depth testing instead while this exact target is live.
+        /// </summary>
+        internal static bool SupportsSceneDepthSampling(Camera camera)
+        {
+#if NOWUI_XR
+            var sourceDescriptor = GetCameraSourceDescriptor(
+                camera,
+                camera != null ? camera.pixelWidth : 1,
+                camera != null ? camera.pixelHeight : 1);
+            return !TryGetBuiltinXrMsaaSourceSamples(camera, sourceDescriptor, out _);
+#else
+            return true;
+#endif
+        }
+
+        internal static bool RequiresBuiltinXrMsaaFallback(
+            bool isBuiltInPipeline,
+            bool hasExplicitTargetTexture,
+            bool stereoEnabled,
+            bool xrDisplayActive,
+            int msaaSamples)
+        {
+            return isBuiltInPipeline &&
+                !hasExplicitTargetTexture &&
+                stereoEnabled &&
+                xrDisplayActive &&
+                msaaSamples > 1;
+        }
+
+        internal static bool RequiresBuiltinXrColorMsaaOverride(
+            bool requiresXrMsaaFallback,
+            TextureDimension sourceDimension)
+        {
+            return requiresXrMsaaFallback && sourceDimension != TextureDimension.Tex2DArray;
+        }
+
+        internal static bool RenderingPathSupportsMsaa(
+            bool allowMsaa,
+            RenderingPath actualRenderingPath,
+            int supportedMultisampledTextureCount)
+        {
+            return allowMsaa &&
+                supportedMultisampledTextureCount > 0 &&
+                !IsDeferredRenderingPath(actualRenderingPath);
+        }
+
+        static bool IsDeferredRenderingPath(RenderingPath renderingPath)
+        {
+#pragma warning disable 618
+            return renderingPath == RenderingPath.DeferredLighting ||
+                renderingPath == RenderingPath.DeferredShading;
+#pragma warning restore 618
+        }
+
+        static bool CameraCanUseMsaa(Camera camera, int supportedMultisampledTextureCount)
+        {
+            return camera != null &&
+                RenderingPathSupportsMsaa(
+                    camera.allowMSAA,
+                    camera.actualRenderingPath,
+                    supportedMultisampledTextureCount);
+        }
+
+#if NOWUI_XR
+        static bool TryGetLiveXrSourceDescriptor(
+            Camera camera,
+            out RenderTextureDescriptor descriptor)
+        {
+            if (camera != null &&
+                camera.targetTexture == null &&
+                IsStereoRenderingRequested(camera) &&
+                TryGetXrSourceDescriptor(out descriptor))
+            {
+                return true;
+            }
+
+            descriptor = default;
+            return false;
+        }
+
+        static bool TryGetBuiltinXrMsaaSourceSamples(
+            Camera camera,
+            in RenderTextureDescriptor sourceDescriptor,
+            out int msaaSamples)
+        {
+            int requestedSamples = CameraCanUseMsaa(camera, SystemInfo.supportsMultisampledTextures)
+                ? Mathf.Max(1, QualitySettings.antiAliasing)
+                : 1;
+            msaaSamples = GetSupportedMsaaSamples(sourceDescriptor, requestedSamples);
+
+            if (RequiresBuiltinXrMsaaFallback(
+                    GraphicsSettings.currentRenderPipeline == null,
+                    camera != null && camera.targetTexture != null,
+                    IsStereoRenderingRequested(camera),
+                    HasRunningXrDisplay(),
+                    msaaSamples))
+            {
+                return true;
+            }
+
+            msaaSamples = 1;
+            return false;
+        }
+
+        static int GetSupportedMsaaSamples(
+            in RenderTextureDescriptor sourceDescriptor,
+            int requestedSamples)
+        {
+            if (requestedSamples <= 1)
+                return 1;
+
+            var candidate = sourceDescriptor;
+            candidate.msaaSamples = requestedSamples;
+            candidate.bindMS = true;
+            candidate.useMipMap = false;
+            candidate.autoGenerateMips = false;
+            candidate.enableRandomWrite = false;
+            int supportedSamples = SystemInfo.GetRenderTextureSupportedMSAASampleCount(candidate);
+            return Mathf.Min(requestedSamples, Mathf.Max(1, supportedSamples));
+        }
+
+        static bool IsStereoRenderingRequested(Camera camera)
+        {
+            return camera != null &&
+                (camera.stereoEnabled || camera.stereoTargetEye != StereoTargetEyeMask.None);
+        }
+
+        static bool HasRunningXrDisplay()
+        {
+            _xrDisplays.Clear();
+            SubsystemManager.GetSubsystems(_xrDisplays);
+
+            for (int displayIndex = 0; displayIndex < _xrDisplays.Count; ++displayIndex)
+            {
+                var display = _xrDisplays[displayIndex];
+
+                if (display != null && display.running)
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool TryGetXrSourceDescriptor(out RenderTextureDescriptor descriptor)
+        {
+            _xrDisplays.Clear();
+            SubsystemManager.GetSubsystems(_xrDisplays);
+
+            for (int displayIndex = 0; displayIndex < _xrDisplays.Count; ++displayIndex)
+            {
+                var display = _xrDisplays[displayIndex];
+
+                if (display == null || !display.running)
+                    continue;
+
+                int renderPassCount = display.GetRenderPassCount();
+
+                for (int passIndex = 0; passIndex < renderPassCount; ++passIndex)
+                {
+                    display.GetRenderPass(passIndex, out var renderPass);
+                    descriptor = renderPass.renderTargetDesc;
+
+                    if (descriptor.width > 0 && descriptor.height > 0)
+                        return true;
+                }
+            }
+
+            descriptor = default;
+            return false;
+        }
+#endif
 
         static void EnsureCallbacks()
         {
@@ -726,6 +1049,7 @@ namespace NowUI
                         request.requester.ApplyGlassBackdropTexture(
                             shared.texture,
                             needsSharpTexture ? shared.sharpTexture : shared.texture);
+                        ReleaseRetiredTextures(request);
                     }
 
                     continue;
@@ -737,59 +1061,84 @@ namespace NowUI
                     request.requester.ApplyGlassBackdropTexture(
                         request.backdrop,
                         needsSharpTexture ? request.source : request.backdrop);
+                    ReleaseRetiredTextures(request);
                 }
+            }
+
+            // Every active requester has now switched to the ready replacement.
+            // Only then is it safe to destroy the allocation that was bound
+            // during the just-finished camera render.
+            for (int i = 0; i < state.sharedBackdrops.Count; ++i)
+            {
+                var shared = state.sharedBackdrops[i];
+
+                if (shared == null ||
+                    !IsTextureReady(shared.textureReady, shared.textureReadyFrame, frame) ||
+                    (shared.sharpTexture != null &&
+                     !IsTextureReady(shared.sharpTextureReady, shared.sharpTextureReadyFrame, frame)))
+                {
+                    continue;
+                }
+
+                ReleaseRetiredTextures(shared);
             }
         }
 
-        static void EnsureBackdropTexture(RequestState request, int width, int height)
+        static void EnsureBackdropTexture(
+            RequestState request,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout)
         {
-            if (request.backdrop != null &&
-                request.width == width &&
-                request.height == height)
-            {
+            if (NowGlassBackdropSurface.Matches(request.backdrop, width, height, layout))
                 return;
-            }
 
-            ReleaseBackdropTexture(request);
+            RetireBackdropTexture(request);
             request.width = width;
             request.height = height;
-            request.backdrop = CreateTexture(width, height, "Now World Glass Backdrop");
-            request.backdrop.Create();
+            request.backdrop = CreateTexture(width, height, "Now World Glass Backdrop", layout);
             request.backdropReady = false;
             request.backdropReadyFrame = -1;
             request.backdropPendingFrame = -1;
         }
 
-        static void EnsureSourceTexture(RequestState request, int width, int height)
+        static void EnsureSourceTexture(
+            RequestState request,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout)
         {
-            if (request.source != null &&
-                request.source.width == width &&
-                request.source.height == height)
-            {
+            if (NowGlassBackdropSurface.Matches(request.source, width, height, layout))
                 return;
-            }
 
-            ReleaseSourceTexture(request);
-            request.source = CreateTexture(width, height, "Now World Glass Source");
-            request.source.Create();
+            RetireSourceTexture(request);
+            request.source = CreateTexture(width, height, "Now World Glass Source", layout);
             request.sourceReady = false;
             request.sourceReadyFrame = -1;
             request.sourcePendingFrame = -1;
         }
 
-        static void EnsureSharedTexture(SharedBackdropState shared, int width, int height, bool needsSharpTexture = false)
+        static void EnsureSharedTexture(
+            SharedBackdropState shared,
+            int width,
+            int height,
+            in NowGlassTextureLayout layout,
+            bool needsSharpTexture = false)
         {
             if (shared == null)
                 return;
 
-            if (shared.texture != null &&
-                shared.width == width &&
-                shared.height == height)
+            if (NowGlassBackdropSurface.Matches(shared.texture, width, height, layout))
             {
-                if (needsSharpTexture && shared.sharpTexture == null)
+                if (needsSharpTexture &&
+                    !NowGlassBackdropSurface.Matches(shared.sharpTexture, width, height, layout))
                 {
-                    shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
-                    shared.sharpTexture.Create();
+                    RetireTexture(ref shared.sharpTexture, ref shared.retiredSharpTexture);
+                    shared.sharpTexture = CreateTexture(
+                        width,
+                        height,
+                        "Now World Shared Glass Sharp Backdrop",
+                        layout);
                     shared.sharpTextureReady = false;
                     shared.sharpTextureReadyFrame = -1;
                     shared.sharpTexturePendingFrame = -1;
@@ -798,28 +1147,37 @@ namespace NowUI
                 return;
             }
 
-            ReleaseSharedTexture(shared);
+            RetireTexture(ref shared.texture, ref shared.retiredTexture);
+            RetireTexture(ref shared.sharpTexture, ref shared.retiredSharpTexture);
+            shared.lastPopulatedSequence = -1;
+            shared.lastSharpPopulatedSequence = -1;
             shared.width = width;
             shared.height = height;
-            shared.texture = CreateTexture(width, height, "Now World Shared Glass Backdrop");
-            shared.texture.Create();
+            shared.texture = CreateTexture(width, height, "Now World Shared Glass Backdrop", layout);
             shared.textureReady = false;
             shared.textureReadyFrame = -1;
             shared.texturePendingFrame = -1;
 
             if (needsSharpTexture)
             {
-                shared.sharpTexture = CreateTexture(width, height, "Now World Shared Glass Sharp Backdrop");
-                shared.sharpTexture.Create();
+                shared.sharpTexture = CreateTexture(
+                    width,
+                    height,
+                    "Now World Shared Glass Sharp Backdrop",
+                    layout);
                 shared.sharpTextureReady = false;
                 shared.sharpTextureReadyFrame = -1;
                 shared.sharpTexturePendingFrame = -1;
             }
         }
 
-        static RenderTexture CreateTexture(int width, int height, string name)
+        static RenderTexture CreateTexture(
+            int width,
+            int height,
+            string name,
+            in NowGlassTextureLayout layout)
         {
-            return NowGlassBackdropSurface.CreateTexture(width, height, name);
+            return NowGlassBackdropSurface.CreateTexture(width, height, name, layout);
         }
 
         static void RemoveBuiltInBuffer(Camera camera)
@@ -976,10 +1334,11 @@ namespace NowUI
 
         static void ReleaseBackdropTexture(RequestState request)
         {
-            if (request?.backdrop == null)
+            if (request == null)
                 return;
 
             NowGlassBackdropSurface.ReleaseTexture(ref request.backdrop);
+            NowGlassBackdropSurface.ReleaseTexture(ref request.retiredBackdrop);
             request.backdropReady = false;
             request.backdropReadyFrame = -1;
             request.backdropPendingFrame = -1;
@@ -989,10 +1348,11 @@ namespace NowUI
 
         static void ReleaseSourceTexture(RequestState request)
         {
-            if (request?.source == null)
+            if (request == null)
                 return;
 
             NowGlassBackdropSurface.ReleaseTexture(ref request.source);
+            NowGlassBackdropSurface.ReleaseTexture(ref request.retiredSource);
             request.sourceReady = false;
             request.sourceReadyFrame = -1;
             request.sourcePendingFrame = -1;
@@ -1005,10 +1365,13 @@ namespace NowUI
 
             ReleaseTexture(ref shared.texture);
             ReleaseTexture(ref shared.sharpTexture);
+            ReleaseTexture(ref shared.retiredTexture);
+            ReleaseTexture(ref shared.retiredSharpTexture);
             shared.width = 0;
             shared.height = 0;
             shared.lastUsedFrame = -1;
-            shared.lastSharpUsedFrame = -1;
+            shared.lastPopulatedSequence = -1;
+            shared.lastSharpPopulatedSequence = -1;
             shared.textureReady = false;
             shared.sharpTextureReady = false;
             shared.textureReadyFrame = -1;
@@ -1020,6 +1383,64 @@ namespace NowUI
         static void ReleaseTexture(ref RenderTexture texture)
         {
             NowGlassBackdropSurface.ReleaseTexture(ref texture);
+        }
+
+        static void RetireBackdropTexture(RequestState request)
+        {
+            if (request == null)
+                return;
+
+            RetireTexture(ref request.backdrop, ref request.retiredBackdrop);
+            request.backdropReady = false;
+            request.backdropReadyFrame = -1;
+            request.backdropPendingFrame = -1;
+        }
+
+        static void RetireSourceTexture(RequestState request)
+        {
+            if (request == null)
+                return;
+
+            RetireTexture(ref request.source, ref request.retiredSource);
+            request.sourceReady = false;
+            request.sourceReadyFrame = -1;
+            request.sourcePendingFrame = -1;
+        }
+
+        internal static void RetireTexture(ref RenderTexture current, ref RenderTexture retired)
+        {
+            if (current == null)
+                return;
+
+            if (retired == null)
+            {
+                retired = current;
+                current = null;
+                return;
+            }
+
+            // A second resize before the first replacement is applied must keep
+            // the original, still-bound allocation. The intermediate current
+            // allocation was never exposed to a material and can be discarded.
+            ReleaseTexture(ref current);
+        }
+
+        static void ReleaseRetiredTextures(RequestState request)
+        {
+            if (request == null)
+                return;
+
+            ReleaseTexture(ref request.retiredBackdrop);
+            ReleaseTexture(ref request.retiredSource);
+        }
+
+        static void ReleaseRetiredTextures(SharedBackdropState shared)
+        {
+            if (shared == null)
+                return;
+
+            ReleaseTexture(ref shared.retiredTexture);
+            ReleaseTexture(ref shared.retiredSharpTexture);
         }
 
         public static void ResetEditorPreviewState()

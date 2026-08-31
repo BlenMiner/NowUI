@@ -92,6 +92,37 @@ namespace NowUI
             _worldGlassPass = null;
         }
 
+#if NOWUI_URP_RENDER_GRAPH_ONLY
+        static RenderTextureDescriptor GetActiveColorDescriptor(
+            RenderGraph renderGraph,
+            TextureHandle colorTexture,
+            bool isBackBuffer,
+            in RenderTextureDescriptor cameraDescriptor)
+        {
+            var renderTargetInfo = renderGraph.GetRenderTargetInfo(colorTexture);
+            var descriptor = cameraDescriptor;
+
+            descriptor.width = Mathf.Max(1, renderTargetInfo.width);
+            descriptor.height = Mathf.Max(1, renderTargetInfo.height);
+            descriptor.volumeDepth = Mathf.Max(1, renderTargetInfo.volumeDepth);
+            descriptor.graphicsFormat = renderTargetInfo.format;
+            descriptor.msaaSamples = Mathf.Max(1, renderTargetInfo.msaaSamples);
+            descriptor.bindMS = renderTargetInfo.bindMS;
+
+            // URP imports the system/XR backbuffer with RenderTargetInfo only,
+            // so it intentionally has no full TextureDesc to query. Intermediate
+            // active-color textures do, and provide their exact array/XR shape.
+            if (!isBackBuffer)
+            {
+                var textureDescriptor = colorTexture.GetDescriptor(renderGraph);
+                descriptor.dimension = textureDescriptor.dimension;
+                descriptor.vrUsage = textureDescriptor.vrUsage;
+            }
+
+            return descriptor;
+        }
+#endif
+
         sealed class NowUniversalWorldGlassPass : ScriptableRenderPass
         {
 #if NOWUI_URP_RENDER_GRAPH_ONLY
@@ -99,8 +130,7 @@ namespace NowUI
             {
                 public TextureHandle source;
                 public Camera camera;
-                public int width;
-                public int height;
+                public RenderTextureDescriptor descriptor;
             }
 
             public bool needsSceneDepth;
@@ -121,8 +151,11 @@ namespace NowUI
                 {
                     passData.source = source;
                     passData.camera = cameraData.camera;
-                    passData.width = cameraData.cameraTargetDescriptor.width;
-                    passData.height = cameraData.cameraTargetDescriptor.height;
+                    passData.descriptor = GetActiveColorDescriptor(
+                        renderGraph,
+                        source,
+                        resources.isActiveTargetBackBuffer,
+                        cameraData.cameraTargetDescriptor);
                     builder.UseTexture(source, AccessFlags.Read);
 
                     if (needsSceneDepth && resources.cameraDepthTexture.IsValid())
@@ -137,8 +170,7 @@ namespace NowUI
                             commandBuffer,
                             data.camera,
                             data.source,
-                            data.width,
-                            data.height);
+                            data.descriptor);
                     });
                 }
             }
@@ -159,8 +191,7 @@ namespace NowUI
                         commandBuffer,
                         camera,
                         BuiltinRenderTextureType.CameraTarget,
-                        camera.pixelWidth,
-                        camera.pixelHeight))
+                        renderingData.cameraData.cameraTargetDescriptor))
                     {
                         context.ExecuteCommandBuffer(commandBuffer);
                     }
@@ -184,8 +215,7 @@ namespace NowUI
             {
                 public TextureHandle target;
                 public NowDrawList drawList;
-                public int width;
-                public int height;
+                public RenderTextureDescriptor descriptor;
             }
 
             public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
@@ -209,8 +239,11 @@ namespace NowUI
                 {
                     passData.target = target;
                     passData.drawList = _drawList;
-                    passData.width = cameraData.cameraTargetDescriptor.width;
-                    passData.height = cameraData.cameraTargetDescriptor.height;
+                    passData.descriptor = GetActiveColorDescriptor(
+                        renderGraph,
+                        target,
+                        resources.isActiveTargetBackBuffer,
+                        cameraData.cameraTargetDescriptor);
                     builder.UseTexture(target, AccessFlags.ReadWrite);
                     builder.AllowPassCulling(false);
                     builder.AllowGlobalStateModification(true);
@@ -221,8 +254,7 @@ namespace NowUI
                             commandBuffer,
                             data.drawList,
                             data.target,
-                            data.width,
-                            data.height);
+                            data.descriptor);
                     });
                 }
             }
@@ -244,8 +276,7 @@ namespace NowUI
                         commandBuffer,
                         _drawList,
                         BuiltinRenderTextureType.CameraTarget,
-                        camera.pixelWidth,
-                        camera.pixelHeight);
+                        renderingData.cameraData.cameraTargetDescriptor);
                     context.ExecuteCommandBuffer(commandBuffer);
                 }
                 finally

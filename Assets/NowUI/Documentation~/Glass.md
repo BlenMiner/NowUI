@@ -47,9 +47,10 @@ host:
 
 | Host | Glass behavior |
 | --- | --- |
-| `NowRenderer.Render(RenderTexture, ...)` | True blur of earlier content in the target. |
-| `NowRenderer.PopulateCommandBuffer(...)` | True blur of earlier content in the target. |
-| `NowRenderer.Draw(commandBuffer, drawList, target, width, height)` | True blur of earlier content in the target. |
+| `NowRenderer.Render(RenderTexture, ...)` | True blur of earlier content in a flat 2D `RenderTexture`. |
+| `NowRenderer.PopulateCommandBuffer(...)` | True blur of earlier content in a flat 2D target. |
+| `NowRenderer.Draw(commandBuffer, drawList, target, descriptor)` | True blur of earlier content while preserving XR texture-array layout and eye slices. Use this overload for active single-pass-instanced or multiview targets. Arbitrary non-XR array-layer replication is not provided. |
+| `NowRenderer.Draw(commandBuffer, drawList, target, width, height)` | True blur of earlier content in a flat 2D target. |
 | `NowRenderer.Draw(commandBuffer, drawList)` | Replay-backed blur of earlier NowUI batches into a temporary camera-target backdrop. |
 | IMGUI (`NowGUI`/`NowGUILayout`) | True blur inside the cached IMGUI `RenderTexture`. |
 | UI Toolkit (`NowVisualElement`) | True blur inside the cached UI Toolkit `RenderTexture`. |
@@ -57,6 +58,47 @@ host:
 | URP/HDRP pipeline overlays | True blur at the renderer feature/custom pass point. |
 | `NowWorldGraphic` | Camera/world capture according to `glassBackdropMode`, with automatic foreground protection for blurred backdrops; explicit tint-only host mode available. |
 | Built-in `Now.StartUI()` screen path | Replay-backed blur of earlier NowUI batches using temporary render textures. |
+
+## XR Stereo Support
+
+`NowWorldGraphic` camera/world glass and the URP/HDRP pipeline integrations
+preserve the XR camera target shape through capture, blur, and material sampling.
+Single-pass instanced and multiview targets keep and independently process each
+texture-array eye slice; MultiPass independently processes each flat per-eye
+target. When the XR camera color target is multisampled, NowUI explicitly
+resolves `Texture2DMS` or `Texture2DMSArray` samples before the ordinary blur
+passes, avoiding multisampled-texture/sampler mismatches. The resolve shader
+queries the bound resource for its actual dimensions and sample count instead
+of dividing by the XR provider descriptor's sample count.
+
+In the Built-in pipeline, the XR provider target and the live logical
+`CameraTarget` are not always the same attachment. MultiPass can draw through a
+flat bound-MS intermediate before resolving into a single-sampled provider
+target, so NowUI combines the provider's dimensions with the camera's MSAA
+state and rebuilds the capture commands for each eye. Single-pass-instanced
+targets retain the provider's texture-array sampling layout; they only use the
+MS-array resolve when that descriptor explicitly exposes a bound-MS array.
+
+Built-in XR may also expose `_CameraDepthTexture` as an unresolved MSAA surface
+without identifying a safe sampler view. In that case world-panel glass uses
+the camera depth buffer's fixed-function `ZTest` for foreground protection and
+compiles the depth texture sampler out of the material variant. This keeps
+foreground geometry sharp without binding an incompatible depth sampler. The
+fallback applies to the panel glass fill; overlay glass remains always visible.
+
+Custom command-buffer hosts must call the `NowRenderer.Draw` overload that takes
+a `RenderTextureDescriptor` so NowUI knows the target dimension, volume depth,
+VR usage, and source MSAA sample count. The legacy width/height overload
+intentionally describes a flat 2D target.
+
+Replay-backed UGUI, IMGUI, UI Toolkit, and built-in `Now.StartUI()` glass remain
+2D host-local effects. They continue to work for flat host textures, but do not
+turn a shared replay texture into an independently captured per-eye camera
+backdrop. Use world glass or a descriptor-aware pipeline integration when the
+backdrop must come from the XR camera.
+
+`NowGraphic.uguiBackdropSourceTexture` must be a flat 2D texture; the replay
+path does not consume an XR camera `Texture2DArray`.
 
 ## Quality And Diagnostics
 

@@ -69,11 +69,16 @@ namespace NowUI
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
         static readonly int _nowMaterialGlassModeId = Shader.PropertyToID("_NowMaterialGlassMode");
         static readonly int _nowBackdropTexId = Shader.PropertyToID("_NowMaterialBackdropTex");
+        static readonly int _nowBackdropArrayTexId = Shader.PropertyToID("_NowMaterialBackdropArrayTex");
         static readonly int _nowBackdropUvTransformId = Shader.PropertyToID("_NowMaterialBackdropUVTransform");
         static readonly int _nowGlassSharpBackdropTexId = Shader.PropertyToID("_NowMaterialGlassSharpBackdropTex");
+        static readonly int _nowGlassSharpBackdropArrayTexId = Shader.PropertyToID("_NowMaterialGlassSharpBackdropArrayTex");
         static readonly int _nowGlassUseBackdropId = Shader.PropertyToID("_NowMaterialGlassUseBackdrop");
+        static readonly int _nowGlassUseStereoBackdropId = Shader.PropertyToID("_NowMaterialGlassUseStereoBackdrop");
+        static readonly int _nowGlassBackdropSliceCountId = Shader.PropertyToID("_NowMaterialGlassBackdropSliceCount");
         static readonly int _nowGlassUseSceneDepthId = Shader.PropertyToID("_NowMaterialGlassUseSceneDepth");
         static readonly int _nowGlassDepthEpsilonId = Shader.PropertyToID("_NowMaterialGlassDepthEpsilon");
+        const string GlassSceneDepthKeyword = "NOWUI_GLASS_SCENE_DEPTH";
         const float InputOcclusionEpsilon = 0.0001f;
         const float GlassDepthEpsilon = 0.02f;
         const float GlassSceneDepthBlurThreshold = 0.25f;
@@ -133,6 +138,7 @@ namespace NowUI
         [NonSerialized] Texture _appliedGlassTexture;
         [NonSerialized] Texture _appliedGlassSharpTexture;
         [NonSerialized] bool _appliedGlassUseBackdrop;
+        [NonSerialized] bool _appliedGlassUseStereoBackdrop;
         [NonSerialized] bool _appliedGlassUseSceneDepth;
         [NonSerialized] NowResolvedId _scopeId;
 #if UNITY_EDITOR
@@ -1242,7 +1248,7 @@ namespace NowUI
             }
 
             _glassBackdropMode = NowWorldGlassBackdrop.NormalizeMode(_glassBackdropMode);
-            bool usesSceneDepth = UsesGlassSceneDepth();
+            bool usesSceneDepth = UsesGlassSceneDepth(cmr);
 
             if (usesSceneDepth)
                 NowWorldGlassBackdrop.RequestSceneDepth(cmr);
@@ -1363,14 +1369,17 @@ namespace NowUI
             _glassBackdropTexture = texture;
             _glassSharpBackdropTexture = sharpTexture ? sharpTexture : texture;
             bool useBackdrop = texture && glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
-            bool useSceneDepth = UsesGlassSceneDepth();
+            bool useStereoBackdrop = useBackdrop && IsStereoBackdrop(texture);
+            bool useSceneDepth = UsesGlassSceneDepth(ResolveCamera());
             var fallback = texture ? texture : Texture2D.blackTexture;
             var sharpFallback = _glassSharpBackdropTexture ? _glassSharpBackdropTexture : fallback;
+            int backdropSliceCount = useStereoBackdrop ? GetStereoBackdropSliceCount(fallback) : 1;
 
             if (_appliedGlassStateValid &&
                 ReferenceEquals(_appliedGlassTexture, fallback) &&
                 ReferenceEquals(_appliedGlassSharpTexture, sharpFallback) &&
                 _appliedGlassUseBackdrop == useBackdrop &&
+                _appliedGlassUseStereoBackdrop == useStereoBackdrop &&
                 _appliedGlassUseSceneDepth == useSceneDepth)
             {
                 return;
@@ -1380,6 +1389,7 @@ namespace NowUI
             _appliedGlassTexture = fallback;
             _appliedGlassSharpTexture = sharpFallback;
             _appliedGlassUseBackdrop = useBackdrop;
+            _appliedGlassUseStereoBackdrop = useStereoBackdrop;
             _appliedGlassUseSceneDepth = useSceneDepth;
 
             if (_meshRenderer)
@@ -1403,11 +1413,16 @@ namespace NowUI
                     continue;
 
                 material.SetFloat(_nowMaterialGlassModeId, 1f);
-                material.SetTexture(_nowBackdropTexId, fallback);
-                material.SetTexture(_nowGlassSharpBackdropTexId, sharpFallback);
+                material.SetTexture(_nowBackdropTexId, useStereoBackdrop ? Texture2D.blackTexture : fallback);
+                material.SetTexture(_nowGlassSharpBackdropTexId, useStereoBackdrop ? Texture2D.blackTexture : sharpFallback);
+                material.SetTexture(_nowBackdropArrayTexId, useStereoBackdrop ? fallback : null);
+                material.SetTexture(_nowGlassSharpBackdropArrayTexId, useStereoBackdrop ? sharpFallback : null);
                 material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
                 material.SetFloat(_nowGlassUseBackdropId, batchUsesBackdrop ? 1f : 0f);
-                ApplyGlassDepthProperties(material);
+                material.SetFloat(_nowGlassUseStereoBackdropId, useStereoBackdrop ? 1f : 0f);
+                material.SetFloat(_nowGlassBackdropSliceCountId, backdropSliceCount);
+                ApplyDepthMode(material, batches[i].overlay);
+                ApplyGlassDepthProperties(material, batches[i].overlay);
             }
 
             ApplyShaderMaskPropertyBlocks();
@@ -1481,29 +1496,68 @@ namespace NowUI
 
             bool useBackdrop = _glassBackdropTexture &&
                 glassBackdropMode != NowWorldGlassBackdropMode.TintOnly;
+            bool useStereoBackdrop = useBackdrop && IsStereoBackdrop(_glassBackdropTexture);
+            var backdrop = _glassBackdropTexture ? _glassBackdropTexture : Texture2D.blackTexture;
+            var sharpBackdrop = _glassSharpBackdropTexture ? _glassSharpBackdropTexture : backdrop;
+            int backdropSliceCount = useStereoBackdrop ? GetStereoBackdropSliceCount(backdrop) : 1;
 
             material.SetFloat(_nowMaterialGlassModeId, 1f);
-            material.SetTexture(_nowBackdropTexId, _glassBackdropTexture ? _glassBackdropTexture : Texture2D.blackTexture);
-            material.SetTexture(
-                _nowGlassSharpBackdropTexId,
-                _glassSharpBackdropTexture ? _glassSharpBackdropTexture :
-                    _glassBackdropTexture ? _glassBackdropTexture : Texture2D.blackTexture);
+            material.SetTexture(_nowBackdropTexId, useStereoBackdrop ? Texture2D.blackTexture : backdrop);
+            material.SetTexture(_nowGlassSharpBackdropTexId, useStereoBackdrop ? Texture2D.blackTexture : sharpBackdrop);
+            material.SetTexture(_nowBackdropArrayTexId, useStereoBackdrop ? backdrop : null);
+            material.SetTexture(_nowGlassSharpBackdropArrayTexId, useStereoBackdrop ? sharpBackdrop : null);
             material.SetVector(_nowBackdropUvTransformId, new Vector4(1f, 1f, 0f, 0f));
             material.SetFloat(_nowGlassUseBackdropId, useBackdrop ? 1f : 0f);
-            ApplyGlassDepthProperties(material);
+            material.SetFloat(_nowGlassUseStereoBackdropId, useStereoBackdrop ? 1f : 0f);
+            material.SetFloat(_nowGlassBackdropSliceCountId, backdropSliceCount);
+            ApplyGlassDepthProperties(material, batch.overlay);
         }
 
-        void ApplyGlassDepthProperties(Material material)
+        static bool IsStereoBackdrop(Texture texture)
+        {
+            return texture is RenderTexture renderTexture &&
+                renderTexture.dimension == TextureDimension.Tex2DArray;
+        }
+
+        static int GetStereoBackdropSliceCount(Texture texture)
+        {
+            return texture is RenderTexture renderTexture &&
+                renderTexture.dimension == TextureDimension.Tex2DArray
+                    ? Mathf.Max(1, renderTexture.volumeDepth)
+                    : 1;
+        }
+
+        void ApplyGlassDepthProperties(Material material, bool overlay)
         {
             if (!material)
                 return;
 
-            bool useSceneDepth = UsesGlassSceneDepth();
+            var camera = ResolveCamera();
+            bool wantsSceneDepth = WantsGlassSceneDepth();
+            bool useSceneDepth = wantsSceneDepth &&
+                NowWorldGlassBackdrop.SupportsSceneDepthSampling(camera);
             material.SetFloat(_nowGlassUseSceneDepthId, useSceneDepth ? 1f : 0f);
             material.SetFloat(_nowGlassDepthEpsilonId, GlassDepthEpsilon);
+
+            if (useSceneDepth)
+                material.EnableKeyword(GlassSceneDepthKeyword);
+            else
+                material.DisableKeyword(GlassSceneDepthKeyword);
+
+            // The Built-in XR MSAA depth target has no reliable sampler view.
+            // Reject the glass fill against scene depth instead, preserving the
+            // already-rendered sharp foreground without binding _CameraDepthTexture.
+            if (wantsSceneDepth && !useSceneDepth && !overlay && material.HasProperty(_zTestId))
+                material.SetFloat(_zTestId, (float)CompareFunction.LessEqual);
         }
 
-        bool UsesGlassSceneDepth()
+        bool UsesGlassSceneDepth(Camera camera)
+        {
+            return WantsGlassSceneDepth() &&
+                NowWorldGlassBackdrop.SupportsSceneDepthSampling(camera);
+        }
+
+        bool WantsGlassSceneDepth()
         {
             return NowWorldGlassBackdrop.NormalizeMode(_glassBackdropMode) != NowWorldGlassBackdropMode.TintOnly &&
                 _maxGlassBlurRadius >= GlassSceneDepthBlurThreshold;

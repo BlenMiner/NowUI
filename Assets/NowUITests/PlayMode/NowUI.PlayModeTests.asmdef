@@ -5,7 +5,9 @@
         "UnityEngine.TestRunner",
         "NowUI.Runtime",
         "NowUI.Extensions.Sdf",
-        "UnityEngine.UI"
+        "UnityEngine.UI",
+        "Unity.XR.Management",
+        "Unity.XR.MockHMD"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

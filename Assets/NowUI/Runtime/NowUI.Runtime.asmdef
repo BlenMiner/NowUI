@@ -50,6 +50,11 @@
       "name": "com.unity.inputsystem",
       "expression": "0.0.0",
       "define": "NOWUI_INPUT_SYSTEM"
+    },
+    {
+      "name": "com.unity.modules.xr",
+      "expression": "0.0.0",
+      "define": "NOWUI_XR"
     }
   ],
   "noEngineReferences": false

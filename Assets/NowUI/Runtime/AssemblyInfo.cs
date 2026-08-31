@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Tests")]
 [assembly: InternalsVisibleTo("NowUI.Editor")]
+[assembly: InternalsVisibleTo("NowUI.HDRP")]
 [assembly: InternalsVisibleTo("NowUI.PlayModeTests")]
 [assembly: InternalsVisibleTo("NowUI.Editor.Harness")]
 [assembly: InternalsVisibleTo("NowUI.Extensions.Sdf")]
