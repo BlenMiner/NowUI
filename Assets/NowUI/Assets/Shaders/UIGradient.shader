@@ -32,6 +32,7 @@ Shader "NowUI/UI Gradient"
             #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
@@ -48,6 +49,7 @@ Shader "NowUI/UI Gradient"
                 float4 extras : TEXCOORD5;
                 float4 mask : TEXCOORD6;
                 float4 rawUV : TEXCOORD7;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -61,6 +63,7 @@ Shader "NowUI/UI Gradient"
                 float4 extras : TEXCOORD5;
                 float4 mask : TEXCOORD6;
                 float2 rawUV : TEXCOORD7;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             sampler2D _MainTex;
@@ -157,6 +160,8 @@ Shader "NowUI/UI Gradient"
             v2f vert(appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.packedTint = v.packedTint;
                 o.rect = v.rect;
@@ -171,6 +176,7 @@ Shader "NowUI/UI Gradient"
 
             fixed4 frag(v2f i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float2 pos = i.rect.xy + i.rawUV * i.rect.zw;
                 float2 uiPosition = float2(pos.x, -pos.y);
 
