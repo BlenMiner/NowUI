@@ -1,3 +1,10 @@
+## [1.10.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.5...nowui-v1.10.6) (2026-08-31)
+
+
+### Bug Fixes
+
+* VR blurry background ([3d8cf0f](https://github.com/BlenMiner/NowUI/commit/3d8cf0f4c9ac6774439a58e17ed15f35b88cbc43))
+
 ## [1.10.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.4...nowui-v1.10.5) (2026-08-31)
 
 
