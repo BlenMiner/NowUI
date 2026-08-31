@@ -29,6 +29,7 @@ Shader "NowUI/UI Ripple"
             #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
@@ -44,6 +45,7 @@ Shader "NowUI/UI Ripple"
                 float4 extras : TEXCOORD5;
                 float4 mask : TEXCOORD6;
                 float4 rawUV : TEXCOORD7;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -55,6 +57,7 @@ Shader "NowUI/UI Ripple"
                 float4 extras : TEXCOORD3;
                 float4 mask : TEXCOORD4;
                 float4 rawUV : TEXCOORD5;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             float sdRoundedBox(float2 p, float2 b, float4 r)
@@ -68,6 +71,8 @@ Shader "NowUI/UI Ripple"
             v2f vert(appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.rect = v.rect;
                 o.radius = v.radius;
@@ -80,6 +85,7 @@ Shader "NowUI/UI Ripple"
 
             fixed4 frag(v2f i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float4 rect = i.rect;
                 float4 mask = i.mask;
                 float2 rawUV = i.rawUV.xy;

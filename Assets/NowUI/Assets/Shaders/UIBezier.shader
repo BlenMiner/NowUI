@@ -30,6 +30,7 @@ Shader "NowUI/UI Bezier"
             #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
             #include "NowUIColorSpace.cginc"
@@ -46,6 +47,7 @@ Shader "NowUI/UI Bezier"
                 float4 params  : TEXCOORD5; // halfWidth, aaWidth, t, 0
                 float4 mask    : TEXCOORD6;
                 float4 pixel   : TEXCOORD7; // UI-space position (xy)
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -57,11 +59,14 @@ Shader "NowUI/UI Bezier"
                 float4 params : TEXCOORD5;
                 float4 mask   : TEXCOORD6;
                 float2 pixel  : TEXCOORD7;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             v2f vert (appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.cp01 = v.cp01;
                 o.cp23 = v.cp23;
@@ -74,6 +79,7 @@ Shader "NowUI/UI Bezier"
 
             fixed4 frag (v2f i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float2 p0 = i.cp01.xy;
                 float2 p1 = i.cp01.zw;
                 float2 p2 = i.cp23.xy;

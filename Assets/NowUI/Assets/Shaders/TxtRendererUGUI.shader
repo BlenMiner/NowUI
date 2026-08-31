@@ -52,6 +52,7 @@ Shader "NowUI/Text Renderer UGUI"
             #pragma target 3.0
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
             #pragma multi_compile_local _ UNITY_UI_ALPHACLIP
 
@@ -70,6 +71,7 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 extras : TEXCOORD3;
                 float4 outlineColor : TANGENT;
                 float3 gradientPayload : NORMAL;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -83,6 +85,7 @@ Shader "NowUI/Text Renderer UGUI"
                 float4 extras : TEXCOORD3;
                 float4 outlineColor : TEXCOORD4;
                 float3 gradientPayload : TEXCOORD6;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             sampler2D _MainTex;
@@ -95,6 +98,8 @@ Shader "NowUI/Text Renderer UGUI"
             v2f vert(appdata v)
             {
                 v2f o;
+                UNITY_SETUP_INSTANCE_ID(v);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.vertex = UnityObjectToClipPos(v.vertex);
 
                 float2 pixelSize = o.vertex.w;
@@ -121,6 +126,7 @@ Shader "NowUI/Text Renderer UGUI"
 
             float4 frag(v2f i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 float4 rect = i.rect;
                 float4 mask = i.mask;
                 float2 rawUV = i.uv.zw;
