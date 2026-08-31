@@ -1,3 +1,10 @@
+## [1.10.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.4...nowui-v1.10.5) (2026-08-31)
+
+
+### Bug Fixes
+
+* render in both eyes under XR single pass instanced ([5b0cfe3](https://github.com/BlenMiner/NowUI/commit/5b0cfe3cd9a3e67a275f053f0a1677bf4b8ffd67))
+
 ## [1.10.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.3...nowui-v1.10.4) (2026-08-30)
 
 
