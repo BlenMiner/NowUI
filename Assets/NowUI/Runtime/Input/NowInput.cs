@@ -509,6 +509,7 @@ namespace NowUI
             bool hasSnapshot = provider != null && provider.TryGetSnapshot(surface, out snapshot);
 
             _currentProvider = provider;
+            NowControls.InvalidateOwnerRootCache();
             _surface = surface;
             _snapshot = hasSnapshot ? snapshot : default;
             _hasContext = true;

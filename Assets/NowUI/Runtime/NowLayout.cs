@@ -462,138 +462,161 @@ namespace NowUI
 
         public float height => rect.height;
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetText(string value)
         {
             _value = value;
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetFont(NowFontAsset font)
         {
             _style = _style.SetFont(font);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetFontSize(float fontSize)
         {
             _style = _style.SetFontSize(fontSize);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetFontStyle(NowFontStyle fontStyle)
         {
             _style = _style.SetFontStyle(fontStyle);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetBold(bool value = true)
         {
             _style = _style.SetBold(value);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetItalic(bool value = true)
         {
             _style = _style.SetItalic(value);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetColor(Color color)
         {
             _style = _style.SetColor(color);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetColor(Vector4 color)
         {
             _style = _style.SetColor(color);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradient(Color from, Color to)
         {
             _style = _style.SetGradient(from, to);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradient(Vector4 from, Vector4 to)
         {
             _style = _style.SetGradient(from, to);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradient(UnityEngine.Gradient gradient, int revision = 0)
         {
             _style = _style.SetGradient(gradient, revision);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientRamp(UnityEngine.Gradient gradient, int revision = 0)
         {
             _style = _style.SetGradientRamp(gradient, revision);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom)
         {
             _style = _style.SetGradientLinear(direction);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientLinear(float angleDegrees)
         {
             _style = _style.SetGradientLinear(angleDegrees);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientLinear(Vector2 direction)
         {
             _style = _style.SetGradientLinear(direction);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse)
         {
             _style = _style.SetGradientRadial(shape);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientRadial(Vector2 center, Vector2 radius)
         {
             _style = _style.SetGradientRadial(center, radius);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientRadial(Vector2 center, float radius)
         {
             _style = _style.SetGradientRadial(center, radius);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientConic()
         {
             _style = _style.SetGradientConic();
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientConic(Vector2 center, float startAngle = 0f)
         {
             _style = _style.SetGradientConic(center, startAngle);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientSpread(NowGradientSpread spread)
         {
             _style = _style.SetGradientSpread(spread);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientRepetitions(float repetitions)
         {
             _style = _style.SetGradientRepetitions(repetitions);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetGradientBounds(NowRect bounds)
         {
             _style = _style.SetGradientBounds(bounds);
@@ -606,18 +629,21 @@ namespace NowUI
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetAnimation(NowTextAnimation animation)
         {
             _style = _style.SetAnimation(animation);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetTime(float seconds)
         {
             _style = _style.SetTime(seconds);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetNormalizedTime(float progress)
         {
             _style = _style.SetNormalizedTime(progress);
@@ -634,6 +660,7 @@ namespace NowUI
         /// Outline thickness relative to the font size (em units): 0.05 ≈ a
         /// 5%-of-em stroke at any size. Negative values inset the outline.
         /// </summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetOutline(float outline)
         {
             _style = _style.SetOutline(outline);
@@ -641,12 +668,14 @@ namespace NowUI
         }
 
         /// <summary>Sets the outline in local UI pixels using the current font size.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetOutlinePixels(float pixels)
         {
             _style = _style.SetOutlinePixels(pixels);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetOutlineColor(Vector4 color)
         {
             _style = _style.SetOutlineColor(color);
@@ -654,66 +683,77 @@ namespace NowUI
         }
 
         /// <summary>Replaces all layout options at once.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetOptions(NowLayoutOptions options)
         {
             _options = options;
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetWidth(float width)
         {
             _options = _options.SetWidth(width);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetHeight(float height)
         {
             _options = _options.SetHeight(height);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetLayoutSize(float width, float height)
         {
             _options = _options.SetSize(width, height);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetMinWidth(float minWidth)
         {
             _options = _options.SetMinWidth(minWidth);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetMaxWidth(float maxWidth)
         {
             _options = _options.SetMaxWidth(maxWidth);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetMinHeight(float minHeight)
         {
             _options = _options.SetMinHeight(minHeight);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetMaxHeight(float maxHeight)
         {
             _options = _options.SetMaxHeight(maxHeight);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetStretchWidth(float weight = 1f)
         {
             _options = _options.SetStretchWidth(weight);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetStretchHeight(float weight = 1f)
         {
             _options = _options.SetStretchHeight(weight);
             return this;
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         public NowLabel SetAlign(NowLayoutAlign align)
         {
             _options = _options.SetAlign(align);

@@ -2894,6 +2894,18 @@ namespace NowUI.NodeGraph
 
         public virtual void DrawNode(in NowNodeGraphNodeContext context)
         {
+            DrawNodeSurface(context);
+            DrawNodeTitle(context);
+        }
+
+        /// <summary>
+        /// Draws the node's shadow, body, title fill, separators, outline and the
+        /// compact toggle glyph: every solid-geometry draw of the node. The canvas
+        /// calls this before any text so consecutive nodes share one mesh batch
+        /// instead of splitting on every shape/text switch.
+        /// </summary>
+        public virtual void DrawNodeSurface(in NowNodeGraphNodeContext context)
+        {
             var style = context.style;
 
             if (context.reroute)
@@ -2966,6 +2978,19 @@ namespace NowUI.NodeGraph
                 .SetOutlineColor(borderColor)
                 .Draw();
 
+            Color titleGlyph = TitleTextColor(titleColor, style);
+            titleGlyph.a *= 0.8f;
+            DrawCompactToggle(context.compactToggleRect, context.compact, titleGlyph, style);
+        }
+
+        /// <summary>Draws the node title text; the text half of <see cref="DrawNode"/>.</summary>
+        public virtual void DrawNodeTitle(in NowNodeGraphNodeContext context)
+        {
+            if (context.reroute)
+                return;
+
+            var style = context.style;
+            Color titleColor = ResolveNodeTitleColor(context);
             Color titleText = TitleTextColor(titleColor, style);
 
             DrawText(
@@ -2974,10 +2999,6 @@ namespace NowUI.NodeGraph
                 13f,
                 titleText,
                 NowTextStyle.Button);
-
-            Color titleGlyph = titleText;
-            titleGlyph.a *= 0.8f;
-            DrawCompactToggle(context.compactToggleRect, context.compact, titleGlyph, style);
         }
 
         /// <summary>
@@ -3047,6 +3068,13 @@ namespace NowUI.NodeGraph
 
         public virtual void DrawPort(in NowNodeGraphPortContext context)
         {
+            DrawPortShape(context);
+            DrawPortLabel(context);
+        }
+
+        /// <summary>Draws the port circle; the geometry half of <see cref="DrawPort"/>.</summary>
+        public virtual void DrawPortShape(in NowNodeGraphPortContext context)
+        {
             var style = context.style;
             bool filled = context.connected || context.compatibleDropTarget;
             var portRect = new NowRect(
@@ -3073,7 +3101,12 @@ namespace NowUI.NodeGraph
                     .SetOutlineColor(context.color)
                     .Draw();
             }
+        }
 
+        /// <summary>Draws the port label text; the text half of <see cref="DrawPort"/>.</summary>
+        public virtual void DrawPortLabel(in NowNodeGraphPortContext context)
+        {
+            var style = context.style;
             string label = context.port.label ?? string.Empty;
 
             if (string.IsNullOrEmpty(label))
@@ -6172,7 +6205,7 @@ namespace NowUI.NodeGraph
             var previewRect = hasPreview ? PreviewGraphRect(node, rect, style) : default;
             var compactToggleRect = reroute ? default : CompactToggleGraphRect(rect, style);
 
-            renderer.DrawNode(new NowNodeGraphNodeContext(
+            var nodeContext = new NowNodeGraphNodeContext(
                 _graph,
                 node,
                 nodeIndex,
@@ -6187,7 +6220,34 @@ namespace NowUI.NodeGraph
                 hovered,
                 node.compact,
                 compactToggleRect,
-                reroute));
+                reroute);
+
+            // The stock renderer draws in two phases so a node's solid geometry
+            // (surface, toggle glyph, port circles) lands in one mesh batch and
+            // its text (title, port labels) in the next. Interleaving them per
+            // port used to open a fresh batch roughly ten times per node. Custom
+            // renderers keep the documented single-call order.
+            bool splitDraw = renderer.GetType() == typeof(NowNodeGraphDefaultRenderer);
+            NowResolvedId nodeControlId = NodeControlId(canvasId, nodeIndex, node);
+            List<NowNodeGraphPortContext> portContexts = null;
+
+            if (splitDraw)
+            {
+                var stockRenderer = (NowNodeGraphDefaultRenderer)renderer;
+                stockRenderer.DrawNodeSurface(nodeContext);
+                portContexts = RentPortContexts();
+                CollectPortContexts(portContexts, nodeControlId, nodeIndex, node, NowNodePortDirection.Input, state, style);
+                CollectPortContexts(portContexts, nodeControlId, nodeIndex, node, NowNodePortDirection.Output, state, style);
+
+                for (int i = 0; i < portContexts.Count; ++i)
+                    stockRenderer.DrawPortShape(portContexts[i]);
+
+                stockRenderer.DrawNodeTitle(nodeContext);
+            }
+            else
+            {
+                renderer.DrawNode(nodeContext);
+            }
 
             if (!reroute && !node.compact)
             {
@@ -6197,8 +6257,112 @@ namespace NowUI.NodeGraph
                     DrawNodePreviewContent(node, rect, previewRect, ref state, style, schema, history, selected, ref result);
             }
 
-            DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Input, state, style, renderer);
-            DrawPortList(canvasId, nodeIndex, node, NowNodePortDirection.Output, state, style, renderer);
+            if (splitDraw)
+            {
+                var stockRenderer = (NowNodeGraphDefaultRenderer)renderer;
+
+                for (int i = 0; i < portContexts.Count; ++i)
+                    stockRenderer.DrawPortLabel(portContexts[i]);
+
+                ReturnPortContexts(portContexts);
+            }
+            else
+            {
+                DrawPortList(nodeControlId, nodeIndex, node, NowNodePortDirection.Input, state, style, renderer);
+                DrawPortList(nodeControlId, nodeIndex, node, NowNodePortDirection.Output, state, style, renderer);
+            }
+        }
+
+        // Pooled so node content that draws a nested canvas cannot clobber the
+        // outer node's pending port contexts.
+        static readonly Stack<List<NowNodeGraphPortContext>> _portContextPool = new Stack<List<NowNodeGraphPortContext>>();
+
+        static List<NowNodeGraphPortContext> RentPortContexts()
+        {
+            return _portContextPool.Count > 0 ? _portContextPool.Pop() : new List<NowNodeGraphPortContext>(8);
+        }
+
+        static void ReturnPortContexts(List<NowNodeGraphPortContext> list)
+        {
+            list.Clear();
+            _portContextPool.Push(list);
+        }
+
+        void CollectPortContexts(
+            List<NowNodeGraphPortContext> portContexts,
+            NowResolvedId nodeControlId,
+            int nodeIndex,
+            NowNode node,
+            NowNodePortDirection direction,
+            CanvasState state,
+            NowNodeGraphStyle style)
+        {
+            var ports = direction == NowNodePortDirection.Input ? node.inputs : node.outputs;
+
+            if (ports.Count == 0)
+                return;
+
+            var nodeSize = ResolveNodeSize(node, style);
+            var nodeRect = new NowRect(node.position, nodeSize);
+            NowResolvedId portsId = nodeControlId.Child(
+                direction == NowNodePortDirection.Input ? "input-ports" : "output-ports");
+
+            for (int i = 0; i < ports.Count; ++i)
+            {
+                var port = ports[i];
+
+                if (port == null)
+                    continue;
+
+                portContexts.Add(BuildPortContext(portsId, nodeIndex, node, nodeRect, direction, i, port, state, style));
+            }
+        }
+
+        NowNodeGraphPortContext BuildPortContext(
+            NowResolvedId portsId,
+            int nodeIndex,
+            NowNode node,
+            NowRect nodeRect,
+            NowNodePortDirection direction,
+            int portIndex,
+            NowNodePort port,
+            CanvasState state,
+            NowNodeGraphStyle style)
+        {
+            Vector2 center = PortGraphPosition(node, direction, portIndex, style);
+            NowResolvedId portId = PortControlId(portsId, portIndex, port);
+            float hover = NowControlState.Transition(portId, NowInput.IsHovered(new NowRect(center.x - 9f, center.y - 9f, 18f, 18f)));
+            float radius = Mathf.Max(3.5f, style.portRadius + hover * 1.5f);
+            Color color = PortColor(port, direction, style);
+            bool compatible = IsCompatibleDropTarget(nodeIndex, direction, portIndex, state);
+            bool connected = HasLinksForPort(node.id, port.id);
+
+            if (compatible)
+            {
+                color = style.compatiblePort;
+                radius += 1f;
+            }
+            else if (state.linkActive != 0 && !IsLinkDragSource(nodeIndex, direction, portIndex, state))
+            {
+                color.a *= 0.35f;
+            }
+
+            return new NowNodeGraphPortContext(
+                _graph,
+                node,
+                port,
+                nodeIndex,
+                portIndex,
+                direction,
+                nodeRect,
+                center,
+                radius,
+                hover,
+                compatible,
+                color,
+                state.zoom,
+                style,
+                connected);
         }
 
         void DrawNodeContent(
@@ -6297,7 +6461,7 @@ namespace NowUI.NodeGraph
         }
 
         void DrawPortList(
-            NowResolvedId canvasId,
+            NowResolvedId nodeControlId,
             int nodeIndex,
             NowNode node,
             NowNodePortDirection direction,
@@ -6306,8 +6470,14 @@ namespace NowUI.NodeGraph
             INowNodeGraphRenderer renderer)
         {
             var ports = direction == NowNodePortDirection.Input ? node.inputs : node.outputs;
+
+            if (ports.Count == 0)
+                return;
+
             var nodeSize = ResolveNodeSize(node, style);
             var nodeRect = new NowRect(node.position, nodeSize);
+            NowResolvedId portsId = nodeControlId.Child(
+                direction == NowNodePortDirection.Input ? "input-ports" : "output-ports");
 
             for (int i = 0; i < ports.Count; ++i)
             {
@@ -6316,40 +6486,7 @@ namespace NowUI.NodeGraph
                 if (port == null)
                     continue;
 
-                Vector2 center = PortGraphPosition(node, direction, i, style);
-                NowResolvedId portId = PortControlId(canvasId, nodeIndex, node, direction, i, port);
-                float hover = NowControlState.Transition(portId, NowInput.IsHovered(new NowRect(center.x - 9f, center.y - 9f, 18f, 18f)));
-                float radius = Mathf.Max(3.5f, style.portRadius + hover * 1.5f);
-                Color color = PortColor(port, direction, style);
-                bool compatible = IsCompatibleDropTarget(nodeIndex, direction, i, state);
-                bool connected = HasLinksForPort(node.id, port.id);
-
-                if (compatible)
-                {
-                    color = style.compatiblePort;
-                    radius += 1f;
-                }
-                else if (state.linkActive != 0 && !IsLinkDragSource(nodeIndex, direction, i, state))
-                {
-                    color.a *= 0.35f;
-                }
-
-                renderer.DrawPort(new NowNodeGraphPortContext(
-                    _graph,
-                    node,
-                    port,
-                    nodeIndex,
-                    i,
-                    direction,
-                    nodeRect,
-                    center,
-                    radius,
-                    hover,
-                    compatible,
-                    color,
-                    state.zoom,
-                    style,
-                    connected));
+                renderer.DrawPort(BuildPortContext(portsId, nodeIndex, node, nodeRect, direction, i, port, state, style));
             }
         }
 
@@ -6917,6 +7054,11 @@ namespace NowUI.NodeGraph
             NowResolvedId nodeId = NodeControlId(canvasId, nodeIndex, node);
             NowResolvedId ports = nodeId.Child(
                 direction == NowNodePortDirection.Input ? "input-ports" : "output-ports");
+            return PortControlId(ports, portIndex, port);
+        }
+
+        static NowResolvedId PortControlId(NowResolvedId ports, int portIndex, NowNodePort port)
+        {
             return port != null && !string.IsNullOrEmpty(port.id)
                 ? ports.Child("model-id").Child(port.id)
                 : ports.Child("position").Child(portIndex + 1);

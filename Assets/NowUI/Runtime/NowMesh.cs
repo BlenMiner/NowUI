@@ -47,7 +47,7 @@ namespace NowUI.Internal
             Vector4 data,
             NowRect bounds = default,
             bool overlay = false,
-            NowMaskShaderState maskState = default)
+            in NowMaskShaderState maskState = default)
         {
             this.material = material;
             this.canvasMaterial = canvasMaterial;
@@ -288,7 +288,7 @@ namespace NowUI.Internal
             Material canvasMaterial,
             NowMeshKind kind,
             Vector4 batchData,
-            NowMaskShaderState maskState)
+            in NowMaskShaderState maskState)
         {
             material = mat;
             this.canvasMaterial = canvasMaterial;
@@ -324,7 +324,7 @@ namespace NowUI.Internal
             Material canvasMaterial,
             NowMeshKind kind,
             Vector4 batchData,
-            NowMaskShaderState maskState)
+            in NowMaskShaderState maskState)
         {
             ClearVertices();
             this.material = material;

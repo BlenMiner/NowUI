@@ -217,8 +217,23 @@ namespace NowUI.Internal
 
         public readonly bool Equals(NowMaskShaderState other)
         {
+            return Equals(in other);
+        }
+
+        /// <summary>
+        /// Reference-taking equality. The state is over 600 bytes, and the batch
+        /// selection in <c>Now.UseMaterial</c> compares it on every draw call, so
+        /// callers pass it with <c>in</c> instead of copying it onto the stack.
+        /// </summary>
+        public readonly bool Equals(in NowMaskShaderState other)
+        {
             if (_identity != 0 && _identity == other._identity)
                 return true;
+
+            // Two empty states are equal regardless of identity; this is the
+            // common unmasked case and needs no descriptor walk.
+            if (_count <= 0 && _textureCount <= 0)
+                return other._count <= 0 && other._textureCount <= 0;
 
             int safeCount = Mathf.Clamp(_count, 0, Capacity);
             if (safeCount != Mathf.Clamp(other._count, 0, Capacity))
@@ -245,7 +260,7 @@ namespace NowUI.Internal
 
         public override readonly bool Equals(object obj)
         {
-            return obj is NowMaskShaderState other && Equals(other);
+            return obj is NowMaskShaderState other && Equals(in other);
         }
 
         public override readonly int GetHashCode()
@@ -390,7 +405,7 @@ namespace NowUI.Internal
 
             if (_hasPropertyBlockState &&
                 textureValidity == _propertyBlockTextureValidity &&
-                _propertyBlockState.Equals(state))
+                _propertyBlockState.Equals(in state))
             {
                 return _propertyBlock;
             }

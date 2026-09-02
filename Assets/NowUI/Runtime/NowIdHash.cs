@@ -48,9 +48,46 @@ namespace NowUI
         const ulong EdgeSeed = 0x89E182857D9ED689UL;
         const ulong ZeroReplacement = 0xA0761D6478BD642FUL;
 
+        // Domain and segment salts are pure functions of two tiny enums, yet
+        // every derivation used to recompute both through Avalanche. Controls
+        // derive several ids per frame, so the salts are tabulated once.
+        static readonly ulong[] DomainSalts = BuildDomainSalts();
+
+        static readonly ulong[] SegmentSalts = BuildSegmentSalts();
+
         static readonly NowResolvedId LegacyRoot = CreateRoot(
             0x4E6F7755494C6567UL,
             SegmentKind.LegacyInt);
+
+        static ulong[] BuildDomainSalts()
+        {
+            var salts = new ulong[(int)NowIdDomain.Legacy + 1];
+
+            for (int i = 0; i < salts.Length; ++i)
+            {
+                unchecked
+                {
+                    salts[i] = Avalanche(DomainSeed + ((ulong)i * GoldenRatio));
+                }
+            }
+
+            return salts;
+        }
+
+        static ulong[] BuildSegmentSalts()
+        {
+            var salts = new ulong[(int)SegmentKind.DomainBoundary + 1];
+
+            for (int i = 0; i < salts.Length; ++i)
+            {
+                unchecked
+                {
+                    salts[i] = Avalanche(SegmentSeed + ((ulong)i * MixMultiplier2));
+                }
+            }
+
+            return salts;
+        }
 
         internal static NowResolvedId CreateOwnerRoot(ulong ownerNonce)
         {
@@ -261,6 +298,11 @@ namespace NowUI
 
         static ulong DomainSalt(NowIdDomain domain)
         {
+            int index = (int)domain;
+
+            if ((uint)index < (uint)DomainSalts.Length)
+                return DomainSalts[index];
+
             unchecked
             {
                 return Avalanche(DomainSeed + ((ulong)domain * GoldenRatio));
@@ -269,6 +311,11 @@ namespace NowUI
 
         static ulong SegmentSalt(SegmentKind kind)
         {
+            int index = (int)kind;
+
+            if ((uint)index < (uint)SegmentSalts.Length)
+                return SegmentSalts[index];
+
             unchecked
             {
                 return Avalanche(SegmentSeed + ((ulong)kind * MixMultiplier2));

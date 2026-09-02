@@ -708,7 +708,7 @@ namespace NowUI
             Material canvasMaterial,
             NowMeshKind kind,
             Vector4 batchData,
-            NowMaskShaderState maskState = default)
+            in NowMaskShaderState maskState = default)
         {
             _meshes.EnsureCapacity(1);
             int id = _meshes.count;
@@ -922,7 +922,7 @@ namespace NowUI
                 ReferenceEquals(_meshes.array[_lastUsedMeshId].canvasMaterial, canvasMaterial) &&
                 _meshes.array[_lastUsedMeshId].kind == kind &&
                 _meshes.array[_lastUsedMeshId].batchData == batchData &&
-                _meshes.array[_lastUsedMeshId].maskState.Equals(maskState))
+                _meshes.array[_lastUsedMeshId].maskState.Equals(in maskState))
             {
                 return _meshes.array[_lastUsedMeshId];
             }
@@ -2275,7 +2275,14 @@ namespace NowUI
             position.width = position.width + pad.x + pad.z;
             position.height = position.height + pad.y + pad.w;
 
-            if (rectangle.texture != null && rectangle.preserveAspect && !rectangle.sliced &&
+            // A plain rectangle has no texture or material reference at all; the
+            // reference test skips Unity's native lifetime check in that case.
+            bool hasTexture = rectangle.texture is not null && rectangle.texture != null;
+            bool hasCustomMaterial =
+                (rectangle.material is not null && rectangle.material != null) ||
+                (rectangle.canvasMaterial is not null && rectangle.canvasMaterial != null);
+
+            if (hasTexture && rectangle.preserveAspect && !rectangle.sliced &&
                 position.width > 0f && position.height > 0f)
             {
                 float sourceAspect = rectangle.uvRect.z * rectangle.texture.width /
@@ -2399,7 +2406,7 @@ namespace NowUI
 
             NowMesh mesh;
 
-            if (rectangle.material != null || rectangle.canvasMaterial != null)
+            if (hasCustomMaterial)
             {
                 mesh = UseCustomRectangleMaterial(rectangle);
 
@@ -2415,7 +2422,7 @@ namespace NowUI
                     return;
                 }
             }
-            else if (rectangle.texture != null)
+            else if (hasTexture)
             {
                 mesh = UseTextureMaterial(rectangle.texture, rectangle.premultipliedTexture);
 

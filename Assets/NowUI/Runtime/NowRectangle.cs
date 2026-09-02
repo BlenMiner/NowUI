@@ -425,6 +425,7 @@ namespace NowUI
         }
 
         [NowConsumer]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle Draw()
         {
             Now.DrawRect(this);

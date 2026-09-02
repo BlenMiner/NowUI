@@ -2302,6 +2302,7 @@ namespace NowUI
 
         void ClearGlyphCache()
         {
+            _glyphTierFontSize = float.NaN;
             _denseGlyphTable = null;
             _sparseGlyphTable = null;
             _glyphTableOffset = 0;
@@ -4171,14 +4172,78 @@ namespace NowUI
             return GetGlyph(unicode, fontSize, 0f, out glyph);
         }
 
+        [NonSerialized] float _glyphTierFontSize = float.NaN;
+        [NonSerialized] float _glyphTierOutline = float.NaN;
+        [NonSerialized] int _glyphTierDynamicAtlasSize;
+        [NonSerialized] int _glyphTierDynamicPixelRange;
+        [NonSerialized] int _glyphTierDynamicMaxAtlasSize;
+        [NonSerialized] int _glyphTierDynamicMaxAtlasBytes;
+        [NonSerialized] bool _glyphTierHasSource;
+        [NonSerialized] string _glyphTierAtlasType;
+        [NonSerialized] int _glyphTierAtlasDistanceRange;
+        [NonSerialized] int _glyphTierAtlasSize;
+        [NonSerialized] int _glyphTierResolvedAtlasSize;
+        [NonSerialized] int _glyphTierResolvedPixelRange;
+        [NonSerialized] bool _glyphTierBaseSupportsRange;
+
+        /// <summary>
+        /// Resolves the dynamic atlas size, the distance-range tier, and whether
+        /// the baked base atlas already satisfies that tier for one (font size,
+        /// outline) pair. Codepoint draws ask this once per glyph, so the answer
+        /// is memoized against every input it reads; a run of glyphs at one size
+        /// pays the derivation once instead of per character.
+        /// </summary>
+        void ResolveGlyphTier(
+            float fontSize,
+            float outline,
+            out int atlasSize,
+            out int pixelRange,
+            out bool baseSupportsRange)
+        {
+            bool hasSource = HasEmbeddedSource;
+
+            if (fontSize == _glyphTierFontSize &&
+                outline == _glyphTierOutline &&
+                hasSource == _glyphTierHasSource &&
+                dynamicAtlasSize == _glyphTierDynamicAtlasSize &&
+                dynamicPixelRange == _glyphTierDynamicPixelRange &&
+                dynamicMaxAtlasSize == _glyphTierDynamicMaxAtlasSize &&
+                dynamicMaxAtlasBytes == _glyphTierDynamicMaxAtlasBytes &&
+                ReferenceEquals(atlasInfo.atlas.type, _glyphTierAtlasType) &&
+                atlasInfo.atlas.distanceRange == _glyphTierAtlasDistanceRange &&
+                atlasInfo.atlas.size == _glyphTierAtlasSize)
+            {
+                atlasSize = _glyphTierResolvedAtlasSize;
+                pixelRange = _glyphTierResolvedPixelRange;
+                baseSupportsRange = _glyphTierBaseSupportsRange;
+                return;
+            }
+
+            atlasSize = GetDynamicGlyphSize(fontSize);
+            pixelRange = GetDynamicPixelRange(outline, fontSize);
+            baseSupportsRange = !hasSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange);
+
+            _glyphTierFontSize = fontSize;
+            _glyphTierOutline = outline;
+            _glyphTierHasSource = hasSource;
+            _glyphTierDynamicAtlasSize = dynamicAtlasSize;
+            _glyphTierDynamicPixelRange = dynamicPixelRange;
+            _glyphTierDynamicMaxAtlasSize = dynamicMaxAtlasSize;
+            _glyphTierDynamicMaxAtlasBytes = dynamicMaxAtlasBytes;
+            _glyphTierAtlasType = atlasInfo.atlas.type;
+            _glyphTierAtlasDistanceRange = atlasInfo.atlas.distanceRange;
+            _glyphTierAtlasSize = atlasInfo.atlas.size;
+            _glyphTierResolvedAtlasSize = atlasSize;
+            _glyphTierResolvedPixelRange = pixelRange;
+            _glyphTierBaseSupportsRange = baseSupportsRange;
+        }
+
         internal bool GetGlyph(int unicode, float fontSize, float outline, out NowFontAtlasInfo.Glyph glyph)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            ResolveGlyphTier(fontSize, outline, out int atlasSize, out int pixelRange, out bool baseSupportsRange);
             bool hasBaseGlyph = TryGetCachedGlyph(unicode, out glyph);
 
-            if (hasBaseGlyph &&
-                (!HasEmbeddedSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)))
+            if (hasBaseGlyph && baseSupportsRange)
                 return true;
 
             if (TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out glyph))
@@ -4220,7 +4285,14 @@ namespace NowUI
             out NowFontAtlasInfo.Glyph glyph,
             out Material glyphMaterial)
         {
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            ResolveGlyphTier(fontSize, outline, out _, out int pixelRange, out bool baseSupportsRange);
+
+            if (baseSupportsRange && TryGetCachedGlyph(unicode, out glyph))
+            {
+                glyphMaterial = material;
+                return true;
+            }
+
             return GetGlyphForPixelRange(unicode, fontSize, pixelRange, out glyph, out glyphMaterial);
         }
 
@@ -4821,8 +4893,7 @@ namespace NowUI
             if (string.IsNullOrEmpty(value) || fontSize <= 0)
                 return false;
 
-            int atlasSize = GetDynamicGlyphSize(fontSize);
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            ResolveGlyphTier(fontSize, outline, out int atlasSize, out int pixelRange, out _);
             var key = new PreparedCodepointRunKey(value, atlasSize, pixelRange, style, tabSpaces);
             _preparedCodepointCache ??= new Dictionary<PreparedCodepointRunKey, PreparedCodepointRun>(64);
 
@@ -5200,8 +5271,7 @@ namespace NowUI
             if (string.IsNullOrEmpty(segment))
                 return false;
 
-            int atlasSize = GetDynamicGlyphSize(fontSize);
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            ResolveGlyphTier(fontSize, outline, out int atlasSize, out int pixelRange, out _);
             var key = new PreparedShapeKey(segment, atlasSize, pixelRange);
             _preparedShapeCache ??= new Dictionary<PreparedShapeKey, PreparedShapedRun>(64);
 
@@ -5639,7 +5709,7 @@ namespace NowUI
 
         internal float GetScreenPixelRange(int unicode, float fontSize, float outline)
         {
-            int pixelRange = GetDynamicPixelRange(outline, fontSize);
+            ResolveGlyphTier(fontSize, outline, out _, out int pixelRange, out _);
             return GetScreenPixelRangeForPixelRange(unicode, fontSize, pixelRange);
         }
 

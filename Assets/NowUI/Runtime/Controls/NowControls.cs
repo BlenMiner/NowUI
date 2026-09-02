@@ -48,6 +48,14 @@ namespace NowUI
 
         static NowResolvedId _defaultOwnerRoot;
 
+        // The owner root only depends on which input provider is current, and
+        // NowInput.Update is the single place that changes it. Caching the last
+        // answer turns a per-control ConditionalWeakTable lookup (which locks)
+        // into a field read.
+        static bool _ownerRootCacheValid;
+
+        static NowResolvedId _ownerRootCache;
+
         static NowResolvedId AllocateOwnerRoot()
         {
             unchecked
@@ -68,19 +76,35 @@ namespace NowUI
 
         static NowResolvedId CurrentOwnerRoot()
         {
+            if (_ownerRootCacheValid)
+                return _ownerRootCache;
+
             object owner = NowInput.currentProvider;
+            NowResolvedId root;
 
             if (owner != null)
             {
-                return _ownerIdentities.GetValue(
+                root = _ownerIdentities.GetValue(
                     owner,
                     _ => new OwnerIdentity(AllocateOwnerRoot())).root;
             }
+            else
+            {
+                if (!_defaultOwnerRoot.hasValue)
+                    _defaultOwnerRoot = AllocateOwnerRoot();
 
-            if (!_defaultOwnerRoot.hasValue)
-                _defaultOwnerRoot = AllocateOwnerRoot();
+                root = _defaultOwnerRoot;
+            }
 
-            return _defaultOwnerRoot;
+            _ownerRootCache = root;
+            _ownerRootCacheValid = true;
+            return root;
+        }
+
+        /// <summary>Called whenever the current input provider changes.</summary>
+        internal static void InvalidateOwnerRootCache()
+        {
+            _ownerRootCacheValid = false;
         }
 
         static NowResolvedId CurrentIdentityParent()
@@ -348,6 +372,33 @@ namespace NowUI
         static readonly Dictionary<CallSiteKey, int> _callSiteTokens =
             new Dictionary<CallSiteKey, int>(128);
 
+        // [CallerFilePath] hands every call site the same interned literal, so a
+        // reference-keyed front cache answers repeat lookups without hashing the
+        // whole path string. Content-equal paths that are distinct instances
+        // still fall through to the ordinal table and share its token.
+        sealed class CallSiteReferenceComparer : IEqualityComparer<CallSiteKey>
+        {
+            public static readonly CallSiteReferenceComparer Instance = new CallSiteReferenceComparer();
+
+            public bool Equals(CallSiteKey x, CallSiteKey y)
+            {
+                return x.line == y.line && ReferenceEquals(x.file, y.file);
+            }
+
+            public int GetHashCode(CallSiteKey key)
+            {
+                unchecked
+                {
+                    return (System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(key.file) * 397) ^ key.line;
+                }
+            }
+        }
+
+        const int CallSiteReferenceCacheLimit = 4096;
+
+        static readonly Dictionary<CallSiteKey, int> _callSiteTokensByReference =
+            new Dictionary<CallSiteKey, int>(128, CallSiteReferenceComparer.Instance);
+
         static readonly Dictionary<int, CallSiteRecord> _callSites =
             new Dictionary<int, CallSiteRecord>(128);
 
@@ -377,8 +428,17 @@ namespace NowUI
         {
             var key = new CallSiteKey(file, line);
 
-            if (_callSiteTokens.TryGetValue(key, out int token))
+            if (_callSiteTokensByReference.TryGetValue(key, out int token))
                 return token;
+
+            if (_callSiteTokens.TryGetValue(key, out token))
+            {
+                if (_callSiteTokensByReference.Count >= CallSiteReferenceCacheLimit)
+                    _callSiteTokensByReference.Clear();
+
+                _callSiteTokensByReference[key] = token;
+                return token;
+            }
 
             do
             {
@@ -388,6 +448,11 @@ namespace NowUI
 
             _callSiteTokens.Add(key, token);
             _callSites.Add(token, new CallSiteRecord(file, line));
+
+            if (_callSiteTokensByReference.Count >= CallSiteReferenceCacheLimit)
+                _callSiteTokensByReference.Clear();
+
+            _callSiteTokensByReference[key] = token;
             return token;
         }
 
@@ -611,6 +676,7 @@ namespace NowUI
         public static void Reset()
         {
             NowTheme.Reset();
+            _ownerRootCacheValid = false;
             _idStack.Clear();
             _idScopes.Clear();
             _idScopeStartedAt = int.MinValue;

@@ -46,6 +46,123 @@ namespace NowUI
         /// </summary>
         internal static int contentVersion => _contentVersion;
 
+        // Per-instance memo of fully resolved presets. Every control resolves
+        // its text style (twice) and its surface rectangle from theme tokens on
+        // every draw; the tokens only change when contentVersion moves, so the
+        // resolved values are cached per style until then. Text presets also
+        // depend on the ambient default font when the preset names none.
+        const int ResolvedTextStyleCount = (int)NowTextStyle.Caption + 1;
+
+        const int ResolvedRectangleStyleCount = (int)NowRectangleStyle.Ghost + 1;
+
+        struct ResolvedRectanglePreset
+        {
+            public Vector4 color;
+            public Vector4 radius;
+            public Vector4 padding;
+            public float blur;
+            public float outline;
+            public Vector4 outlineColor;
+            public bool hasPreset;
+        }
+
+        [NonSerialized] NowText[] _resolvedTexts;
+
+        [NonSerialized] bool[] _resolvedTextValid;
+
+        [NonSerialized] NowFontAsset _resolvedTextFont;
+
+        [NonSerialized] int _resolvedTextVersion = -1;
+
+        [NonSerialized] ResolvedRectanglePreset[] _resolvedRectangles;
+
+        [NonSerialized] bool[] _resolvedRectangleValid;
+
+        [NonSerialized] int _resolvedRectangleVersion = -1;
+
+        NowText ResolveTextCached(NowTextStyle style)
+        {
+            int index = (int)style;
+            var font = Now.font;
+
+            if (_resolvedTextVersion != _contentVersion ||
+                !ReferenceEquals(_resolvedTextFont, font) ||
+                _resolvedTexts == null)
+            {
+                _resolvedTexts ??= new NowText[ResolvedTextStyleCount];
+                _resolvedTextValid ??= new bool[ResolvedTextStyleCount];
+                Array.Clear(_resolvedTextValid, 0, _resolvedTextValid.Length);
+                _resolvedTextVersion = _contentVersion;
+                _resolvedTextFont = font;
+            }
+
+            if ((uint)index >= (uint)ResolvedTextStyleCount)
+                return ResolveTextUncached(default, style);
+
+            if (!_resolvedTextValid[index])
+            {
+                _resolvedTexts[index] = ResolveTextUncached(default, style);
+                _resolvedTextValid[index] = true;
+            }
+
+            return _resolvedTexts[index];
+        }
+
+        NowText ResolveTextUncached(NowRect rect, NowTextStyle style)
+        {
+            var text = ApplyTextPreset(Now.Text(rect, null), style);
+
+            if (text.font == null)
+                text = text.SetFont(Now.font);
+
+            return text;
+        }
+
+        bool TryGetResolvedRectanglePreset(NowRectangleStyle style, out ResolvedRectanglePreset resolved)
+        {
+            int index = (int)style;
+
+            if ((uint)index >= (uint)ResolvedRectangleStyleCount)
+            {
+                resolved = default;
+                return false;
+            }
+
+            if (_resolvedRectangleVersion != _contentVersion || _resolvedRectangles == null)
+            {
+                _resolvedRectangles ??= new ResolvedRectanglePreset[ResolvedRectangleStyleCount];
+                _resolvedRectangleValid ??= new bool[ResolvedRectangleStyleCount];
+                Array.Clear(_resolvedRectangleValid, 0, _resolvedRectangleValid.Length);
+                _resolvedRectangleVersion = _contentVersion;
+            }
+
+            if (!_resolvedRectangleValid[index])
+            {
+                ref var slot = ref _resolvedRectangles[index];
+
+                if (TryGetRectanglePreset(style, out var preset))
+                {
+                    var probe = preset.Apply(this, new NowRectangle(default(NowRect)));
+                    slot.color = probe.color;
+                    slot.radius = probe.radius;
+                    slot.padding = probe.padding;
+                    slot.blur = probe.blur;
+                    slot.outline = probe.outline;
+                    slot.outlineColor = probe.outlineColor;
+                    slot.hasPreset = true;
+                }
+                else
+                {
+                    slot = default;
+                }
+
+                _resolvedRectangleValid[index] = true;
+            }
+
+            resolved = _resolvedRectangles[index];
+            return true;
+        }
+
         public NowRectangleStyle defaultRectangleStyle => _defaultRectangleStyle;
 
         public NowTextStyle defaultTextStyle => _defaultTextStyle;
@@ -174,11 +291,12 @@ namespace NowUI
 
         public NowText Text(NowRect rect, NowTextStyle style)
         {
-            var text = ApplyTextPreset(Now.Text(rect, null), style);
-
-            if (text.font == null)
-                text = text.SetFont(Now.font);
-
+            // The constructor only stores the rect and mirrors it into the
+            // default mask, so the cached preset plus those two fields is the
+            // same value the uncached path builds.
+            var text = ResolveTextCached(style);
+            text.rect = rect;
+            text.mask = rect;
             return text;
         }
 
@@ -196,6 +314,20 @@ namespace NowUI
 
         public NowRectangle ApplyRectanglePreset(NowRectangle rectangle, NowRectangleStyle style)
         {
+            if (TryGetResolvedRectanglePreset(style, out var resolved))
+            {
+                if (!resolved.hasPreset)
+                    return rectangle;
+
+                rectangle.color = resolved.color;
+                rectangle.radius = resolved.radius;
+                rectangle = rectangle.SetPadding(resolved.padding);
+                rectangle.blur = resolved.blur;
+                rectangle.outline = resolved.outline;
+                rectangle.outlineColor = resolved.outlineColor;
+                return rectangle;
+            }
+
             if (!TryGetRectanglePreset(style, out var preset))
                 return rectangle;
 
