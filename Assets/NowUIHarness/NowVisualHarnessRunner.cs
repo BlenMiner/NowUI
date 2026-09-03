@@ -57,8 +57,8 @@ namespace NowUI.Editor
                     continue;
 
                 string frameDirectory = Path.Combine(outputRoot, scenario.name);
-                string gifPath = Path.Combine(outputRoot, $"{scenario.name}.gif");
-                captures.Add(NowHarnessAnimationRenderer.Capture(scenario, frameDirectory, gifPath));
+                string outputStem = Path.Combine(outputRoot, scenario.name);
+                captures.Add(NowHarnessAnimationRenderer.Capture(scenario, frameDirectory, outputStem));
             }
 
             File.WriteAllText(

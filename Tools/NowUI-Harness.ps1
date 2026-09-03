@@ -2,7 +2,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "Animation", "All")]
+    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "Animation", "Encode", "All")]
     [string] $Mode = "All",
 
     [Parameter(Mandatory = $false)]
@@ -25,6 +25,16 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string] $Ffmpeg,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(0, 100)]
+    [int] $WebpQuality = 80,
+
+    [Parameter(Mandatory = $false)]
+    [switch] $Gif,
+
+    [Parameter(Mandatory = $false)]
+    [switch] $Mp4,
 
     [Parameter(Mandatory = $false)]
     [switch] $CleanScriptAssemblies
@@ -404,33 +414,28 @@ function Invoke-ExecuteMethod {
     Invoke-Unity -UnityArgs $args -LogPath (Join-Path $methodArtifacts "NowUI-$Name.log")
 }
 
-function Invoke-AnimationCapture {
-    $animationArtifacts = Join-Path $ArtifactsPath "animation"
-    $manifestPath = Join-Path $animationArtifacts "manifest.json"
-    Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
-
-    Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CaptureAnimations" "animation"
-
-    if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-        throw "Unity did not write an animation manifest to '$manifestPath'."
-    }
+function Invoke-AnimationEncode {
+    param(
+        [string] $ManifestPath,
+        [string] $AnimationRoot
+    )
 
     try {
-        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
     } catch {
-        throw "Unity wrote an invalid animation manifest to '$manifestPath': $($_.Exception.Message)"
+        throw "Animation manifest '$ManifestPath' is invalid: $($_.Exception.Message)"
     }
 
     $captures = @($manifest.captures)
     if ($captures.Count -eq 0) {
-        Write-Host "Unity animation harness has no registered scenarios. No GIFs were encoded."
+        Write-Host "Animation manifest '$ManifestPath' lists no captures. Nothing was encoded."
         return
     }
 
     $ffmpegPath = Resolve-Ffmpeg -RequestedPath $Ffmpeg
     Write-Host "Using ffmpeg from '$ffmpegPath'."
 
-    $animationRoot = [System.IO.Path]::GetFullPath($animationArtifacts)
+    $animationRoot = [System.IO.Path]::GetFullPath($AnimationRoot)
     $rootPrefix = $animationRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
     $pathComparison = if ($IsWindows) {
         [System.StringComparison]::OrdinalIgnoreCase
@@ -440,7 +445,7 @@ function Invoke-AnimationCapture {
 
     foreach ($capture in $captures) {
         if ($null -eq $capture) {
-            throw "Animation manifest '$manifestPath' contains an empty capture."
+            throw "Animation manifest '$ManifestPath' contains an empty capture."
         }
 
         $name = [string] $capture.name
@@ -448,11 +453,11 @@ function Invoke-AnimationCapture {
         [double] $frameRate = $capture.framesPerSecond
         $frameDirectory = [System.IO.Path]::GetFullPath([string] $capture.frameDirectory)
         $framePattern = [string] $capture.framePattern
-        $gifPath = [System.IO.Path]::GetFullPath([string] $capture.gifPath)
+        $outputStem = [System.IO.Path]::GetFullPath([string] $capture.outputStem)
 
         if ([string]::IsNullOrWhiteSpace($name) -or $frameCount -le 0 -or
             $frameRate -le 0 -or [double]::IsNaN($frameRate) -or [double]::IsInfinity($frameRate)) {
-            throw "Animation manifest '$manifestPath' contains invalid timing metadata for '$name'."
+            throw "Animation manifest '$ManifestPath' contains invalid timing metadata for '$name'."
         }
 
         if ($framePattern -ne "frame-%04d.png") {
@@ -460,7 +465,7 @@ function Invoke-AnimationCapture {
         }
 
         if (!$frameDirectory.StartsWith($rootPrefix, $pathComparison) -or
-            !$gifPath.StartsWith($rootPrefix, $pathComparison)) {
+            !$outputStem.StartsWith($rootPrefix, $pathComparison)) {
             throw "Animation '$name' resolves outside '$animationRoot'."
         }
 
@@ -476,27 +481,89 @@ function Invoke-AnimationCapture {
             "{0:0.###}",
             $frameRate)
         $frameInput = Join-Path $frameDirectory $framePattern
-        # Ordered dithering stays stable between frames, preserving gradients
-        # without the large temporal-noise penalty of error diffusion in GIFs.
-        $filter = "[0:v]split[palette_source][frames];[palette_source]palettegen=max_colors=256:stats_mode=diff[palette];[frames][palette]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
-
-        Remove-Item -LiteralPath $gifPath -Force -ErrorAction SilentlyContinue
-        Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name'" -Arguments @(
+        $inputArguments = @(
             "-hide_banner",
             "-loglevel", "warning",
             "-y",
             "-framerate", $frameRateText,
             "-start_number", "0",
             "-i", $frameInput,
-            "-frames:v", [string] $frameCount,
-            "-filter_complex", $filter,
-            "-loop", "0",
-            "-gifflags", "+transdiff",
-            $gifPath
+            "-frames:v", [string] $frameCount
         )
 
-        Write-Host "Encoded '$gifPath'."
+        # Animated WebP is the README format: full 24-bit colour, no palette
+        # dithering, under half the GIF size overall, and it still autoplays
+        # inside a plain <img> tag on GitHub. libwebp_anim (not libwebp) is what
+        # exploits inter-frame redundancy; compression level 5 is within a few
+        # percent of level 6 at a fraction of the encode time.
+        $webpPath = "$outputStem.webp"
+        Remove-Item -LiteralPath $webpPath -Force -ErrorAction SilentlyContinue
+        Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (webp)" -Arguments ($inputArguments + @(
+            "-c:v", "libwebp_anim",
+            "-quality", [string] $WebpQuality,
+            "-compression_level", "5",
+            "-loop", "0",
+            $webpPath
+        ))
+        Write-Host "Encoded '$webpPath'."
+
+        if ($Gif) {
+            # Ordered dithering stays stable between frames, preserving gradients
+            # without the large temporal-noise penalty of error diffusion in GIFs.
+            $filter = "[0:v]split[palette_source][frames];[palette_source]palettegen=max_colors=256:stats_mode=diff[palette];[frames][palette]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
+            $gifPath = "$outputStem.gif"
+            Remove-Item -LiteralPath $gifPath -Force -ErrorAction SilentlyContinue
+            Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (gif)" -Arguments ($inputArguments + @(
+                "-filter_complex", $filter,
+                "-loop", "0",
+                "-gifflags", "+transdiff",
+                $gifPath
+            ))
+            Write-Host "Encoded '$gifPath'."
+        }
+
+        if ($Mp4) {
+            # H.264 needs even dimensions; the scale filter only rounds down
+            # odd sizes and is a no-op for the 960x540 README captures.
+            $mp4Path = "$outputStem.mp4"
+            Remove-Item -LiteralPath $mp4Path -Force -ErrorAction SilentlyContinue
+            Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (mp4)" -Arguments ($inputArguments + @(
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-c:v", "libx264",
+                "-preset", "veryslow",
+                "-crf", "18",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                $mp4Path
+            ))
+            Write-Host "Encoded '$mp4Path'."
+        }
     }
+}
+
+function Invoke-AnimationCapture {
+    $animationArtifacts = Join-Path $ArtifactsPath "animation"
+    $manifestPath = Join-Path $animationArtifacts "manifest.json"
+    Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
+
+    Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CaptureAnimations" "animation"
+
+    if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "Unity did not write an animation manifest to '$manifestPath'."
+    }
+
+    Invoke-AnimationEncode -ManifestPath $manifestPath -AnimationRoot $animationArtifacts
+}
+
+function Invoke-AnimationReencode {
+    $animationArtifacts = Join-Path $ArtifactsPath "animation"
+    $manifestPath = Join-Path $animationArtifacts "manifest.json"
+
+    if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "No animation manifest was found at '$manifestPath'. Run '-Mode Animation' first."
+    }
+
+    Invoke-AnimationEncode -ManifestPath $manifestPath -AnimationRoot $animationArtifacts
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactsPath | Out-Null
@@ -512,6 +579,7 @@ switch ($Mode) {
     "Golden" { Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CompareGoldens" "golden" }
     "Perf" { Invoke-ExecuteMethod "NowUI.Editor.NowPerfSmokeRunner.Run" "perf" }
     "Animation" { Invoke-AnimationCapture }
+    "Encode" { Invoke-AnimationReencode }
     "All" {
         Invoke-TestRun "EditMode"
         Invoke-TestRun "PlayMode"

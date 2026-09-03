@@ -13,7 +13,7 @@ namespace NowUI.Editor
     /// <summary>
     /// Deterministic timing supplied to every README animation frame. The final
     /// loop endpoint is deliberately excluded, so frame zero is not duplicated
-    /// at the end of an encoded GIF.
+    /// at the end of an encoded loop.
     /// </summary>
     internal readonly struct NowHarnessAnimationFrame
     {
@@ -112,7 +112,8 @@ namespace NowUI.Editor
         public float durationSeconds;
         public string frameDirectory;
         public string framePattern;
-        public string gifPath;
+        /// <summary>Absolute output path without an extension. The harness script appends one per encoded container.</summary>
+        public string outputStem;
         public int maximumBatchCount;
         public int maximumVertexCount;
         public long elapsedMilliseconds;
@@ -187,7 +188,7 @@ namespace NowUI.Editor
         public static NowHarnessAnimationCapture Capture(
             NowHarnessAnimationScenario scenario,
             string frameDirectory,
-            string gifPath)
+            string outputStem)
         {
             if (scenario == null)
                 throw new ArgumentNullException(nameof(scenario));
@@ -257,7 +258,7 @@ namespace NowUI.Editor
                     durationSeconds = scenario.frameCount / scenario.framesPerSecond,
                     frameDirectory = Path.GetFullPath(frameDirectory),
                     framePattern = FramePattern,
-                    gifPath = Path.GetFullPath(gifPath),
+                    outputStem = Path.GetFullPath(outputStem),
                     maximumBatchCount = maximumBatchCount,
                     maximumVertexCount = maximumVertexCount,
                     elapsedMilliseconds = stopwatch.ElapsedMilliseconds
@@ -301,7 +302,7 @@ namespace NowUI.Editor
                 json.AppendFormat("\"elapsedMilliseconds\": {0}, ", capture.elapsedMilliseconds);
                 json.AppendFormat("\"frameDirectory\": \"{0}\", ", Escape(capture.frameDirectory.Replace('\\', '/')));
                 json.AppendFormat("\"framePattern\": \"{0}\", ", Escape(capture.framePattern));
-                json.AppendFormat("\"gifPath\": \"{0}\"", Escape(capture.gifPath.Replace('\\', '/')));
+                json.AppendFormat("\"outputStem\": \"{0}\"", Escape(capture.outputStem.Replace('\\', '/')));
                 json.Append(" }");
             }
 
