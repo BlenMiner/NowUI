@@ -1,3 +1,10 @@
+## [1.11.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.2...nowui-v1.11.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* Graph() and Morph() placed after inline primitives lost their pending operation ([bd3a4ec](https://github.com/BlenMiner/NowUI/commit/bd3a4ec6e37430609d6a737ba8f9eb89ed6c2950))
+
 ## [1.11.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.1...nowui-v1.11.2) (2026-09-03)
 
 
