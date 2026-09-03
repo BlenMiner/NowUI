@@ -3137,6 +3137,41 @@ namespace NowUI.Editor
             return texture;
         }
 
+        static Texture2D _sdfImageRing;
+
+        /// <summary>A second, unrelated texture: a cyan ring with antialiased alpha.</summary>
+        static Texture2D GetSdfImageRing()
+        {
+            if (_sdfImageRing != null)
+                return _sdfImageRing;
+
+            const int size = 48;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "NowHarness SDF Image Ring",
+                hideFlags = HideFlags.HideAndDontSave,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+            var pixels = new Color32[size * size];
+            var center = new Vector2(size * 0.5f, size * 0.5f);
+
+            for (int y = 0; y < size; ++y)
+            {
+                for (int x = 0; x < size; ++x)
+                {
+                    float distance = Mathf.Abs((new Vector2(x + 0.5f, y + 0.5f) - center).magnitude - 15f) - 6f;
+                    byte alpha = (byte)Mathf.RoundToInt(Mathf.Clamp01(0.5f - distance) * 255f);
+                    pixels[y * size + x] = new Color32(90, 230, 255, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            _sdfImageRing = texture;
+            return texture;
+        }
+
         static void DrawSdfImageEffects(NowRect rect)
         {
             Now.Rectangle(rect).SetColor(new Color(0.018f, 0.026f, 0.050f, 1f)).Draw();
@@ -3160,9 +3195,10 @@ namespace NowUI.Editor
             DrawSdfPlanarCard(shadowCard, "SHADOW + OUTLINE", "Drop shadow hugs the petals");
             DrawSdfPlanarCard(glowCard, "GLOW", "Rotated 20° · outside halo");
             DrawSdfPlanarCard(embossCard, "EMBOSS + INNER", "Edge lighting on the image");
-            DrawSdfPlanarCard(booleanCard, "CONTOURS + CUT", "Circle subtracted from the field");
+            DrawSdfPlanarCard(booleanCard, "CONTOURS + CUT", "Second texture unioned · circle cut");
 
             Texture2D sprite = GetSdfImageSprite();
+            Texture2D ring = GetSdfImageRing();
             var imageRect = new NowRect(32f, 10f, 127f, 127f);
 
             var shadowScene = new NowRect(shadowCard.x + 14f, shadowCard.y + 50f, shadowCard.width - 28f, 146f);
@@ -3194,6 +3230,8 @@ namespace NowUI.Editor
                 .SetFeather(0.5f)
                 .SetContours(7f, 1.2f, new Color(1f, 1f, 1f, 0.35f), 0f, 3)
                 .Image(imageRect, sprite)
+                .SmoothUnion(8f)
+                .Image(new NowRect(imageRect.x - 18f, imageRect.yMax - 58f, 56f, 56f), ring)
                 .Subtract()
                 .Circle(new Vector2(imageRect.xMax - 24f, imageRect.y + 28f), 22f)
                 .Draw();

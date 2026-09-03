@@ -195,6 +195,26 @@ Shader "Hidden/NowUI/SDF Image Field"
                 : min(SegmentDistance(texel, segment), NOW_SDF_FIELD_MAX_DISTANCE);
             return float4(inside ? -distance : distance, 0.0, 0.0, 1.0);
         }
+
+        // Copies the _SourceUv region of _SourceTex into the _StampRect texel
+        // rect of the target atlas. The blit covers the whole atlas; fragments
+        // outside the rect discard so existing entries are preserved.
+        float4 _StampRect;
+
+        float4 StampFragment(v2f_img i) : SV_Target
+        {
+            float2 texel = floor(i.uv * _FieldTexels.xy);
+            float2 local = texel - _StampRect.xy;
+
+            if (local.x < 0.0 || local.y < 0.0 ||
+                local.x >= _StampRect.z || local.y >= _StampRect.w)
+            {
+                discard;
+            }
+
+            float2 sourceUv = _SourceUv.xy + (local + 0.5) / max(_StampRect.zw, 1.0) * _SourceUv.zw;
+            return tex2Dlod(_SourceTex, float4(sourceUv, 0.0, 0.0));
+        }
         ENDCG
 
         Pass
@@ -223,6 +243,16 @@ Shader "Hidden/NowUI/SDF Image Field"
             CGPROGRAM
             #pragma vertex vert_img
             #pragma fragment ResolveFragment
+            #pragma target 3.0
+            ENDCG
+        }
+
+        Pass
+        {
+            Name "Stamp"
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment StampFragment
             #pragma target 3.0
             ENDCG
         }

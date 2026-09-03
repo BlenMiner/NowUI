@@ -94,6 +94,10 @@ namespace NowUI.Sdf
         static readonly int _fieldParamsProp = Shader.PropertyToID("_FieldParams");
         static readonly int _fieldTexelsProp = Shader.PropertyToID("_FieldTexels");
         static readonly int _stepProp = Shader.PropertyToID("_Step");
+        static readonly int _stampRectProp = Shader.PropertyToID("_StampRect");
+
+        /// <summary>Largest signed distance a field stores; matches the bake shader's clamp.</summary>
+        public const float MaxDistance = 30000f;
 
         static readonly Dictionary<NowSdfImageFieldKey, NowSdfImageField> _fields =
             new Dictionary<NowSdfImageFieldKey, NowSdfImageField>(8);
@@ -222,7 +226,7 @@ namespace NowUI.Sdf
             field.texture = null;
         }
 
-        static void DestroyTarget(UnityEngine.Object target)
+        internal static void DestroyTarget(UnityEngine.Object target)
         {
             if (target == null)
                 return;
@@ -258,7 +262,7 @@ namespace NowUI.Sdf
             return _material;
         }
 
-        static RenderTextureFormat FieldFormat()
+        internal static RenderTextureFormat FieldFormat()
         {
             if (SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RHalf))
                 return RenderTextureFormat.RHalf;
@@ -267,6 +271,84 @@ namespace NowUI.Sdf
                 return RenderTextureFormat.RFloat;
 
             return RenderTextureFormat.ARGBHalf;
+        }
+
+        internal static RenderTexture CreateTarget(
+            int width,
+            int height,
+            RenderTextureFormat format,
+            RenderTextureReadWrite readWrite,
+            string name)
+        {
+            var texture = new RenderTexture(Mathf.Max(1, width), Mathf.Max(1, height), 0, format, readWrite)
+            {
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+
+            if (!texture.Create())
+            {
+                DestroyTarget(texture);
+                return null;
+            }
+
+            return texture;
+        }
+
+        internal static void ClearTarget(RenderTexture target, Color color)
+        {
+            if (target == null)
+                return;
+
+            var previousActive = RenderTexture.active;
+
+            try
+            {
+                RenderTexture.active = target;
+                GL.Clear(false, true, color);
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+            }
+        }
+
+        /// <summary>
+        /// Copies the normalized <paramref name="sourceUv"/> region of a texture
+        /// into the <paramref name="targetRect"/> texel rect of an atlas without
+        /// disturbing the rest of the atlas.
+        /// </summary>
+        internal static bool Stamp(Texture source, Vector4 sourceUv, RenderTexture target, Vector4 targetRect)
+        {
+            var material = GetMaterial();
+
+            if (material == null || source == null || target == null)
+                return false;
+
+            material.SetTexture(_sourceTexProp, source);
+            material.SetVector(_sourceUvProp, sourceUv);
+            material.SetVector(_stampRectProp, targetRect);
+            material.SetVector(_fieldTexelsProp, new Vector4(
+                target.width,
+                target.height,
+                1f / target.width,
+                1f / target.height));
+            var previousActive = RenderTexture.active;
+
+            try
+            {
+                Graphics.Blit(source, target, material, 3);
+            }
+            finally
+            {
+                RenderTexture.active = previousActive;
+            }
+
+            return true;
         }
 
         static RenderTextureFormat FloodFormat()

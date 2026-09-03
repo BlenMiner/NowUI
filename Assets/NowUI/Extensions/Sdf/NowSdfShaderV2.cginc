@@ -42,8 +42,14 @@ struct v2f
 };
 
 sampler2D _MainTex;
-// Baked image silhouette field: signed distance in source texels, red channel.
+// Per-scene image atlases. The field atlas stores signed distance in source
+// texels (red channel); the color atlas stores straight-alpha sprite pixels.
+// _SdfImageUvs holds each image node's texel rect inside the field atlas and
+// _SdfUvs holds its texel rect inside the color atlas. _SdfImageAtlasSize is
+// (field width, field height, color width, color height) in texels.
 sampler2D _SdfImageField;
+sampler2D _SdfImageColor;
+float4 _SdfImageAtlasSize;
 float _NowCanvasLayout;
 float _SdfShapeCount;
 float _SdfLayerCount;
@@ -73,6 +79,7 @@ float4 _SdfData2[NOW_SDF_MAX_SHAPES];
 float4 _SdfShapeMeta[NOW_SDF_MAX_SHAPES];
 float4 _SdfColors[NOW_SDF_MAX_SHAPES];
 float4 _SdfUvs[NOW_SDF_MAX_SHAPES];
+float4 _SdfImageUvs[NOW_SDF_MAX_SHAPES];
 float4 _SdfLayerData0[NOW_SDF_MAX_LAYERS];
 float4 _SdfLayerData1[NOW_SDF_MAX_LAYERS];
 
@@ -268,17 +275,28 @@ float NowSdfShapeCodeStepV2(float type, float4 data2)
     return 0.0;
 }
 
+// Maps a clamped 0..1 uv (y up) onto an atlas entry's texel rect, staying at
+// least half a texel inside the entry so bilinear filtering never reads the
+// gutter around it.
+float2 NowSdfAtlasUvV2(float2 uv, float4 texelRect, float2 atlasSize)
+{
+    float2 texel = clamp(uv * texelRect.zw, 0.5, max(texelRect.zw - 0.5, 0.5));
+    return (texelRect.xy + texel) / max(atlasSize, 1.0);
+}
+
 // data1.zw: image rect size, data2.xy: scene units per source texel,
-// data2.z: field padding in texels. The field covers the image rect plus the
-// padding on every side; beyond it the distance continues from the clamped
-// border sample so the padded quad boundary cannot become a false edge.
-float NowSdfImageLocalDistanceV2(float2 local, float2 size, float4 data2)
+// data2.z: field padding in texels, fieldRect: texel rect in the field atlas.
+// The field covers the image rect plus the padding on every side; beyond it
+// the distance continues from the clamped border sample so the padded quad
+// boundary cannot become a false edge.
+float NowSdfImageLocalDistanceV2(float2 local, float2 size, float4 data2, float4 fieldRect)
 {
     float2 texelScale = max(data2.xy, 0.0001);
     float pad = max(data2.z, 0.0);
     float2 fieldSize = max(size + 2.0 * pad * texelScale, 0.0001);
     float2 uv = saturate(local / fieldSize + 0.5);
-    float texelDistance = tex2D(_SdfImageField, float2(uv.x, 1.0 - uv.y)).r;
+    float2 atlasUv = NowSdfAtlasUvV2(float2(uv.x, 1.0 - uv.y), fieldRect, _SdfImageAtlasSize.xy);
+    float texelDistance = tex2D(_SdfImageField, atlasUv).r;
     float distance = texelDistance * min(texelScale.x, texelScale.y);
     float boundsDist = sdBox(local, fieldSize * 0.5);
     return boundsDist > 0.0 ? max(distance, 0.0) + boundsDist : distance;
@@ -386,7 +404,7 @@ float NowSdfUnrotatedShapeDistanceV2(
     }
 
     if (type < 10.5)
-        return NowSdfImageLocalDistanceV2(scenePos - data1.xy, data1.zw, data2);
+        return NowSdfImageLocalDistanceV2(scenePos - data1.xy, data1.zw, data2, _SdfImageUvs[index]);
 
     return 100000.0;
 }
@@ -471,7 +489,7 @@ float NowSdfRotatedShapeDistanceV2(
     }
 
     if (type < 10.5)
-        return NowSdfImageLocalDistanceV2(relativeScenePos, data1.zw, data2);
+        return NowSdfImageLocalDistanceV2(relativeScenePos, data1.zw, data2, _SdfImageUvs[index]);
 
     return 100000.0;
 }
@@ -718,6 +736,15 @@ float2 shapeUv(int index, float type, float4 data1, float4 data2, float2 scenePo
 float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scenePos, float4 tint)
 {
     float4 color = _SdfColors[index] * tint;
+
+    // Image nodes sample their own pixels from the scene's color atlas, so
+    // they never compete with text or SetTexture fills for _MainTex.
+    if (type > 9.5 && type < 10.5)
+    {
+        float2 imageUv = shapeUv(index, type, data1, data2, scenePos);
+        float2 atlasUv = NowSdfAtlasUvV2(imageUv, _SdfUvs[index], _SdfImageAtlasSize.zw);
+        return tex2D(_SdfImageColor, atlasUv) * color;
+    }
 
     if ((type > 4.5 && type < 5.5) || _SdfShapeMeta[index].y < 0.5)
         return color;

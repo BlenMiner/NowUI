@@ -715,23 +715,14 @@ namespace NowUI.Sdf
             if (float.IsNaN(threshold))
                 throw new ArgumentException("The alpha threshold must be a number.", nameof(threshold));
 
-            if (!TryBindTexture(texture))
-            {
-                throw new InvalidOperationException(
-                    "An SDF graph exposes one texture. Image shapes must use the texture " +
-                    "already bound by SetTexture, Text, or an earlier Image call.");
-            }
-
             threshold = Mathf.Clamp(threshold, 0.0001f, 0.9999f);
-            float textureWidth = Mathf.Max(1, texture.width);
-            float textureHeight = Mathf.Max(1, texture.height);
-            var uv = new Vector4(
-                texelRect.x / textureWidth,
-                texelRect.y / textureHeight,
-                texelRect.width / textureWidth,
-                texelRect.height / textureHeight);
             rect.width = Mathf.Max(0f, rect.width);
             rect.height = Mathf.Max(0f, rect.height);
+
+            // Image pixels come from the scene's color atlas, so the node does
+            // not bind _MainTex and never conflicts with text or texture fills.
+            // The upload replaces this uv with the node's color-atlas texel rect.
+            var uv = new Vector4(texelRect.x, texelRect.y, texelRect.width, texelRect.height);
 
             // data2.xy: scene units per source texel. data2.z receives the field
             // padding once the scene's effect reach is known at the terminal.
@@ -742,7 +733,7 @@ namespace NowUI.Sdf
                 threshold);
 
             int nodeIndex = _nodes.Count;
-            Add(NowSdfShapeType.Image, RectData(rect), data2, rect, uv, true, _operation, _smoothing, true);
+            Add(NowSdfShapeType.Image, RectData(rect), data2, rect, uv, false, _operation, _smoothing, true);
             _imageSources.Add(new NowSdfImageSource
             {
                 nodeIndex = nodeIndex,
@@ -785,6 +776,12 @@ namespace NowUI.Sdf
             }
 
             _preparedImageBudget = effectBudget;
+        }
+
+        internal void RequestImageFields(NowSdfImageAtlas atlas)
+        {
+            for (int i = 0; i < _imageSources.Count; ++i)
+                atlas.Request(_imageSources[i].field);
         }
 
         internal bool ImageFieldsAreCurrent(float effectBudget)
@@ -3210,8 +3207,8 @@ namespace NowUI.Sdf
             readonly ulong _sceneHash;
             readonly Texture _sourceTexture;
             readonly uint _sourceTextureUpdateCount;
-            readonly NowSdfImageField _imageField;
-            readonly int _imageFieldVersion;
+            readonly NowSdfImageAtlas _imageAtlas;
+            readonly int _imageAtlasVersion;
             readonly Material _materialTemplate;
             readonly Vector4 _effectiveTint;
             readonly Vector2 _localSize;
@@ -3223,7 +3220,7 @@ namespace NowUI.Sdf
                 ulong sceneHash,
                 Texture sourceTexture,
                 uint sourceTextureUpdateCount,
-                NowSdfImageField imageField,
+                NowSdfImageAtlas imageAtlas,
                 Material materialTemplate,
                 Vector4 effectiveTint,
                 Vector2 localSize,
@@ -3234,8 +3231,8 @@ namespace NowUI.Sdf
                 _sceneHash = sceneHash;
                 _sourceTexture = sourceTexture;
                 _sourceTextureUpdateCount = sourceTextureUpdateCount;
-                _imageField = imageField;
-                _imageFieldVersion = imageField != null ? imageField.version : 0;
+                _imageAtlas = imageAtlas;
+                _imageAtlasVersion = imageAtlas != null ? imageAtlas.version : 0;
                 _materialTemplate = materialTemplate;
                 _effectiveTint = effectiveTint;
                 _localSize = localSize;
@@ -3249,8 +3246,8 @@ namespace NowUI.Sdf
                 return _sceneHash == other._sceneHash &&
                     ReferenceEquals(_sourceTexture, other._sourceTexture) &&
                     _sourceTextureUpdateCount == other._sourceTextureUpdateCount &&
-                    ReferenceEquals(_imageField, other._imageField) &&
-                    _imageFieldVersion == other._imageFieldVersion &&
+                    ReferenceEquals(_imageAtlas, other._imageAtlas) &&
+                    _imageAtlasVersion == other._imageAtlasVersion &&
                     ReferenceEquals(_materialTemplate, other._materialTemplate) &&
                     _effectiveTint.Equals(other._effectiveTint) &&
                     _localSize.Equals(other._localSize) &&
@@ -3273,10 +3270,10 @@ namespace NowUI.Sdf
                         ? RuntimeHelpers.GetHashCode(_sourceTexture)
                         : 0);
                     hash = hash * 397 ^ _sourceTextureUpdateCount.GetHashCode();
-                    hash = hash * 397 ^ (!ReferenceEquals(_imageField, null)
-                        ? RuntimeHelpers.GetHashCode(_imageField)
+                    hash = hash * 397 ^ (!ReferenceEquals(_imageAtlas, null)
+                        ? RuntimeHelpers.GetHashCode(_imageAtlas)
                         : 0);
-                    hash = hash * 397 ^ _imageFieldVersion;
+                    hash = hash * 397 ^ _imageAtlasVersion;
                     hash = hash * 397 ^ (!ReferenceEquals(_materialTemplate, null)
                         ? RuntimeHelpers.GetHashCode(_materialTemplate)
                         : 0);
@@ -3292,6 +3289,9 @@ namespace NowUI.Sdf
 
         static readonly int _mainTexProp = Shader.PropertyToID("_MainTex");
         static readonly int _imageFieldProp = Shader.PropertyToID("_SdfImageField");
+        static readonly int _imageColorProp = Shader.PropertyToID("_SdfImageColor");
+        static readonly int _imageAtlasSizeProp = Shader.PropertyToID("_SdfImageAtlasSize");
+        static readonly int _imageUvsProp = Shader.PropertyToID("_SdfImageUvs");
         static readonly int _materialAbiProp = Shader.PropertyToID(NowSdf.MaterialAbiProperty);
         static readonly int _shapeCountProp = Shader.PropertyToID("_SdfShapeCount");
         static readonly int _layerCountProp = Shader.PropertyToID("_SdfLayerCount");
@@ -3329,6 +3329,7 @@ namespace NowUI.Sdf
         readonly Vector4[] _shapeMeta = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _colors = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _uvs = new Vector4[NowSdf.MaxShapes];
+        readonly Vector4[] _imageUvs = new Vector4[NowSdf.MaxShapes];
         readonly Vector4[] _layerData0 = new Vector4[NowSdf.MaxLayers];
         readonly Vector4[] _layerData1 = new Vector4[NowSdf.MaxLayers];
 
@@ -3382,7 +3383,7 @@ namespace NowUI.Sdf
         Texture _texture;
         NowSdfGraph _textureSourceGraph;
         bool _texturePinned;
-        NowSdfImageField _imageField;
+        NowSdfImageAtlas _imageAtlas;
         NowRect _bounds;
         bool _hasBounds;
         bool _terminalPrepared;
@@ -3440,7 +3441,6 @@ namespace NowUI.Sdf
             _texture = null;
             _textureSourceGraph = null;
             _texturePinned = false;
-            _imageField = null;
             _materialTemplate = null;
             _materialTemplateAbi = NowSdf.MaterialAbiVersion;
             _syncMaterialTemplate = true;
@@ -3487,7 +3487,8 @@ namespace NowUI.Sdf
             _activeGraph = null;
             _texture = null;
             _textureSourceGraph = null;
-            _imageField = null;
+            _imageAtlas?.Release();
+            _imageAtlas = null;
         }
 
         internal void ThrowIfReleased()
@@ -3933,7 +3934,7 @@ namespace NowUI.Sdf
                 sceneHash,
                 sourceTexture,
                 sourceTextureUpdateCount,
-                _imageField,
+                _imageAtlas,
                 _materialTemplate != null ? _materialTemplate : null,
                 Now.ApplyCurrentColorMultiplier(tint),
                 localRect.size,
@@ -4130,6 +4131,7 @@ namespace NowUI.Sdf
 
             PrepareTextGraphCopies();
             PrepareImageFields(budget);
+            BuildImageAtlas();
 
             NowFont textOwner = GetSceneTextOwner();
             int pixelRange = RequiredTextPixelRange(_activeGraph, textOwner, budget);
@@ -4191,6 +4193,9 @@ namespace NowUI.Sdf
 
         bool PreparedTextGraphsAreCurrent(float effectBudget)
         {
+            if (_imageAtlas != null && !_imageAtlas.isValid)
+                return false;
+
             foreach (var pair in _preparedTextGraphs)
             {
                 if (pair.Key.contentRevision != pair.Value.contentRevision ||
@@ -4219,6 +4224,44 @@ namespace NowUI.Sdf
 
             if (_activeGraph != null && _activeGraph.hasImages)
                 _activeGraph.PrepareImageFields(effectBudget);
+        }
+
+        /// <summary>
+        /// Packs every prepared image field of the scene into the scene's
+        /// field and color atlases. Scenes without images keep no atlas.
+        /// </summary>
+        void BuildImageAtlas()
+        {
+            bool hasImages = _activeGraph != null && _activeGraph.hasImages;
+
+            for (int i = 0; i < _layers.Count && !hasImages; ++i)
+            {
+                hasImages = (_layers[i].graph != null && _layers[i].graph.hasImages) ||
+                    (_layers[i].targetGraph != null && _layers[i].targetGraph.hasImages);
+            }
+
+            if (!hasImages)
+            {
+                if (_imageAtlas != null)
+                {
+                    _imageAtlas.Release();
+                    _imageAtlas = null;
+                }
+
+                return;
+            }
+
+            _imageAtlas ??= new NowSdfImageAtlas();
+            _imageAtlas.Begin();
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                _layers[i].graph?.RequestImageFields(_imageAtlas);
+                _layers[i].targetGraph?.RequestImageFields(_imageAtlas);
+            }
+
+            _activeGraph?.RequestImageFields(_imageAtlas);
+            _imageAtlas.Build();
         }
 
         static int PreviousTextPixelRange(int current, int baseRange)
@@ -4788,7 +4831,6 @@ namespace NowUI.Sdf
             // built scene. Rebuild this per-upload lookup so a prior material
             // upload cannot make the second one report zero shapes.
             _graphUploads.Clear();
-            _imageField = null;
             int shapeCount = 0;
             int layerCount = Mathf.Min(_layers.Count, NowSdf.MaxLayers);
 
@@ -4827,11 +4869,12 @@ namespace NowUI.Sdf
             material.SetFloat(_textEffectLimitProp, textEffectLimit);
             material.SetFloat(_canvasLayoutProp, 0f);
             material.SetTexture(_mainTexProp, _texture != null ? _texture : Texture2D.whiteTexture);
-            material.SetTexture(
-                _imageFieldProp,
-                _imageField != null && _imageField.texture != null
-                    ? _imageField.texture
-                    : Texture2D.blackTexture);
+            Texture fieldAtlas = _imageAtlas != null ? _imageAtlas.fieldTexture : null;
+            Texture colorAtlas = _imageAtlas != null ? _imageAtlas.colorTexture : null;
+            material.SetTexture(_imageFieldProp, fieldAtlas != null ? fieldAtlas : Texture2D.blackTexture);
+            material.SetTexture(_imageColorProp, colorAtlas != null ? colorAtlas : Texture2D.blackTexture);
+            material.SetVector(_imageAtlasSizeProp, _imageAtlas != null ? _imageAtlas.atlasSize : Vector4.one);
+            material.SetVectorArray(_imageUvsProp, _imageUvs);
             material.SetVectorArray(_data0Prop, _data0);
             material.SetVectorArray(_data1Prop, _data1);
             material.SetVectorArray(_data2Prop, _data2);
@@ -4915,10 +4958,11 @@ namespace NowUI.Sdf
             hash = HashValue(hash, _feather);
             hash = HashValue(hash, textEffectLimit);
             hash = HashValue(hash, _texture != null ? _texture.GetEntityId().GetHashCode() : 0);
+            hash = HashValue(hash, _imageAtlas != null ? _imageAtlas.version : 0);
             hash = HashValue(
                 hash,
-                _imageField != null && _imageField.texture != null
-                    ? _imageField.texture.GetEntityId().GetHashCode()
+                _imageAtlas != null && _imageAtlas.fieldTexture != null
+                    ? _imageAtlas.fieldTexture.GetEntityId().GetHashCode()
                     : 0);
 
             for (int i = 0; i < shapeCount; ++i)
@@ -4929,6 +4973,7 @@ namespace NowUI.Sdf
                 hash = HashValue(hash, _shapeMeta[i]);
                 hash = HashValue(hash, _colors[i]);
                 hash = HashValue(hash, _uvs[i]);
+                hash = HashValue(hash, _imageUvs[i]);
             }
 
             for (int i = 0; i < layerCount; ++i)
@@ -5014,18 +5059,19 @@ namespace NowUI.Sdf
                     continue;
                 }
 
-                // The scene also exposes one image field. Images whose field was
-                // not baked, or that belong to a different source, are skipped
-                // rather than sampled from the wrong field.
+                // Images sample the scene's atlases. A node whose field could
+                // not be baked or packed is skipped rather than drawn from the
+                // wrong atlas region.
+                Vector4 nodeUv = node.uv;
+                Vector4 imageUv = default;
+
                 if (node.type == NowSdfShapeType.Image)
                 {
-                    if (node.field == null || node.field.texture == null)
+                    if (_imageAtlas == null || !_imageAtlas.TryGetEntry(node.field, out var entry))
                         continue;
 
-                    _imageField ??= node.field;
-
-                    if (!ReferenceEquals(node.field, _imageField))
-                        continue;
+                    nodeUv = entry.colorRect;
+                    imageUv = entry.fieldRect;
                 }
 
                 _data0[shapeCount] = new Vector4((float)node.type, (float)node.operation, node.smoothing, 0f);
@@ -5037,7 +5083,8 @@ namespace NowUI.Sdf
                     node.rotation.x,
                     node.rotation.y);
                 _colors[shapeCount] = node.color;
-                _uvs[shapeCount] = node.uv;
+                _uvs[shapeCount] = nodeUv;
+                _imageUvs[shapeCount] = imageUv;
                 ++shapeCount;
             }
         }

@@ -100,9 +100,11 @@ when enabled. No manual NowUI input define is required.
   nonidentity per-node rotation requires material ABI v2.
   `Image(rect, texture[, uvRect][, threshold])` and
   `Sprite(rect, sprite[, threshold])` add a texture's alpha silhouette as a
-  shape, so every scene effect and boolean operation follows the opaque
+  shape, so every scene effect, boolean operation, and morph follows the opaque
   outline; the distance field is baked on the GPU without read/write texture
-  access, and image shapes also require material ABI v2.
+  access. A scene packs any number of images from unrelated textures into
+  private field and color atlases, leaving `_MainTex` to text and
+  `SetTexture` fills. Image shapes require material ABI v2.
   `SetMaterial(Material[, bool])` selects a compatible, compiled HLSL material
   template; `NowSdf.MaterialAbiVersion` and
   `NowSdf.MaterialAbiProperty` describe the current ABI-v2 declaration, while

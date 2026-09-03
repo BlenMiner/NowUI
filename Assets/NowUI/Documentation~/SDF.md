@@ -449,6 +449,15 @@ changes (`Texture2D.Apply` or a new `updateCount`); a `RenderTexture` source
 rebakes once per frame. Fields unused for several hundred frames are released
 automatically, and `NowSdf.Reset()` releases them all.
 
+Each scene packs its images into two private atlases: a field atlas holding
+every padded distance field and a color atlas holding the sprite pixels with
+the same layout. A scene can therefore mix any number of images from unrelated
+textures (up to the 64-shape limit and the 4096-texel atlas cap) with text and
+`SetTexture` fills, and two images can morph into each other. The atlases are
+repacked only when the set of images, their bakes, or their sources change,
+and they are released with the scene cache or when the scene stops drawing
+images. Analytic and text-only scenes never allocate or sample them.
+
 - `Image(rect, texture, uvRect, threshold)` bakes only the normalized `uvRect`
   region, while `Sprite` uses the sprite's texture rect. `threshold` (default
   0.5) selects the alpha value treated as the solid edge; texels touching that
@@ -465,12 +474,13 @@ automatically, and `NowSdf.Reset()` releases them all.
 - Distances scale with the draw rect. Non-uniform scaling uses the smaller
   axis scale, which keeps effect widths at least as wide as requested along
   the stretched axis.
-- A scene exposes one `_MainTex` and one image field. Every image shape in a
-  scene must share the same texture, region, and threshold, and it must match
-  the texture already bound by `SetTexture`, `Text`, or an earlier image call
-  in its graph, otherwise `Image` throws `InvalidOperationException`.
-- Image shapes require material ABI v2. Custom materials sample the field
-  through the `_SdfImageField` sampler that `NowSdfShaderV2.cginc` declares.
+- Image shapes do not touch `_MainTex`, so they coexist with `SetTexture`
+  fills and text in the same scene, and the same image may appear several
+  times at different sizes. Each distinct size tier bakes its own field.
+- Image shapes require material ABI v2. Custom materials reach the atlases
+  through the `_SdfImageField` and `_SdfImageColor` samplers plus the
+  `_SdfImageUvs` and `_SdfImageAtlasSize` uniforms that
+  `NowSdfShaderV2.cginc` declares.
 
 ## Custom SDF Materials
 
