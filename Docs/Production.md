@@ -35,10 +35,17 @@ Run the editor visual harness locally as a separate rendering gate:
 - `Tools/NowUI-Harness.ps1 -Mode Visual` produces PNG captures and a
   `manifest.json` under `artifacts/local/visual`.
 - `Tools/NowUI-Harness.ps1 -Mode Animation` advances an explicit deterministic
-  frame clock, writes numbered PNG sequences, and encodes looping GIFs under
-  `artifacts/local/animation`. Animation capture is intentionally separate
-  from `All` and golden comparison. It requires `ffmpeg` on `PATH`; pass
-  `-Ffmpeg`, or set `FFMPEG`/`FFMPEG_PATH`, for a nonstandard install.
+  frame clock, writes numbered PNG sequences, and encodes looping animated
+  WebP files under `artifacts/local/animation`. WebP is what the README
+  embeds: full-colour, under half the size of the equivalent GIFs, and it still
+  autoplays in a plain `<img>`. Add `-Gif` or `-Mp4` to also emit those
+  containers, and `-WebpQuality` (default 80) to trade size for fidelity.
+  Animation capture is intentionally separate from `All` and golden
+  comparison. It requires `ffmpeg` on `PATH`; pass `-Ffmpeg`, or set
+  `FFMPEG`/`FFMPEG_PATH`, for a nonstandard install.
+- `Tools/NowUI-Harness.ps1 -Mode Encode` re-encodes the most recent animation
+  capture from its PNG frames without launching Unity, so encoder settings can
+  be iterated in seconds.
 - `-ScenarioFilter` applies to both `Visual` and `Animation` modes, so a single
   README scene can be iterated without recapturing the full catalogue.
 - `Tools/NowUI-Harness.ps1 -Mode Visual -ScenarioFilter theme-review-`
