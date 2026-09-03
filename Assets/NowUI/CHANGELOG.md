@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.6...nowui-v1.11.0) (2026-09-03)
+
+
+### Features
+
+* bake SDF from image ([7d0b5a8](https://github.com/BlenMiner/NowUI/commit/7d0b5a8683f3b1efd66aade748431c7b52db659b))
+
 ## [1.10.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.5...nowui-v1.10.6) (2026-08-31)
 
 
