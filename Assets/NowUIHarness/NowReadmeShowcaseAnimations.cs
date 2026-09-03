@@ -82,6 +82,14 @@ namespace NowUI.Editor
                 DrawSdfImageBlend));
 
             scenarios.Add(new NowHarnessAnimationScenario(
+                "music-player",
+                960,
+                540,
+                PlayerFrames,
+                24,
+                DrawMusicPlayer));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
                 "desktop-fidelity",
                 960,
                 540,

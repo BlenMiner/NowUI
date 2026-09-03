@@ -3743,6 +3743,33 @@ public class NowSdfTests
         }
     }
 
+    [Test]
+    public void SdfMorphLayerHonorsPendingHardOperation()
+    {
+        var play = NowSdf.Graph().Triangle(new Vector2(40f, 35f), new Vector2(62f, 48f), new Vector2(40f, 61f));
+        var pause = NowSdf.Graph().RoundedBox(new NowRect(36f, 35f, 9f, 26f), 2f).Union().RoundedBox(new NowRect(51f, 35f, 9f, 26f), 2f);
+
+        using (_drawList.Begin(new Vector2(96, 96)))
+        {
+            NowSdf.Scene(new NowRect(0, 0, 96, 96))
+                .SetColor(Color.white).UseColor()
+                .Circle(new Vector2(48f, 48f), 30f)
+                .Subtract()
+                .Morph(play, pause, 1f)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        var layerData0 = material.GetVectorArray("_SdfLayerData0");
+        var layerData1 = material.GetVectorArray("_SdfLayerData1");
+        string dump = $"layer0 {layerData0[0]} / {layerData1[0]}; layer1 {layerData0[1]} / {layerData1[1]}; shapes {material.GetFloat("_SdfShapeCount")}";
+        Assert.AreEqual(2f, material.GetFloat("_SdfLayerCount"), dump);
+        Assert.AreEqual((float)NowSdfLayerKind.Morph, layerData0[1].w, dump);
+        Assert.AreEqual((float)NowSdfOperation.Subtract, layerData0[1].y, dump);
+        Assert.AreEqual(1f, layerData1[1].y, dump);
+        Assert.AreEqual(4f, material.GetFloat("_SdfShapeCount"), dump);
+    }
+
     static void RequireGraphicsDevice()
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)

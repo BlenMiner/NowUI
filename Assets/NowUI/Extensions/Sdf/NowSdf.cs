@@ -3708,12 +3708,17 @@ namespace NowUI.Sdf
 
             graph.ThrowIfRotationScopesOpen("Graph");
 
+            // Flushing the inline primitives into their own layer resets the
+            // pending modifiers, so capture the operation this layer was given
+            // before the flush; it applies whenever an earlier layer exists.
+            NowSdfOperation pendingOperation = _pendingOperation;
+            float pendingSmoothing = _pendingSmoothing;
             FlushActiveGraph();
             AddLayer(new NowSdfLayer
             {
                 kind = NowSdfLayerKind.Graph,
-                operation = ConsumePendingOperation(),
-                smoothing = ConsumePendingSmoothing(),
+                operation = _layers.Count == 0 ? NowSdfOperation.Union : pendingOperation,
+                smoothing = _layers.Count == 0 ? 0f : pendingSmoothing,
                 graph = graph
             });
         }
@@ -3729,12 +3734,14 @@ namespace NowUI.Sdf
             from.ThrowIfRotationScopesOpen("Morph");
             to.ThrowIfRotationScopesOpen("Morph");
 
+            NowSdfOperation pendingOperation = _pendingOperation;
+            float pendingSmoothing = _pendingSmoothing;
             FlushActiveGraph();
             AddLayer(new NowSdfLayer
             {
                 kind = NowSdfLayerKind.Morph,
-                operation = ConsumePendingOperation(),
-                smoothing = ConsumePendingSmoothing(),
+                operation = _layers.Count == 0 ? NowSdfOperation.Union : pendingOperation,
+                smoothing = _layers.Count == 0 ? 0f : pendingSmoothing,
                 graph = from,
                 targetGraph = to,
                 morph = Mathf.Clamp01(t)

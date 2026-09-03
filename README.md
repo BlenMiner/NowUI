@@ -32,6 +32,16 @@ cursor-responsive content, a live control panel, dock magnification, and a
 texture-backed custom vertex modifier that bends the entire window into its
 Dock icon and restores it. No OS screenshots or platform artwork.*
 
+![A now-playing card: transparent album art with a silhouette-hugging glow that morphs into the next track's art on skip, a spinning vinyl with the art rotating on its label, a smooth-unioned equalizer whose bar colors blend, a play button whose icon morphs between triangle and bars, and a heart that fills with a glow burst](Docs/media/readme/music-player.gif)
+
+*A music player card where the SDF image shapes carry the design. The album
+art is a transparent sprite whose shadow and accent glow follow its
+silhouette and morph into the next track's art on skip; a vinyl spins behind
+it with the same art rotating on its label; the equalizer is one
+smooth-unioned field whose bar colors blend; the play icon morphs between a
+triangle and two bars; the heart fills with a glow burst. A cursor drives every
+interaction. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md#images-and-sprites).*
+
 ![Animated SDF metamorphosis cycling between organic, ticket, and prism forms with contours and lighting](Docs/media/readme/sdf-metamorphosis.gif)
 
 *Three unrelated SDF graphs transition through real distance-field morphs —
