@@ -15,6 +15,12 @@ namespace NowUI.Sdf
     {
         public NowSdfImageFieldKey key;
         public RenderTexture texture;
+        /// <summary>
+        /// Sprite-sized copy of the source pixels where texels outside the
+        /// silhouette carry the nearest edge color at full alpha, so fills that
+        /// reach past the pixels (smooth fillets, morph bridges) stay colored.
+        /// </summary>
+        public RenderTexture color;
         public uint sourceUpdateCount;
         public int bakeFrame = -1;
         public int lastUsedFrame;
@@ -22,7 +28,9 @@ namespace NowUI.Sdf
 
         public int padding => key.padding;
 
-        public bool isValid => texture != null && texture.IsCreated();
+        public bool isValid =>
+            texture != null && texture.IsCreated() &&
+            color != null && color.IsCreated();
     }
 
     readonly struct NowSdfImageFieldKey : IEquatable<NowSdfImageFieldKey>
@@ -218,12 +226,22 @@ namespace NowUI.Sdf
 
         static void Release(NowSdfImageField field)
         {
-            if (field?.texture == null)
+            if (field == null)
                 return;
 
-            field.texture.Release();
-            DestroyTarget(field.texture);
-            field.texture = null;
+            if (field.texture != null)
+            {
+                field.texture.Release();
+                DestroyTarget(field.texture);
+                field.texture = null;
+            }
+
+            if (field.color != null)
+            {
+                field.color.Release();
+                DestroyTarget(field.color);
+                field.color = null;
+            }
         }
 
         internal static void DestroyTarget(UnityEngine.Object target)
@@ -375,11 +393,23 @@ namespace NowUI.Sdf
             int width = Mathf.Clamp(texelRect.width + padding * 2, 1, maximum);
             int height = Mathf.Clamp(texelRect.height + padding * 2, 1, maximum);
 
-            if (field.texture != null &&
-                (field.texture.width != width || field.texture.height != height))
+            if ((field.texture != null &&
+                    (field.texture.width != width || field.texture.height != height)) ||
+                (field.color != null &&
+                    (field.color.width != texelRect.width || field.color.height != texelRect.height)))
             {
                 Release(field);
             }
+
+            field.color ??= CreateTarget(
+                texelRect.width,
+                texelRect.height,
+                RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.sRGB,
+                "Now SDF Image Color");
+
+            if (field.color == null)
+                return false;
 
             if (field.texture == null)
             {
@@ -441,6 +471,7 @@ namespace NowUI.Sdf
                 (ping, pong) = (pong, ping);
 
                 Graphics.Blit(ping, field.texture, material, 2);
+                Graphics.Blit(ping, field.color, material, 4);
             }
             finally
             {

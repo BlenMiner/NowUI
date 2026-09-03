@@ -55,6 +55,14 @@ paw print like any other graph, and shadow, glow, outline, emboss, contours,
 rotation, and a boolean cut all hug the blended edge. The source texture has
 no read/write access. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md#images-and-sprites).*
 
+![Three unrelated textures and an analytic blob merging in one SDF field: a satellite morphs between two sprites while orbiting the PurrNet logo, smooth unions bridge the silhouettes, and fill colors blend across each fillet](Docs/media/readme/sdf-image-blend.gif)
+
+*Three textures and a shape in one field. The satellite morphs between two
+sprites while it orbits the logo, smooth unions bridge every silhouette, and
+the fills crossfade exactly where the geometry does: outside its pixels each
+image contributes the color of its nearest edge, so fillets and morph bridges
+never go transparent. Shadow, glow, outline, and emboss shade the merged field.*
+
 ![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
 
 *The in-app docs browser from [NowDocsExample](Assets/NowUI/Example/NowDocsExample.cs):

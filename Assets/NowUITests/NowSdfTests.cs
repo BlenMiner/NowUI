@@ -3662,11 +3662,15 @@ public class NowSdfTests
                 return pixels[((int)rect.y + y) * colorAtlas.width + (int)rect.x + x];
             }
 
+            // Inside the silhouette the sprite's own pixels are copied. Outside
+            // it, the bake dilates the nearest edge color at full alpha so
+            // fillets and morph bridges stay colored; the gutter stays clear.
             Assert.AreEqual(255, At(uvs[0], 4, 4).a);
-            Assert.AreEqual(0, At(uvs[0], 28, 28).a);
-            Assert.AreEqual(0, At(uvs[0], 4, 28).a);
+            Assert.AreEqual(255, At(uvs[0], 28, 28).a);
+            Assert.AreEqual(255, At(uvs[0], 28, 28).r);
+            Assert.AreEqual(255, At(uvs[0], 4, 28).a);
             Assert.AreEqual(255, At(uvs[1], 2, 2).a);
-            Assert.AreEqual(0, At(uvs[1], 12, 12).a);
+            Assert.AreEqual(255, At(uvs[1], 12, 12).a);
             Assert.AreEqual(0, At(imageUvs[0], 0, 0).a);
         }
         finally
@@ -3676,6 +3680,66 @@ public class NowSdfTests
 
             Object.DestroyImmediate(second);
             Object.DestroyImmediate(first);
+        }
+    }
+
+    [Test]
+    public void SdfImageFieldAtlasBorderColumnsAreContinuousForLargePadding()
+    {
+        RequireGraphicsDevice();
+        var texture = CreateQuadrantTexture(512);
+        Texture2D readback = null;
+
+        try
+        {
+            using (_drawList.Begin(new Vector2(160, 160)))
+            {
+                NowSdf.Scene(new NowRect(0, 0, 160, 160))
+                    .SetShadow(new Vector2(0f, 12f), 22f, Color.black, 2f)
+                    .Image(new NowRect(30, 30, 100, 100), texture)
+                    .Draw();
+            }
+
+            var material = _drawList.batches[0].material;
+            var field = material.GetTexture("_SdfImageField") as RenderTexture;
+            Vector4 entry = material.GetVectorArray("_SdfImageUvs")[0];
+            int padding = (int)material.GetVectorArray("_SdfData2")[0].z;
+            Assert.AreEqual(128, padding);
+            readback = new Texture2D(field.width, field.height, TextureFormat.RGBAFloat, false);
+            var previous = RenderTexture.active;
+            RenderTexture.active = field;
+            readback.ReadPixels(new Rect(0, 0, field.width, field.height), 0, 0);
+            RenderTexture.active = previous;
+            Color[] pixels = readback.GetPixels();
+
+            float At(int x, int y) => pixels[((int)entry.y + y) * field.width + (int)entry.x + x].r;
+
+            var report = new System.Text.StringBuilder();
+            int size = (int)entry.z;
+            for (int y = 0; y < size; y += 64)
+            {
+                report.AppendLine(
+                    $"row {y}: c0={At(0, y):F2} c1={At(1, y):F2} c2={At(2, y):F2} ... " +
+                    $"c{size - 3}={At(size - 3, y):F2} c{size - 2}={At(size - 2, y):F2} c{size - 1}={At(size - 1, y):F2}");
+            }
+
+            for (int y = 0; y < size; ++y)
+            {
+                Assert.Less(Mathf.Abs(At(0, y) - At(1, y)), 2f, "left border row " + y + "\n" + report);
+                Assert.Less(Mathf.Abs(At(size - 1, y) - At(size - 2, y)), 2f, "right border row " + y + "\n" + report);
+            }
+
+            for (int x = 0; x < size; ++x)
+            {
+                Assert.Less(Mathf.Abs(At(x, 0) - At(x, 1)), 2f, "bottom border column " + x + "\n" + report);
+                Assert.Less(Mathf.Abs(At(x, size - 1) - At(x, size - 2)), 2f, "top border column " + x + "\n" + report);
+            }
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            if (readback != null)
+                Object.DestroyImmediate(readback);
         }
     }
 

@@ -160,7 +160,6 @@ namespace NowUI.Sdf
             {
                 Placement placement = _placements[i];
                 NowSdfImageField field = placement.field;
-                Texture source = field.key.texture;
                 RectInt texelRect = field.key.texelRect;
                 int padding = field.key.padding;
                 var fieldRect = new Vector4(placement.x, placement.y, placement.width, placement.height);
@@ -169,21 +168,17 @@ namespace NowUI.Sdf
                     placement.y + padding,
                     texelRect.width,
                     texelRect.height);
-                float sourceWidth = Mathf.Max(1, source.width);
-                float sourceHeight = Mathf.Max(1, source.height);
 
                 NowSdfImageFields.Stamp(
                     field.texture,
                     new Vector4(0f, 0f, 1f, 1f),
                     _fieldAtlas,
                     fieldRect);
+                // The bake's dilated copy, not the raw source: texels outside
+                // the silhouette already carry the nearest edge color.
                 NowSdfImageFields.Stamp(
-                    source,
-                    new Vector4(
-                        texelRect.x / sourceWidth,
-                        texelRect.y / sourceHeight,
-                        texelRect.width / sourceWidth,
-                        texelRect.height / sourceHeight),
+                    field.color,
+                    new Vector4(0f, 0f, 1f, 1f),
                     _colorAtlas,
                     colorRect);
 

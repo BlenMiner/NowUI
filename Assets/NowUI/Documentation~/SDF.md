@@ -465,7 +465,14 @@ images. Analytic and text-only scenes never allocate or sample them.
   smooth, and pixels below the threshold count as outside for fill coverage.
 - The fill samples the image's own RGBA tinted by the current `SetColor`, so
   `UseTexture` is implicit for the image node only; later primitives keep
-  their own fill mode.
+  their own fill mode. Hard unions and intersections switch fill at the
+  winning shape; smooth operations and morphs crossfade fills with the same
+  factor that blends the distance. Outside its silhouette an image's fill is
+  the color just inside its nearest edge at full alpha (baked with the
+  field), so a smooth fillet or morph bridge that reaches past the pixels
+  inherits the edge colors of both shapes instead of turning transparent.
+  The crossfade also weights colors by each fill's alpha and lets the
+  dominant contributor own opacity.
 - The field is padded around the image by the scene's effect reach, quantized
   in steps of eight texels and capped at 256 texels. Larger reach fades like
   text effects instead of revealing a rectangular fallback. Padding is resolved

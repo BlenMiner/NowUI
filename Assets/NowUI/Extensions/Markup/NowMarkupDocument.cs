@@ -380,6 +380,7 @@ namespace NowUI.Markup
             switch (name)
             {
                 case "column":
+                case "vertical":
                 case "vstack":
                 case "div":
                 case "section":
@@ -387,6 +388,7 @@ namespace NowUI.Markup
                 case "card":
                     return NowMarkupNodeKind.GroupVertical;
                 case "row":
+                case "horizontal":
                 case "hstack":
                     return NowMarkupNodeKind.GroupHorizontal;
                 case "scroll":

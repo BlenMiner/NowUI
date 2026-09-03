@@ -3089,15 +3089,29 @@ namespace NowUI.Editor
         /// antialiased alpha, and an angular color sweep so the fill is visibly
         /// sampled from the image rather than from a scene color.
         /// </summary>
-        static Texture2D GetSdfImageSprite()
-        {
-            if (_sdfImageSprite != null)
-                return _sdfImageSprite;
+        static Texture2D _sdfImageSpriteLarge;
 
-            const int size = 96;
+        internal static Texture2D GetSdfImageSprite()
+        {
+            return _sdfImageSprite != null
+                ? _sdfImageSprite
+                : _sdfImageSprite = CreateSdfImageSprite(96);
+        }
+
+        /// <summary>The same flower rasterized at 512 texels, for size-dependent checks.</summary>
+        internal static Texture2D GetSdfImageSpriteLarge()
+        {
+            return _sdfImageSpriteLarge != null
+                ? _sdfImageSpriteLarge
+                : _sdfImageSpriteLarge = CreateSdfImageSprite(512);
+        }
+
+        static Texture2D CreateSdfImageSprite(int size)
+        {
+            float scale = size / 96f;
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
-                name = "NowHarness SDF Image Sprite",
+                name = "NowHarness SDF Image Sprite " + size,
                 hideFlags = HideFlags.HideAndDontSave,
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear
@@ -3109,7 +3123,7 @@ namespace NowUI.Editor
             {
                 for (int x = 0; x < size; ++x)
                 {
-                    var p = new Vector2(x + 0.5f, y + 0.5f) - center;
+                    var p = (new Vector2(x + 0.5f, y + 0.5f) - center) / scale;
                     float distance = p.magnitude - 22f;
 
                     for (int petal = 0; petal < 5; ++petal)
@@ -3120,7 +3134,7 @@ namespace NowUI.Editor
                     }
 
                     distance = Mathf.Max(distance, 8f - p.magnitude);
-                    float alpha = Mathf.Clamp01(0.5f - distance);
+                    float alpha = Mathf.Clamp01(0.5f - distance * scale);
                     float hue = Mathf.Repeat(Mathf.Atan2(p.y, p.x) / (Mathf.PI * 2f), 1f);
                     Color color = Color.HSVToRGB(hue, 0.55f, 1f);
                     pixels[y * size + x] = new Color32(
@@ -3133,14 +3147,13 @@ namespace NowUI.Editor
 
             texture.SetPixels32(pixels);
             texture.Apply(false, false);
-            _sdfImageSprite = texture;
             return texture;
         }
 
         static Texture2D _sdfImageRing;
 
         /// <summary>A second, unrelated texture: a cyan ring with antialiased alpha.</summary>
-        static Texture2D GetSdfImageRing()
+        internal static Texture2D GetSdfImageRing()
         {
             if (_sdfImageRing != null)
                 return _sdfImageRing;

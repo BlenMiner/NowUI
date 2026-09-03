@@ -74,6 +74,14 @@ namespace NowUI.Editor
                 DrawSdfImageEffects));
 
             scenarios.Add(new NowHarnessAnimationScenario(
+                "sdf-image-blend",
+                960,
+                540,
+                96,
+                24,
+                DrawSdfImageBlend));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
                 "desktop-fidelity",
                 960,
                 540,

@@ -19,7 +19,7 @@ namespace NowUI.Editor
 
         static Texture2D _imageEffectsLogo;
 
-        static Texture2D GetImageEffectsLogo()
+        internal static Texture2D GetImageEffectsLogo()
         {
             if (_imageEffectsLogo != null)
                 return _imageEffectsLogo;

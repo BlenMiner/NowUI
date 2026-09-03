@@ -296,7 +296,7 @@ float NowSdfImageLocalDistanceV2(float2 local, float2 size, float4 data2, float4
     float2 fieldSize = max(size + 2.0 * pad * texelScale, 0.0001);
     float2 uv = saturate(local / fieldSize + 0.5);
     float2 atlasUv = NowSdfAtlasUvV2(float2(uv.x, 1.0 - uv.y), fieldRect, _SdfImageAtlasSize.xy);
-    float texelDistance = tex2D(_SdfImageField, atlasUv).r;
+    float texelDistance = tex2Dlod(_SdfImageField, float4(atlasUv, 0.0, 0.0)).r;
     float distance = texelDistance * min(texelScale.x, texelScale.y);
     float boundsDist = sdBox(local, fieldSize * 0.5);
     return boundsDist > 0.0 ? max(distance, 0.0) + boundsDist : distance;
@@ -743,7 +743,7 @@ float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scene
     {
         float2 imageUv = shapeUv(index, type, data1, data2, scenePos);
         float2 atlasUv = NowSdfAtlasUvV2(imageUv, _SdfUvs[index], _SdfImageAtlasSize.zw);
-        return tex2D(_SdfImageColor, atlasUv) * color;
+        return tex2Dlod(_SdfImageColor, float4(atlasUv, 0.0, 0.0)) * color;
     }
 
     if ((type > 4.5 && type < 5.5) || _SdfShapeMeta[index].y < 0.5)
@@ -753,6 +753,22 @@ float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scene
     float4 uvRect = _SdfUvs[index];
     uv = uvRect.xy + uv * uvRect.zw;
     return tex2D(_MainTex, uv) * color;
+}
+
+// Blends two straight-alpha fills with weight h on `a`. Color is weighted by
+// each fill's alpha so a transparent contributor (an image sampled outside its
+// pixels inside a smooth fillet or morph) cannot wash out its neighbor, and
+// opacity follows the dominant weighted contributor instead of diluting.
+float4 NowSdfBlendFillV2(float4 a, float4 b, float h)
+{
+    float weightA = h * a.a;
+    float weightB = (1.0 - h) * b.a;
+    float weightSum = weightA + weightB;
+    float3 rgb = weightSum > 0.0
+        ? (a.rgb * weightA + b.rgb * weightB) / weightSum
+        : lerp(b.rgb, a.rgb, h);
+    float alpha = max(weightA, weightB) / max(max(h, 1.0 - h), 0.0001);
+    return float4(rgb, alpha);
 }
 
 void combine(
@@ -817,7 +833,7 @@ void combine(
     {
         float h = saturate(0.5 + 0.5 * (shapeDist - dist) / smoothing);
         dist = lerp(shapeDist, dist, h) - smoothing * h * (1.0 - h);
-        fill = lerp(nextFill, fill, h);
+        fill = NowSdfBlendFillV2(fill, nextFill, h);
         codeStep = lerp(shapeCodeStep, codeStep, h);
         return;
     }
@@ -833,7 +849,7 @@ void combine(
     {
         float h = saturate(0.5 - 0.5 * (shapeDist - dist) / smoothing);
         dist = lerp(shapeDist, dist, h) + smoothing * h * (1.0 - h);
-        fill = lerp(nextFill, fill, h);
+        fill = NowSdfBlendFillV2(fill, nextFill, h);
         codeStep = lerp(shapeCodeStep, codeStep, h);
     }
 }
@@ -1088,7 +1104,7 @@ void evalLayerFields(
         bEffectCodeStep);
     float t = saturate(layer1.y);
     dist = lerp(aDist, bDist, t);
-    fill = lerp(aFill, bFill, t);
+    fill = NowSdfBlendFillV2(aFill, bFill, 1.0 - t);
     codeStep = lerp(aCodeStep, bCodeStep, t);
     if (useDistinctEffectField)
     {

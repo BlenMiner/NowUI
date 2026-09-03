@@ -79,7 +79,8 @@ source beside the rendered UI.
 
 Layout and text:
 
-- `column`, `row`: layout containers.
+- `column`, `row`: layout containers. `vertical` and `horizontal` are exact
+  naming aliases for `column` and `row`.
 - `panel`, `card`, `section`, `div`: vertical containers, useful with
   background styling.
 - `text`, `label`, `p`, `richtext`: rich text using NowUI default tags.

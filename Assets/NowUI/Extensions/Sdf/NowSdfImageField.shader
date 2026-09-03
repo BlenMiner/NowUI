@@ -196,6 +196,44 @@ Shader "Hidden/NowUI/SDF Image Field"
             return float4(inside ? -distance : distance, 0.0, 0.0, 1.0);
         }
 
+        // Dilated sprite color for the sprite rect (no padding). Texels inside
+        // the silhouette keep their own pixels. Texels outside take the color
+        // just inside the nearest contour point with full alpha, so smooth
+        // fillets and morph bridges that reach past the pixels inherit the edge
+        // color instead of sampling transparency. Blit target: sprite-sized.
+        float4 DilateFragment(v2f_img i) : SV_Target
+        {
+            float2 spriteSize = max(_FieldParams.xy, 1.0);
+            float2 spriteTexel = floor(i.uv * spriteSize) + 0.5;
+            float2 fieldTexel = spriteTexel + _FieldParams.z;
+            float4 own = tex2Dlod(_SourceTex, float4(_SourceUv.xy + spriteTexel / spriteSize * _SourceUv.zw, 0.0, 0.0));
+            float4 segment = tex2Dlod(_MainTex, float4(fieldTexel * _FieldTexels.zw, 0.0, 0.0));
+
+            if (segment.x < 0.0)
+                return float4(own.rgb, IsInside(own.a) ? own.a : 1.0);
+
+            float2 a = segment.xy;
+            float2 ab = segment.zw - a;
+            float lengthSquared = dot(ab, ab);
+            float t = lengthSquared > 0.0 ? saturate(dot(fieldTexel - a, ab) / lengthSquared) : 0.0;
+            float2 nearest = a + ab * t;
+            float2 toward = nearest - fieldTexel;
+
+            if (IsInside(own.a))
+            {
+                // The field owns the edge: antialiased texels within a texel of
+                // the contour become opaque so their alpha ramp cannot ghost
+                // through fillets, while interior translucency is preserved.
+                float edgeAlpha = lerp(1.0, own.a, saturate(length(toward) - 1.0));
+                return float4(own.rgb, edgeAlpha);
+            }
+            float towardLength = max(length(toward), 0.0001);
+            float2 insidePoint = nearest + toward / towardLength * 0.75;
+            float2 insideSprite = clamp(insidePoint - _FieldParams.z, 0.5, spriteSize - 0.5);
+            float4 edge = tex2Dlod(_SourceTex, float4(_SourceUv.xy + insideSprite / spriteSize * _SourceUv.zw, 0.0, 0.0));
+            return float4(edge.rgb, 1.0);
+        }
+
         // Copies the _SourceUv region of _SourceTex into the _StampRect texel
         // rect of the target atlas. The blit covers the whole atlas; fragments
         // outside the rect discard so existing entries are preserved.
@@ -253,6 +291,16 @@ Shader "Hidden/NowUI/SDF Image Field"
             CGPROGRAM
             #pragma vertex vert_img
             #pragma fragment StampFragment
+            #pragma target 3.0
+            ENDCG
+        }
+
+        Pass
+        {
+            Name "Dilate"
+            CGPROGRAM
+            #pragma vertex vert_img
+            #pragma fragment DilateFragment
             #pragma target 3.0
             ENDCG
         }
