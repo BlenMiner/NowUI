@@ -2861,6 +2861,20 @@ namespace NowUI.CodeEditor
             NowOverlay.DeferPassive(id, cache.callbackState, s_drawCompletionOverlay);
         }
 
+        static string Ellipsize(string text, NowFontAsset font, float fontSize, NowFontStyle style, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(text) || Advance(text, font, fontSize, style) <= maxWidth)
+                return text;
+
+            const string ellipsis = "...";
+            float ellipsisWidth = Advance(ellipsis, font, fontSize, style);
+            int count = text.Length;
+            while (count > 0 && Advance(text, font, fontSize, style, 0, count) + ellipsisWidth > maxWidth)
+                --count;
+
+            return count <= 0 ? ellipsis : text.Substring(0, count) + ellipsis;
+        }
+
         static void DrawCompletionOverlay(int callbackState)
         {
             if (!_callbackCaches.TryGetValue(callbackState, out var cache) ||
@@ -2901,16 +2915,37 @@ namespace NowUI.CodeEditor
                         .Draw();
                 }
 
-                var labelStyle = theme.Text(new NowRect(rowRect.x + 8f, rowRect.y, rowRect.width - 16f, rowRect.height), NowTextStyle.Body);
-                labelStyle.SetFontSize(fontSize).Draw(item.label);
+                float detailSize = fontSize * 0.85f;
+                float available = rowRect.width - 16f;
+                string label = item.label;
+                string detail = item.detail;
+                float labelWidth = Advance(label, font, fontSize, cache.measureFontStyle);
+                float detailWidth = 0f;
 
-                if (!string.IsNullOrEmpty(item.detail))
+                if (!string.IsNullOrEmpty(detail))
                 {
-                    float detailWidth = Advance(item.detail, font, fontSize * 0.85f, cache.measureFontStyle);
+                    detailWidth = Advance(detail, font, detailSize, cache.measureFontStyle);
+                    float detailRoom = Mathf.Max(available / 3f, available - labelWidth - 12f);
+                    if (detailWidth > detailRoom)
+                    {
+                        detail = Ellipsize(detail, font, detailSize, cache.measureFontStyle, detailRoom);
+                        detailWidth = Advance(detail, font, detailSize, cache.measureFontStyle);
+                    }
+                }
+
+                float labelRoom = detailWidth > 0f ? available - detailWidth - 12f : available;
+                if (labelWidth > labelRoom)
+                    label = Ellipsize(label, font, fontSize, cache.measureFontStyle, labelRoom);
+
+                var labelStyle = theme.Text(new NowRect(rowRect.x + 8f, rowRect.y, Mathf.Max(labelRoom, 0f), rowRect.height), NowTextStyle.Body);
+                labelStyle.SetFontSize(fontSize).Draw(label);
+
+                if (detailWidth > 0f)
+                {
                     var detailStyle = theme.Text(
                         new NowRect(rowRect.xMax - detailWidth - 8f, rowRect.y, detailWidth + 4f, rowRect.height),
                         NowTextStyle.Muted);
-                    detailStyle.SetFontSize(fontSize * 0.85f).Draw(item.detail);
+                    detailStyle.SetFontSize(detailSize).Draw(detail);
                 }
             }
 
