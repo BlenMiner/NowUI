@@ -57,7 +57,7 @@ namespace NowUI.Editor
             DrawAnimatedBackdrop(rect, u, accent, new Color(0.46f, 0.30f, 1f, 1f), PlayerAccentA);
             DrawGrid(rect, 48f, new Color(0.60f, 0.72f, 1f, 0.035f));
 
-            var card = new NowRect(150f, 92f, 660f, 356f);
+            var card = new NowRect(100f, 92f, 760f, 356f);
             Now.Rectangle(new NowRect(card.x - 14f, card.y + 18f, card.width + 28f, card.height + 14f))
                 .SetColor(new Color(0f, 0f, 0f, 0.40f))
                 .SetRadius(34f)
@@ -77,11 +77,12 @@ namespace NowUI.Editor
             DrawPlayerVinyl(new Vector2(card.x + 268f, card.y + 176f), spin, playing, accent, flower, cat, trackB);
             DrawPlayerArt(new NowRect(card.x + 34f, card.y + 40f, 236f, 236f), flower, cat, trackB, accent, u);
 
-            float textX = card.x + 356f;
-            DrawPlayerTitles(new NowRect(textX, card.y + 34f, 420f, 70f), trackB, likedNow, accent);
-            DrawPlayerEqualizer(new NowRect(textX, card.y + 112f, 396f, 74f), f, playing, accent);
-            DrawPlayerProgress(new NowRect(textX, card.y + 214f, 396f, 30f), elapsed, accent);
-            DrawPlayerControls(new NowRect(textX, card.y + 260f, 396f, 70f), paused, playPress, nextPress, heartPress, likedNow, heartBurst, accent);
+            float textX = card.x + 380f;
+            float columnWidth = card.xMax - textX - 28f;
+            DrawPlayerTitles(new NowRect(textX, card.y + 34f, columnWidth, 70f), trackB, likedNow, accent);
+            DrawPlayerEqualizer(new NowRect(textX, card.y + 112f, columnWidth, 74f), f, playing, accent);
+            DrawPlayerProgress(new NowRect(textX, card.y + 214f, columnWidth, 30f), elapsed, accent);
+            DrawPlayerControls(new NowRect(textX, card.y + 260f, columnWidth, 70f), paused, playPress, nextPress, heartPress, likedNow, heartBurst, accent);
 
             DrawCursor(cursor);
             DrawRenderedTag(new NowRect(760f, 506f, 160f, 24f));
@@ -261,8 +262,8 @@ namespace NowUI.Editor
             // Heart: two circles and a rotated box fused into one field. Liking
             // fills it, scales it, and fires a glow burst that decays.
             float heartScale = 1f + burst * 0.28f - heartPress * 0.08f;
-            var heartScene = new NowRect(heartX - 40f, cy - 40f, 80f, 80f);
-            var h = new Vector2(40f, 41f);
+            var heartScene = new NowRect(heartX - 64f, cy - 64f, 128f, 128f);
+            var h = new Vector2(64f, 65f);
             Color heartFill = Color.Lerp(new Color(0.30f, 0.32f, 0.42f, 1f), PlayerHeart, liked);
             NowSdf.Scene(heartScene, "readme-player-heart")
                 .SetFeather(1f)
@@ -332,10 +333,10 @@ namespace NowUI.Editor
 
         static Vector2 PlayerCursorPath(float frame)
         {
-            var heart = new Vector2(756f, 385f);
-            var next = new Vector2(726f, 386f);
-            var play = new Vector2(648f, 392f);
-            var start = new Vector2(716f, 300f);
+            var heart = new Vector2(790f, 384f);
+            var next = new Vector2(708f, 386f);
+            var play = new Vector2(628f, 392f);
+            var start = new Vector2(700f, 300f);
 
             if (frame < 14f)
                 return Vector2.Lerp(start, heart, Smooth(Mathf.InverseLerp(0f, 14f, frame)));
