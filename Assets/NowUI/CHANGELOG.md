@@ -1,3 +1,10 @@
+## [1.11.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.1...nowui-v1.11.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* sdf image blending ([8402e62](https://github.com/BlenMiner/NowUI/commit/8402e62f331892800821f74cec046a926e7066b2))
+
 ## [1.11.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.0...nowui-v1.11.1) (2026-09-03)
 
 
