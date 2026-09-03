@@ -66,6 +66,14 @@ namespace NowUI.Editor
                 DrawSdfMetamorphosis));
 
             scenarios.Add(new NowHarnessAnimationScenario(
+                "sdf-image-effects",
+                960,
+                540,
+                96,
+                24,
+                DrawSdfImageEffects));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
                 "desktop-fidelity",
                 960,
                 540,
