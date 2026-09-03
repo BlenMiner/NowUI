@@ -42,6 +42,8 @@ struct v2f
 };
 
 sampler2D _MainTex;
+// Baked image silhouette field: signed distance in source texels, red channel.
+sampler2D _SdfImageField;
 float _NowCanvasLayout;
 float _SdfShapeCount;
 float _SdfLayerCount;
@@ -251,9 +253,35 @@ float NowSdfGlyphSampleV2(float4 sample, float encoding)
     return NowSdfGlyphSamplesV2(sample, encoding).x;
 }
 
+// Image fields store float distances, so quantization is negligible; a small
+// nonzero step still marks the field as finite for exterior-effect fading.
+#define NOW_SDF_IMAGE_CODE_STEP 0.002
+
 float NowSdfShapeCodeStepV2(float type, float4 data2)
 {
-    return type > 4.5 && type < 5.5 ? max(data2.z, 0.0) : 0.0;
+    if (type > 4.5 && type < 5.5)
+        return max(data2.z, 0.0);
+
+    if (type > 9.5 && type < 10.5)
+        return max(min(data2.x, data2.y), 0.0001) * NOW_SDF_IMAGE_CODE_STEP;
+
+    return 0.0;
+}
+
+// data1.zw: image rect size, data2.xy: scene units per source texel,
+// data2.z: field padding in texels. The field covers the image rect plus the
+// padding on every side; beyond it the distance continues from the clamped
+// border sample so the padded quad boundary cannot become a false edge.
+float NowSdfImageLocalDistanceV2(float2 local, float2 size, float4 data2)
+{
+    float2 texelScale = max(data2.xy, 0.0001);
+    float pad = max(data2.z, 0.0);
+    float2 fieldSize = max(size + 2.0 * pad * texelScale, 0.0001);
+    float2 uv = saturate(local / fieldSize + 0.5);
+    float texelDistance = tex2D(_SdfImageField, float2(uv.x, 1.0 - uv.y)).r;
+    float distance = texelDistance * min(texelScale.x, texelScale.y);
+    float boundsDist = sdBox(local, fieldSize * 0.5);
+    return boundsDist > 0.0 ? max(distance, 0.0) + boundsDist : distance;
 }
 
 float2 NowSdfGlyphLocalDistancesV2(
@@ -357,6 +385,9 @@ float NowSdfUnrotatedShapeDistanceV2(
             data2.z) * scale;
     }
 
+    if (type < 10.5)
+        return NowSdfImageLocalDistanceV2(scenePos - data1.xy, data1.zw, data2);
+
     return 100000.0;
 }
 
@@ -438,6 +469,9 @@ float NowSdfRotatedShapeDistanceV2(
             data2.xy,
             data2.z) * scale;
     }
+
+    if (type < 10.5)
+        return NowSdfImageLocalDistanceV2(relativeScenePos, data1.zw, data2);
 
     return 100000.0;
 }
@@ -580,6 +614,12 @@ float2 NowSdfRotatedShapeUvV2(
             : 0.5;
         return float2(uv.x, 1.0 - uv.y);
     }
+    else if (type < 10.5)
+    {
+        float2 halfSize = data1.zw * 0.5;
+        minPoint = -halfSize;
+        maxPoint = halfSize;
+    }
     else
     {
         return float2(0.5, 0.5);
@@ -659,6 +699,12 @@ float2 shapeUv(int index, float type, float4 data1, float4 data2, float2 scenePo
             ? saturate((normalizedPosition.y - minNormalized.y) / span.y)
             : 0.5;
         return float2(uv.x, 1.0 - uv.y);
+    }
+    else if (type < 10.5)
+    {
+        float2 halfSize = data1.zw * 0.5;
+        minPoint = data1.xy - halfSize;
+        maxPoint = data1.xy + halfSize;
     }
     else
     {

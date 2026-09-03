@@ -424,6 +424,54 @@ Scene effects measure against a locally normalized field distance, so stroke,
 shadow, emboss, and contour sizes stay close to scene-pixel units even through
 smooth blends, morphs, and warped organic fields.
 
+## Images And Sprites
+
+`Image(rect, texture)` and `Sprite(rect, sprite)` add a texture as a shape
+whose silhouette is its alpha channel. Every scene effect, boolean operation,
+smooth blend, morph, and mask then follows the opaque outline instead of the
+quad, so a transparent-background icon or character gets an outline, drop
+shadow, glow, emboss, or contours that hug its solid pixels:
+
+```csharp
+NowSdf.Scene(new NowRect(20f, 20f, 200f, 200f))
+    .SetShadow(new Vector2(6f, 8f), 14f, new Color(0f, 0f, 0f, 0.35f), 2f)
+    .SetOutline(3f, Color.white)
+    .SetEmboss(new Vector2(-0.6f, -0.8f), 0.25f, 4f)
+    .Sprite(new NowRect(40f, 40f, 160f, 160f), heroSprite)
+    .Draw();
+```
+
+The distance field is baked on the GPU with jump flooding through
+`Graphics.Blit`, so the texture does not need Read/Write import access and
+`RenderTexture`, video, or atlas-sliced sources work. Fields are cached per
+texture, region, threshold, and padding, and rebake when the source texture
+changes (`Texture2D.Apply` or a new `updateCount`); a `RenderTexture` source
+rebakes once per frame. Fields unused for several hundred frames are released
+automatically, and `NowSdf.Reset()` releases them all.
+
+- `Image(rect, texture, uvRect, threshold)` bakes only the normalized `uvRect`
+  region, while `Sprite` uses the sprite's texture rect. `threshold` (default
+  0.5) selects the alpha value treated as the solid edge; texels touching that
+  edge refine the field with their antialiased coverage so soft edges stay
+  smooth, and pixels below the threshold count as outside for fill coverage.
+- The fill samples the image's own RGBA tinted by the current `SetColor`, so
+  `UseTexture` is implicit for the image node only; later primitives keep
+  their own fill mode.
+- The field is padded around the image by the scene's effect reach, quantized
+  in steps of eight texels and capped at 256 texels. Larger reach fades like
+  text effects instead of revealing a rectangular fallback. Padding is resolved
+  at `Measure`, layout reservation, `Draw`, or `BeginMask`, so effect setters
+  may appear before or after the image.
+- Distances scale with the draw rect. Non-uniform scaling uses the smaller
+  axis scale, which keeps effect widths at least as wide as requested along
+  the stretched axis.
+- A scene exposes one `_MainTex` and one image field. Every image shape in a
+  scene must share the same texture, region, and threshold, and it must match
+  the texture already bound by `SetTexture`, `Text`, or an earlier image call
+  in its graph, otherwise `Image` throws `InvalidOperationException`.
+- Image shapes require material ABI v2. Custom materials sample the field
+  through the `_SdfImageField` sampler that `NowSdfShaderV2.cginc` declares.
+
 ## Custom SDF Materials
 
 `SetMaterial(...)` replaces the final SDF shader for one scene. Use it for a

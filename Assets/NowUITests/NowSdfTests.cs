@@ -3424,4 +3424,206 @@ public class NowSdfTests
         Assert.GreaterOrEqual((double)node.bounds.xMax, transformedX);
         Assert.GreaterOrEqual((double)node.bounds.yMax, transformedY);
     }
+
+    [Test]
+    public void SdfImageBakesSilhouetteFieldAndUploadsShapeData()
+    {
+        RequireGraphicsDevice();
+        var texture = CreateQuadrantTexture(32);
+
+        try
+        {
+            void DrawScene()
+            {
+                using (_drawList.Begin(new Vector2(160, 160)))
+                {
+                    NowSdf.Scene(new NowRect(0, 0, 160, 160))
+                        .SetShadow(new Vector2(4f, 4f), 6f, Color.black, 2f)
+                        .Image(new NowRect(40, 40, 64, 64), texture)
+                        .Draw();
+                }
+            }
+
+            DrawScene();
+
+            var material = _drawList.batches[0].material;
+            Assert.AreSame(texture, material.mainTexture);
+            var field = material.GetTexture("_SdfImageField") as RenderTexture;
+            Assert.NotNull(field, "The scene must bind a baked image field.");
+            Assert.AreEqual(1, NowSdfImageFields.bakeCount);
+
+            var data0 = material.GetVectorArray("_SdfData0");
+            var data1 = material.GetVectorArray("_SdfData1");
+            var data2 = material.GetVectorArray("_SdfData2");
+            var shapeMeta = material.GetVectorArray("_SdfShapeMeta");
+            var uvs = material.GetVectorArray("_SdfUvs");
+            Assert.AreEqual((float)NowSdfShapeType.Image, data0[0].x);
+            Assert.AreEqual(new Vector4(72f, 72f, 64f, 64f), data1[0]);
+            Assert.AreEqual(2f, data2[0].x, 0.0001f);
+            Assert.AreEqual(2f, data2[0].y, 0.0001f);
+            // Shadow reach is softness + spread = 8 scene units = 4 texels, plus
+            // one guard texel, quantized up to the padding step.
+            Assert.AreEqual(NowSdfImageFields.PaddingStep, (int)data2[0].z);
+            Assert.AreEqual(0.5f, data2[0].w, 0.0001f);
+            Assert.AreEqual(1f, shapeMeta[0].y);
+            Assert.AreEqual(new Vector4(0f, 0f, 1f, 1f), uvs[0]);
+            Assert.AreEqual(32 + NowSdfImageFields.PaddingStep * 2, field.width);
+            Assert.AreEqual(32 + NowSdfImageFields.PaddingStep * 2, field.height);
+
+            float effectLimit = material.GetFloat("_SdfTextEffectLimit");
+            Assert.GreaterOrEqual(effectLimit, 8f);
+            Assert.Less(effectLimit, 100000f);
+
+            // An unchanged source reuses the field; an edited one rebakes it.
+            DrawScene();
+            Assert.AreEqual(1, NowSdfImageFields.bakeCount);
+            texture.SetPixel(0, 0, Color.clear);
+            texture.Apply();
+            DrawScene();
+            Assert.AreEqual(2, NowSdfImageFields.bakeCount);
+            Assert.AreEqual(1, NowSdfImageFields.fieldCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
+    public void SdfImageFieldStoresSignedTexelDistancesInSourceOrientation()
+    {
+        RequireGraphicsDevice();
+        var texture = CreateQuadrantTexture(32);
+        Texture2D readback = null;
+
+        try
+        {
+            using (_drawList.Begin(new Vector2(64, 64)))
+            {
+                NowSdf.Scene(new NowRect(0, 0, 64, 64))
+                    .Image(new NowRect(16, 16, 32, 32), texture)
+                    .Draw();
+            }
+
+            var material = _drawList.batches[0].material;
+            var field = material.GetTexture("_SdfImageField") as RenderTexture;
+            Assert.NotNull(field);
+            int padding = (int)material.GetVectorArray("_SdfData2")[0].z;
+
+            readback = new Texture2D(field.width, field.height, TextureFormat.RGBAFloat, false);
+            var previous = RenderTexture.active;
+            RenderTexture.active = field;
+            readback.ReadPixels(new Rect(0, 0, field.width, field.height), 0, 0);
+            RenderTexture.active = previous;
+            Color[] pixels = readback.GetPixels();
+
+            float At(int sourceX, int sourceY)
+            {
+                return pixels[(sourceY + padding) * field.width + sourceX + padding].r;
+            }
+
+            // Opaque bottom-left quadrant: the contour runs halfway between the
+            // last opaque texel center and the first transparent one, so the
+            // silhouette occupies [0, 16] in texel-center coordinates.
+            Assert.AreEqual(-4.5f, At(4, 4), 0.1f);
+            // The boundary pair straddles zero.
+            Assert.AreEqual(-0.5f, At(15, 4), 0.1f);
+            Assert.AreEqual(0.5f, At(16, 4), 0.1f);
+            // The transparent quadrants keep the source's y-up orientation.
+            Assert.Greater(At(4, 28), 5f);
+            Assert.Greater(At(28, 4), 5f);
+            // Marching squares chamfers the sharp corner (16, 16) with a segment
+            // from (16, 15.5) to (15.5, 16), so diagonal distances measure to
+            // the line x + y = 31.5 rather than to the corner point.
+            Assert.AreEqual((57f - 31.5f) / Mathf.Sqrt(2f), At(28, 28), 0.15f);
+            // Padding is transparent and measures back to the chamfered corner
+            // at the origin: the cell whose only inside corner is (0.5, 0.5)
+            // yields the segment from (0, 0.5) to (0.5, 0), the line x + y = 0.5.
+            Assert.AreEqual((2f * (padding - 0.5f) + 0.5f) / Mathf.Sqrt(2f), At(-padding, -padding), 0.15f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(texture);
+            if (readback != null)
+                Object.DestroyImmediate(readback);
+        }
+    }
+
+    [Test]
+    public void SdfSpriteUsesTextureRectAndRejectsForeignTextures()
+    {
+        RequireGraphicsDevice();
+        var texture = CreateQuadrantTexture(32);
+        var other = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+        Sprite sprite = null;
+
+        try
+        {
+            sprite = Sprite.Create(texture, new Rect(16f, 0f, 16f, 16f), new Vector2(0.5f, 0.5f));
+
+            using (_drawList.Begin(new Vector2(96, 96)))
+            {
+                NowSdf.Scene(new NowRect(0, 0, 96, 96))
+                    .Sprite(new NowRect(8, 8, 48, 24), sprite)
+                    .Draw();
+            }
+
+            var material = _drawList.batches[0].material;
+            var data2 = material.GetVectorArray("_SdfData2");
+            var uvs = material.GetVectorArray("_SdfUvs");
+            var field = material.GetTexture("_SdfImageField") as RenderTexture;
+            Assert.AreSame(texture, material.mainTexture);
+            Assert.AreEqual(new Vector4(0.5f, 0f, 0.5f, 0.5f), uvs[0]);
+            Assert.AreEqual(3f, data2[0].x, 0.0001f);
+            Assert.AreEqual(1.5f, data2[0].y, 0.0001f);
+            Assert.NotNull(field);
+            Assert.AreEqual(16 + (int)data2[0].z * 2, field.width);
+            Assert.AreEqual(16 + (int)data2[0].z * 2, field.height);
+
+            using (_drawList.Begin(new Vector2(96, 96)))
+            {
+                Assert.Throws<System.InvalidOperationException>(() =>
+                    NowSdf.Scene(new NowRect(0, 0, 96, 96))
+                        .SetTexture(other)
+                        .Image(new NowRect(8, 8, 32, 32), texture));
+            }
+        }
+        finally
+        {
+            if (sprite != null)
+                Object.DestroyImmediate(sprite);
+
+            Object.DestroyImmediate(other);
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    static void RequireGraphicsDevice()
+    {
+        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            Assert.Ignore("Image fields need a graphics device.");
+    }
+
+    /// <summary>Opaque in the bottom-left quadrant (texel y up), transparent elsewhere.</summary>
+    static Texture2D CreateQuadrantTexture(int size)
+    {
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var pixels = new Color32[size * size];
+        int half = size / 2;
+
+        for (int y = 0; y < size; ++y)
+        {
+            for (int x = 0; x < size; ++x)
+            {
+                bool opaque = x < half && y < half;
+                pixels[y * size + x] = opaque
+                    ? new Color32(255, 255, 255, 255)
+                    : new Color32(0, 0, 0, 0);
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply();
+        return texture;
+    }
 }

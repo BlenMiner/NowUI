@@ -3,6 +3,7 @@ Shader "NowUI/SDF Scene"
     Properties
     {
         [PerRendererData] _MainTex ("Texture", 2D) = "white" {}
+        [HideInInspector] _SdfImageField ("SDF Image Field", 2D) = "black" {}
         [HideInInspector] _NowSdfAbiVersion ("Now SDF ABI Version", Float) = 2
         [HideInInspector] _NowUIMaskCount ("Now UI Mask Count", Float) = 0
         [HideInInspector] _NowUITextureMaskCount ("Now UI Texture Mask Count", Float) = 0
