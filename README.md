@@ -46,13 +46,14 @@ analytic mask. Both passes share the identical field; only the final shader
 and mask coverage differ. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md),
 [Masks](Assets/NowUI/Documentation~/Masks.md).*
 
-![The PurrNet cat logo, a transparent PNG, drawn as an SDF image shape with an orbiting drop shadow, pulsing glow, outline, emboss lighting, contour spotlight, and a subtracted circle that all follow its alpha silhouette](Docs/media/readme/sdf-image-effects.gif)
+![The PurrNet cat logo, a transparent PNG, drawn as an SDF image shape that morphs into an analytic paw print and back while an orbiting drop shadow, pulsing glow, outline, emboss lighting, contour spotlight, and a subtracted circle follow the blended silhouette](Docs/media/readme/sdf-image-effects.gif)
 
 *An ordinary transparent PNG (the [PurrNet](https://github.com/BlenMiner/PurrNet)
 logo, the one external image in this README) used as an SDF shape. Its alpha
-silhouette becomes a GPU-baked distance field, so shadow, glow, outline,
-emboss, contours, rotation, and a boolean cut all hug the opaque pixels. The
-source texture has no read/write access. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md#images-and-sprites).*
+silhouette becomes a GPU-baked distance field, so it morphs into an analytic
+paw print like any other graph, and shadow, glow, outline, emboss, contours,
+rotation, and a boolean cut all hug the blended edge. The source texture has
+no read/write access. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md#images-and-sprites).*
 
 ![In-app documentation browser rendered with NowUI, including live 3D model previews and syntax-highlighted code](Docs/media/readme/docs-model-preview-demo.png)
 

@@ -14,6 +14,9 @@ namespace NowUI.Editor
     {
         const string ImageEffectsLogoPath = "Docs/media/readme/purrnet-logo.png";
 
+        static readonly NowSdfGraph SdfImageLogo = NowSdf.Graph();
+        static readonly NowSdfGraph SdfImagePaw = NowSdf.Graph();
+
         static Texture2D _imageEffectsLogo;
 
         static Texture2D GetImageEffectsLogo()
@@ -100,14 +103,46 @@ namespace NowUI.Editor
             var center = new Vector2(w * 0.5f, h * 0.5f);
             var lightDirection = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
             Vector2 shadowOffset = -lightDirection * 14f;
+            // Every moving value completes whole turns per loop so the encoded
+            // GIF wraps seamlessly from the last frame back to the first.
             var contourCenter = center + new Vector2(
-                Mathf.Cos(angle * 0.5f + 1.2f) * w * 0.30f,
-                Mathf.Sin(angle + 0.6f) * h * 0.30f);
+                Mathf.Cos(angle + 1.2f) * w * 0.30f,
+                Mathf.Sin(angle * 2f + 0.6f) * h * 0.30f);
 
             const float logoSize = 236f;
             var logoRect = new NowRect(center.x - logoSize * 0.5f, center.y - logoSize * 0.5f + 4f, logoSize, logoSize);
-            float biteAngle = -angle * 0.5f;
+            float biteAngle = -angle;
             var biteCenter = center + new Vector2(Mathf.Cos(biteAngle) * 108f, Mathf.Sin(biteAngle) * 96f);
+
+            // The image is an ordinary graph operand, so it morphs like any
+            // analytic field: the logo's silhouette flows into a paw print and
+            // back while every effect keeps tracking the blended distance.
+            var logoGraph = SdfImageLogo.Clear()
+                .SetColor(Color.white)
+                .RotateNext(Mathf.Sin(angle) * 7f)
+                .Image(logoRect, logo)
+                .SmoothSubtract(10f)
+                .Circle(biteCenter, 26f + pulse * 10f);
+
+            var paw = SdfImagePaw.Clear()
+                .SetColor(new Color(1f, 0.62f, 0.10f, 1f)).UseColor()
+                .Ellipse(new NowRect(center.x - 64f, center.y - 4f, 128f, 104f))
+                .SetColor(new Color(1f, 0.80f, 0.28f, 1f)).UseColor()
+                .SmoothUnion(16f)
+                .Circle(center + new Vector2(-78f, -46f), 28f)
+                .SmoothUnion(16f)
+                .Circle(center + new Vector2(-28f, -84f), 30f)
+                .SmoothUnion(16f)
+                .Circle(center + new Vector2(30f, -84f), 30f)
+                .SmoothUnion(16f)
+                .Circle(center + new Vector2(80f, -46f), 28f);
+
+            // Hold the logo, morph into the paw, hold, and morph back.
+            float phase = Mathf.Repeat(u * 2f, 1f);
+            float morph = Smooth(Mathf.Clamp01((phase - 0.35f) / 0.35f));
+            bool toPaw = u < 0.5f;
+            NowSdfGraph from = toPaw ? logoGraph : paw;
+            NowSdfGraph to = toPaw ? paw : logoGraph;
 
             NowSdf.Scene(scene, "readme-sdf-image-effects")
                 .SetFeather(1.2f)
@@ -118,10 +153,7 @@ namespace NowUI.Editor
                 .SetEmboss(lightDirection, 0.26f, 8f)
                 .SetContours(16f, 1.1f, new Color(1f, 0.92f, 0.78f, 0.20f), u * 16f, 4)
                 .SetContourMask(contourCenter, 104f, 48f)
-                .RotateNext(Mathf.Sin(angle) * 7f)
-                .Image(logoRect, logo)
-                .SmoothSubtract(10f)
-                .Circle(biteCenter, 26f + pulse * 10f)
+                .Morph(from, to, morph)
                 .Draw();
 
             Vector2 marker = scene.position + contourCenter;
@@ -129,7 +161,7 @@ namespace NowUI.Editor
             Now.Circle(marker, 4f).SetColor(new Color(1f, 0.95f, 0.80f, 0.94f)).Draw();
 
             DrawText(new NowRect(42f, 472f, 876f, 22f),
-                "IMAGE  /  SHADOW  /  GLOW  /  OUTLINE  /  EMBOSS  /  CONTOURS  /  BOOLEAN CUT",
+                "IMAGE  /  MORPH  /  SHADOW  /  GLOW  /  OUTLINE  /  EMBOSS  /  CONTOURS  /  BOOLEAN CUT",
                 13f,
                 new Color(0.90f, 0.76f, 0.58f, 1f),
                 true);
