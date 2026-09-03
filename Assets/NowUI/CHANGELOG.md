@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.0...nowui-v1.11.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* allow N textures for the SDF image drawer ([431664b](https://github.com/BlenMiner/NowUI/commit/431664bf2ee1ec1d853eab56801236bf4a9c2438))
+
 # [1.11.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.10.6...nowui-v1.11.0) (2026-09-03)
 
 
