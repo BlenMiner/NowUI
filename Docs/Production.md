@@ -37,12 +37,19 @@ Run the editor visual harness locally as a separate rendering gate:
 - `Tools/NowUI-Harness.ps1 -Mode Animation` advances an explicit deterministic
   frame clock, writes numbered PNG sequences, and encodes looping animated
   WebP files under `artifacts/local/animation`. WebP is what the README
-  embeds: full-colour, under half the size of the equivalent GIFs, and it still
-  autoplays in a plain `<img>`. Add `-Gif` or `-Mp4` to also emit those
-  containers, and `-WebpQuality` (default 80) to trade size for fidelity.
-  Animation capture is intentionally separate from `All` and golden
-  comparison. It requires `ffmpeg` on `PATH`; pass `-Ffmpeg`, or set
-  `FFMPEG`/`FFMPEG_PATH`, for a nonstandard install.
+  embeds: full-colour, about a sixth of the size of the equivalent GIFs, and
+  it still autoplays in a plain `<img>`. `-WebpQuality` (default 60, the
+  lowest setting with no visible loss on the README loops) and `-WebpMethod`
+  (libwebp effort, default 6) trade size against fidelity and encode time.
+  Add `-Gif` or `-Mp4` to also emit those containers. Animation capture is
+  intentionally separate from `All` and golden comparison.
+- WebP encoding runs through `Tools/NowUI-EncodeWebp.py`, which needs Python 3
+  with Pillow (`python -m pip install pillow`); pass `-Python`, or set
+  `PYTHON`/`PYTHON_PATH`, for a nonstandard install. The script's docstring
+  records why Pillow beats ffmpeg's WebP encoder here and why the captures'
+  partial alpha is flattened. `-Gif` and `-Mp4` still need `ffmpeg` on
+  `PATH`; pass `-Ffmpeg`, or set `FFMPEG`/`FFMPEG_PATH`, for a nonstandard
+  install.
 - `Tools/NowUI-Harness.ps1 -Mode Encode` re-encodes the most recent animation
   capture from its PNG frames without launching Unity, so encoder settings can
   be iterated in seconds.

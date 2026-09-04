@@ -27,8 +27,15 @@ param(
     [string] $Ffmpeg,
 
     [Parameter(Mandatory = $false)]
+    [string] $Python,
+
+    [Parameter(Mandatory = $false)]
     [ValidateRange(0, 100)]
-    [int] $WebpQuality = 80,
+    [int] $WebpQuality = 60,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(0, 6)]
+    [int] $WebpMethod = 6,
 
     [Parameter(Mandatory = $false)]
     [switch] $Gif,
@@ -119,15 +126,22 @@ function Resolve-UnityEditor {
     throw "Unity $expectedVersion was not found. Checked '$searched'. Pass -UnityEditor or set UNITY_EDITOR."
 }
 
-function Resolve-Ffmpeg {
-    param([string] $RequestedPath)
+function Resolve-Tool {
+    param(
+        [string] $Name,
+        [string] $RequestedPath,
+        [string[]] $EnvironmentVariables,
+        [string] $Hint
+    )
 
     $requested = $RequestedPath
     if ([string]::IsNullOrWhiteSpace($requested)) {
-        if (![string]::IsNullOrWhiteSpace($env:FFMPEG)) {
-            $requested = $env:FFMPEG
-        } elseif (![string]::IsNullOrWhiteSpace($env:FFMPEG_PATH)) {
-            $requested = $env:FFMPEG_PATH
+        foreach ($variable in $EnvironmentVariables) {
+            $value = [System.Environment]::GetEnvironmentVariable($variable)
+            if (![string]::IsNullOrWhiteSpace($value)) {
+                $requested = $value
+                break
+            }
         }
     }
 
@@ -140,7 +154,7 @@ function Resolve-Ffmpeg {
             $requested.Contains([System.IO.Path]::DirectorySeparatorChar) -or
             $requested.Contains([System.IO.Path]::AltDirectorySeparatorChar)
         if ($looksLikePath) {
-            throw "The requested ffmpeg executable was not found at '$requested'."
+            throw "The requested $Name executable was not found at '$requested'."
         }
 
         $requestedCommand = Get-Command -Name $requested -CommandType Application -ErrorAction SilentlyContinue |
@@ -149,16 +163,39 @@ function Resolve-Ffmpeg {
             return $requestedCommand.Source
         }
 
-        throw "The requested ffmpeg command '$requested' was not found on PATH."
+        throw "The requested $Name command '$requested' was not found on PATH."
     }
 
-    $pathCommand = Get-Command -Name "ffmpeg" -CommandType Application -ErrorAction SilentlyContinue |
+    $pathCommand = Get-Command -Name $Name -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if ($null -ne $pathCommand) {
         return $pathCommand.Source
     }
 
-    throw "ffmpeg is required for Animation mode. Pass -Ffmpeg, set FFMPEG or FFMPEG_PATH, or add ffmpeg to PATH."
+    throw $Hint
+}
+
+function Resolve-Ffmpeg {
+    param([string] $RequestedPath)
+
+    return Resolve-Tool -Name "ffmpeg" -RequestedPath $RequestedPath `
+        -EnvironmentVariables @("FFMPEG", "FFMPEG_PATH") `
+        -Hint "ffmpeg is required for -Gif and -Mp4 output. Pass -Ffmpeg, set FFMPEG or FFMPEG_PATH, or add ffmpeg to PATH."
+}
+
+function Resolve-Python {
+    param([string] $RequestedPath)
+
+    $pythonPath = Resolve-Tool -Name "python" -RequestedPath $RequestedPath `
+        -EnvironmentVariables @("PYTHON", "PYTHON_PATH") `
+        -Hint "Python 3 with Pillow is required to encode animated WebP. Pass -Python, set PYTHON or PYTHON_PATH, or add python to PATH."
+
+    & $pythonPath -c "import PIL.Image" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python at '$pythonPath' cannot import Pillow, which encodes the animated WebP files. Install it with: `"$pythonPath`" -m pip install pillow"
+    }
+
+    return $pythonPath
 }
 
 function Clear-ScriptAssemblies {
@@ -220,14 +257,15 @@ function Invoke-Unity {
     }
 }
 
-function Invoke-Ffmpeg {
+function Invoke-Encoder {
     param(
         [string] $Executable,
         [string[]] $Arguments,
         [string] $Description
     )
 
-    Write-Host "Running ffmpeg for $Description."
+    $toolName = [System.IO.Path]::GetFileNameWithoutExtension($Executable)
+    Write-Host "Running $toolName for $Description."
     $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $processInfo.FileName = $Executable
     $processInfo.UseShellExecute = $false
@@ -243,7 +281,7 @@ function Invoke-Ffmpeg {
 
     try {
         if (!$process.Start()) {
-            throw "ffmpeg did not start."
+            throw "$toolName did not start."
         }
 
         $standardOutput = $process.StandardOutput.ReadToEndAsync()
@@ -261,7 +299,7 @@ function Invoke-Ffmpeg {
                 Write-Host $errorOutput.Trim()
             }
 
-            throw "ffmpeg exited with code $($process.ExitCode) while encoding $Description."
+            throw "$toolName exited with code $($process.ExitCode) while encoding $Description."
         }
     } finally {
         $process.Dispose()
@@ -432,8 +470,15 @@ function Invoke-AnimationEncode {
         return
     }
 
-    $ffmpegPath = Resolve-Ffmpeg -RequestedPath $Ffmpeg
-    Write-Host "Using ffmpeg from '$ffmpegPath'."
+    $pythonPath = Resolve-Python -RequestedPath $Python
+    Write-Host "Using python from '$pythonPath'."
+    $webpEncoder = Join-Path $PSScriptRoot "NowUI-EncodeWebp.py"
+
+    $ffmpegPath = $null
+    if ($Gif -or $Mp4) {
+        $ffmpegPath = Resolve-Ffmpeg -RequestedPath $Ffmpeg
+        Write-Host "Using ffmpeg from '$ffmpegPath'."
+    }
 
     $animationRoot = [System.IO.Path]::GetFullPath($AnimationRoot)
     $rootPrefix = $animationRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
@@ -492,19 +537,21 @@ function Invoke-AnimationEncode {
         )
 
         # Animated WebP is the README format: full 24-bit colour, no palette
-        # dithering, under half the GIF size overall, and it still autoplays
-        # inside a plain <img> tag on GitHub. libwebp_anim (not libwebp) is what
-        # exploits inter-frame redundancy; compression level 5 is within a few
-        # percent of level 6 at a fraction of the encode time.
+        # dithering, about a sixth of the GIF size, and it still autoplays
+        # inside a plain <img> tag on GitHub. NowUI-EncodeWebp.py explains why
+        # it goes through Pillow rather than ffmpeg and why alpha is dropped.
         $webpPath = "$outputStem.webp"
         Remove-Item -LiteralPath $webpPath -Force -ErrorAction SilentlyContinue
-        Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (webp)" -Arguments ($inputArguments + @(
-            "-c:v", "libwebp_anim",
-            "-quality", [string] $WebpQuality,
-            "-compression_level", "5",
-            "-loop", "0",
-            $webpPath
-        ))
+        Invoke-Encoder -Executable $pythonPath -Description "animation '$name' (webp)" -Arguments @(
+            $webpEncoder,
+            "--frames", $frameDirectory,
+            "--pattern", $framePattern,
+            "--count", [string] $frameCount,
+            "--fps", $frameRateText,
+            "--quality", [string] $WebpQuality,
+            "--method", [string] $WebpMethod,
+            "--output", $webpPath
+        )
         Write-Host "Encoded '$webpPath'."
 
         if ($Gif) {
@@ -513,7 +560,7 @@ function Invoke-AnimationEncode {
             $filter = "[0:v]split[palette_source][frames];[palette_source]palettegen=max_colors=256:stats_mode=diff[palette];[frames][palette]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle"
             $gifPath = "$outputStem.gif"
             Remove-Item -LiteralPath $gifPath -Force -ErrorAction SilentlyContinue
-            Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (gif)" -Arguments ($inputArguments + @(
+            Invoke-Encoder -Executable $ffmpegPath -Description "animation '$name' (gif)" -Arguments ($inputArguments + @(
                 "-filter_complex", $filter,
                 "-loop", "0",
                 "-gifflags", "+transdiff",
@@ -527,7 +574,7 @@ function Invoke-AnimationEncode {
             # odd sizes and is a no-op for the 960x540 README captures.
             $mp4Path = "$outputStem.mp4"
             Remove-Item -LiteralPath $mp4Path -Force -ErrorAction SilentlyContinue
-            Invoke-Ffmpeg -Executable $ffmpegPath -Description "animation '$name' (mp4)" -Arguments ($inputArguments + @(
+            Invoke-Encoder -Executable $ffmpegPath -Description "animation '$name' (mp4)" -Arguments ($inputArguments + @(
                 "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-c:v", "libx264",
                 "-preset", "veryslow",
