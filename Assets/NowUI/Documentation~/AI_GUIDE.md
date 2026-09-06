@@ -130,6 +130,7 @@ Host lifecycle rules:
 | World-space panels and input | World graphic hosts | [World Space](WorldSpace.md) |
 | UGUI, UI Toolkit, Built-in, URP, HDRP | Host and pipeline types | [Render Pipelines](RenderPipelines.md) |
 | Runtime or editor `OnGUI` | `NowGUI`, `NowEditorGUI` | [IMGUI](EditorGUI.md) |
+| Inspector preview of a UI host | `NowPreviewEditor`, `INowPreviewHost` | [IMGUI](EditorGUI.md) |
 | Warmup and allocation expectations | Warmup APIs | [Performance](Performance.md) |
 
 ## Correctness rules

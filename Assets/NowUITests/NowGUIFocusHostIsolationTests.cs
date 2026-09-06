@@ -30,6 +30,11 @@ public class NowGUIFocusHostIsolationTests
             "CleanupUnusedEntriesForActiveContext",
             BindingFlags.NonPublic | BindingFlags.Static);
 
+    static readonly MethodInfo CleanupUnusedEntriesForIdleContextMethod =
+        typeof(NowGUI).GetMethod(
+            "CleanupUnusedEntriesForIdleContext",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
     static readonly FieldInfo LastCleanupTimeField = typeof(NowGUI).GetField(
         "_lastCleanupTime",
         BindingFlags.NonPublic | BindingFlags.Static);
@@ -498,6 +503,47 @@ public class NowGUIFocusHostIsolationTests
         }
     }
 
+    [Test]
+    public void IdleContextCleanupReclaimsAPanelThatStoppedDrawing()
+    {
+        var context = ScriptableObject.CreateInstance<NowGUIFocusHostTestContext>();
+        const int hiddenControlId = 7321;
+
+        try
+        {
+            NowGUI.CacheEntry hiddenEntry = GetEntry(context, hiddenControlId);
+            RenderTexture hiddenTarget = hiddenEntry.GetTarget(8, 8);
+            hiddenEntry.lastUsedTime = double.NegativeInfinity;
+            hiddenEntry.contextActivity.lastUsedTime = double.NegativeInfinity;
+
+            ForceIdleContextCleanup(context);
+
+            Assert.AreSame(
+                hiddenEntry,
+                GetEntry(context, hiddenControlId),
+                "A host that resumes drawing must give its panels one cleanup interval to draw again.");
+            Assert.AreSame(hiddenTarget, hiddenEntry.target);
+
+            hiddenEntry.contextActivity.cleanupEligibleTime = double.NegativeInfinity;
+            ForceIdleContextCleanup(context);
+
+            Assert.AreNotSame(
+                hiddenEntry,
+                GetEntry(context, hiddenControlId),
+                "A panel that stopped drawing while its host kept running IMGUI must be reclaimed past the cache lifetime.");
+            Assert.IsNull(
+                hiddenEntry.target,
+                "Reclaiming a hidden panel must release its render target.");
+            Assert.Throws<ObjectDisposedException>(
+                () => hiddenEntry.renderer.Clear(),
+                "Reclaiming a hidden panel must dispose its renderer.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(context);
+        }
+    }
+
     static PanelPass CreatePanel(
         object context,
         int nativeControlId = SharedNativeControlId)
@@ -617,6 +663,16 @@ public class NowGUIFocusHostIsolationTests
         Assert.NotNull(RemoveKeysField);
         LastCleanupTimeField.SetValue(null, double.NegativeInfinity);
         CleanupUnusedEntriesForActiveContextMethod.Invoke(
+            null,
+            new[] { activeContext });
+    }
+
+    static void ForceIdleContextCleanup(object activeContext)
+    {
+        Assert.NotNull(CleanupUnusedEntriesForIdleContextMethod);
+        Assert.NotNull(LastCleanupTimeField);
+        LastCleanupTimeField.SetValue(null, double.NegativeInfinity);
+        CleanupUnusedEntriesForIdleContextMethod.Invoke(
             null,
             new[] { activeContext });
     }

@@ -64,7 +64,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/Now World Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
-    public class NowWorldGraphic : MonoBehaviour, INowPopupFitProvider, INowDynamicTextureHost
+    public class NowWorldGraphic : MonoBehaviour, INowPopupFitProvider, INowDynamicTextureHost, INowPreviewHost
     {
         static readonly int _zTestId = Shader.PropertyToID("_ZTest");
         static readonly int _nowMaterialGlassModeId = Shader.PropertyToID("_NowMaterialGlassMode");
@@ -388,6 +388,14 @@ namespace NowUI
             {
                 _owner.DrawNowUI(rect);
             }
+        }
+
+        Vector2 INowPreviewHost.previewContentSize => SanitizeSize(_size);
+
+        void INowPreviewHost.DrawPreviewContent(NowRect rect)
+        {
+            var content = new FrameContent(this);
+            NowFrame.DrawContent(ref content, rect, useLayoutMeasurePass, trackContent: false);
         }
 
         public Mesh mesh => _drawList?.mesh;
