@@ -1052,11 +1052,16 @@ namespace NowUI
 
         public virtual float minWidth => -1f;
 
+        // Newer UGUI versions require maximum sizes; negative values leave them unconstrained.
+        public virtual float maxWidth => -1f;
+
         public virtual float preferredWidth => _driveLayoutSize ? _preferredSize.x : -1f;
 
         public virtual float flexibleWidth => -1f;
 
         public virtual float minHeight => -1f;
+
+        public virtual float maxHeight => -1f;
 
         public virtual float preferredHeight => _driveLayoutSize ? _preferredSize.y : -1f;
 
