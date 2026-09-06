@@ -86,7 +86,7 @@ namespace NowUI
     [AddComponentMenu("NowUI/Now Graphic")]
     [ExecuteAlways]
     [RequireComponent(typeof(CanvasRenderer))]
-    public class NowGraphic : MaskableGraphic, ILayoutElement, INowDynamicTextureHost
+    public class NowGraphic : MaskableGraphic, ILayoutElement, INowDynamicTextureHost, INowPreviewHost
     {
         static readonly HashSet<NowGraphic> _liveGraphics = new HashSet<NowGraphic>();
 
@@ -373,6 +373,14 @@ namespace NowUI
             {
                 _owner.DrawNowUI(rect);
             }
+        }
+
+        Vector2 INowPreviewHost.previewContentSize => rectTransform.rect.size;
+
+        void INowPreviewHost.DrawPreviewContent(NowRect rect)
+        {
+            var content = new FrameContent(this);
+            NowFrame.DrawContent(ref content, rect, useLayoutMeasurePass, trackContent: false);
         }
 
         public void MarkDirty()

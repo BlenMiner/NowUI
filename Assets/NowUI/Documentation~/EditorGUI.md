@@ -113,6 +113,36 @@ using (var ui = NowEditorGUI.Auto(rect, Color.white))
 }
 ```
 
+## Inspector Preview
+
+`NowGraphic`, `NowWorldGraphic`, and `NowPipelineGraphic`, including their
+layout hosts and derived components, draw their own content in the Inspector's
+preview area. The preview runs the host's content in its own editor panel,
+passively: like the host's edit-mode rebuild, nothing focuses, types, or
+transitions control state.
+
+The host lays out at its own content size — the `RectTransform` rect for UGUI,
+the surface size for a world graphic, the camera's pixel size for a pipeline
+graphic — and the rendered image is scaled to fit the preview area, keeping its
+aspect ratio, as UGUI's own `Image` and `RawImage` previews do. Scaling up
+raises the render density rather than magnifying pixels, so an enlarged preview
+stays sharp. The info string below the preview reports the content size.
+
+The preview shows the host's UI surface, not its placement. A world graphic
+previews as a flat surface, without mesh deformation, perspective, or scene
+lighting; a pipeline graphic previews against its `targetCamera`, or the main
+camera when it has none.
+
+Previews are offered in edit mode only. In play mode the host is already driven
+every frame, and a control's caller-owned state lives on the component rather
+than the host, so a second live host would re-enter that state at another size.
+
+A `CustomEditor` for a host subclass replaces the packaged inspector; derive it
+from `NowPreviewEditor` to keep the preview. `NowVisualElement` implements
+`INowPreviewHost` too, but a `VisualElement` is not an object the Inspector can
+select, so the package registers no editor for it. A component that owns one can
+preview it by deriving from `NowPreviewEditor` and overriding `previewHost`.
+
 ## Notes
 
 - `NowGUIScope.rect`, `width`, and `height` use IMGUI point units.
@@ -203,5 +233,7 @@ using (var ui = NowEditorGUI.Auto(rect, Color.white))
 - Reusable custom controls still need unique scope ancestry. Wrap the complete
   body in `NowControls.ControlScope(id, file, line)`, forward caller file/line
   from public wrappers, and give reorderable instances stable explicit IDs.
+- A collapsed Inspector preview stops drawing, so its panel is reclaimed with
+  the other idle panels of that window once it passes the cache lifetime.
 - Call `NowGUI.DisposeAll()` if a runtime host needs to eagerly release all
   cached render textures.

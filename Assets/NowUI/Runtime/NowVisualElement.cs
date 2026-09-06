@@ -13,7 +13,7 @@ namespace NowUI
     /// it and override <see cref="DrawNowUI"/>.
     /// </summary>
     [UxmlElement]
-    public partial class NowVisualElement : VisualElement, IDisposable, INowDynamicTextureHost
+    public partial class NowVisualElement : VisualElement, IDisposable, INowDynamicTextureHost, INowPreviewHost
     {
         static readonly ushort[] s_indices = { 0, 1, 2, 2, 3, 0 };
 
@@ -278,6 +278,14 @@ namespace NowUI
             {
                 _owner.DrawNowUI(rect);
             }
+        }
+
+        Vector2 INowPreviewHost.previewContentSize => contentRect.size;
+
+        void INowPreviewHost.DrawPreviewContent(NowRect rect)
+        {
+            var content = new FrameContent(this);
+            NowFrame.DrawContent(ref content, rect, useLayoutMeasurePass, trackContent: false);
         }
 
         void OnAttachToPanel(AttachToPanelEvent evt)

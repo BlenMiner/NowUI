@@ -7,7 +7,7 @@ namespace NowUI
 {
     [AddComponentMenu("NowUI/Now Pipeline Graphic")]
     [ExecuteAlways]
-    public class NowPipelineGraphic : MonoBehaviour
+    public class NowPipelineGraphic : MonoBehaviour, INowPreviewHost
     {
         const int MissingConsumerWarningFrames = 120;
 
@@ -348,6 +348,28 @@ namespace NowUI
                 using (NowGlassSettings.PushBlurQuality(_owner._glassBlurQuality))
                     _owner.DrawNowUI(_camera, rect);
             }
+        }
+
+        // A pipeline host is drawn by each rendering camera rather than owning one,
+        // so a preview falls back to the main camera when no target is assigned.
+        Camera previewContentCamera => _targetCamera != null ? _targetCamera : Camera.main;
+
+        Vector2 INowPreviewHost.previewContentSize
+        {
+            get
+            {
+                var camera = previewContentCamera;
+
+                return camera != null
+                    ? new Vector2(camera.pixelWidth, camera.pixelHeight)
+                    : Vector2.zero;
+            }
+        }
+
+        void INowPreviewHost.DrawPreviewContent(NowRect rect)
+        {
+            var content = new FrameContent(this, previewContentCamera);
+            NowFrame.DrawContent(ref content, rect, useLayoutMeasurePass, trackContent: false);
         }
 
         static int CompareOrder(NowPipelineGraphic lhs, NowPipelineGraphic rhs)
