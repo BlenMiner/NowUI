@@ -42,6 +42,27 @@ smooth-unioned field whose bar colors blend; the play icon morphs between a
 triangle and two bars; the heart fills with a glow burst. A cursor drives every
 interaction. [SDF Shapes](Assets/NowUI/Documentation~/SDF.md#images-and-sprites).*
 
+![A circular month slider: a cursor grabs a white knob and drags it around a gray ring track, a rose-to-crimson progress arc follows it, and the count on the raised center disc ticks from 4 to 9, back to 2, and home again](Docs/media/readme/month-slider.webp)
+
+*An Airbnb-style stay-length dial, after the PanGui demo of the same control.
+The track and the progress arc are each one SDF arc primitive with a texture
+fill: a conic ramp paints the rose-to-crimson sweep across the arc no matter
+how far it is dragged, while the inner shadow, emboss, and drop shadow follow
+the round-capped geometry. The knob lifts and glows while held, and the count
+slides over on every month boundary.
+[SDF Shapes](Assets/NowUI/Documentation~/SDF.md), [Gradients](Assets/NowUI/Documentation~/Gradients.md).*
+
+![A shape-algebra walkthrough: two circles and a triangle are combined step by step through union, intersection, shell, difference, smooth union, and subtraction into a heart, each step named by a syntax-colored code caption, then the heart pulses, wobbles by mixing with an orbiting circle, reacts to a hovering cursor, and morphs back into the opening circle](Docs/media/readme/shape-algebra.webp)
+
+*Shape algebra, after the PanGui "Shapes" demo. Two circles and a triangle
+are combined one operation at a time (union, intersection, a 10-unit shell,
+symmetric difference, smooth union, subtraction) until they form a heart.
+Every step change is a real distance-field morph or a parameter slide, never
+a crossfade, and the sphere shading, outline, and drop shadow follow whatever
+field results. The captions keep their shared prefix and animate only the
+new suffix with the built-in FadeUp text animation.
+[SDF Shapes](Assets/NowUI/Documentation~/SDF.md#morphs), [Text Animations](Assets/NowUI/Documentation~/TextStyling.md#built-in-text-animations).*
+
 ![Animated SDF metamorphosis cycling between organic, ticket, and prism forms with contours and lighting](Docs/media/readme/sdf-metamorphosis.webp)
 
 *Three unrelated SDF graphs transition through real distance-field morphs —

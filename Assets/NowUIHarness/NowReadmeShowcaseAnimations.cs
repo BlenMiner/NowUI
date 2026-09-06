@@ -104,6 +104,22 @@ namespace NowUI.Editor
                 96,
                 24,
                 DrawSdfShaderXRay));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
+                "month-slider",
+                960,
+                540,
+                MonthFrames,
+                24,
+                DrawMonthSlider));
+
+            scenarios.Add(new NowHarnessAnimationScenario(
+                "shape-algebra",
+                960,
+                540,
+                ShapesTotalFrames(),
+                24,
+                DrawShapeAlgebra));
         }
 
         static void DrawSdfMetamorphosis(NowRect rect, NowHarnessAnimationFrame frame)
