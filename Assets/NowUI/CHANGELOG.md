@@ -1,3 +1,10 @@
+## [1.11.8](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.7...nowui-v1.11.8) (2026-09-06)
+
+
+### Bug Fixes
+
+* let NowLayoutVisualElement report its content size so auto-sized UI ([10e1e9a](https://github.com/BlenMiner/NowUI/commit/10e1e9a545cd676f54c415c26ea902d1f1049146))
+
 ## [1.11.7](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.6...nowui-v1.11.7) (2026-09-06)
 
 
