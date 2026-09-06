@@ -192,6 +192,66 @@ public class NowResolvedIdTests
     }
 
     [Test]
+    public void CachedCallSitesPreserveTheIdentityHashFormat()
+    {
+        var root = NowResolvedId.CreateOwnerRoot(1UL);
+        NowCallSiteId site = NowControls.SiteId("Widgets/Panel.cs", 120);
+
+        Assert.AreEqual(
+            "7578D3AFD4926658",
+            NowControls.ResolveCallSiteStable(root, site.token, NowIdDomain.Control).ToString());
+
+        string equalPath = new string("Widgets/Panel.cs".ToCharArray());
+        Assert.AreEqual(site, NowControls.SiteId(equalPath, 120));
+
+        string[] files = { "Widgets/Panel.cs", "Widgets/Other.cs", null, string.Empty };
+        int[] lines = { 120, 121, 0, int.MaxValue };
+        var owners = new[] { root, NowResolvedId.CreateOwnerRoot(2UL).Child("panel") };
+        var domains = new[] { NowIdDomain.Control, NowIdDomain.Layout, NowIdDomain.Scope };
+
+        for (int i = 0; i < files.Length; ++i)
+        {
+            NowCallSiteId cached = NowControls.SiteId(files[i], lines[i]);
+
+            foreach (NowResolvedId owner in owners)
+            {
+                foreach (NowIdDomain domain in domains)
+                {
+                    Assert.AreEqual(
+                        NowIdHash.DeriveCallSite(owner, domain, files[i], lines[i]),
+                        NowControls.ResolveCallSiteStable(owner, cached.token, domain));
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void InvalidCallSiteLineIsValidatedOnlyWhenTheFallbackIsResolved()
+    {
+        var root = NowResolvedId.CreateOwnerRoot(751UL);
+        NowCallSiteId invalid = NowControls.SiteId("Widgets/Invalid.cs", -1);
+        Assert.AreEqual(invalid, NowControls.SiteId("Widgets/Invalid.cs", -1));
+
+        using (NowControls.ControlScope(root))
+        {
+            Assert.AreEqual(
+                root.Derive(NowIdDomain.Control, 17),
+                NowControls.GetControlId((NowId)17, invalid));
+
+            var resolved = root.Child("resolved");
+            Assert.AreEqual(resolved, new NowControlIdentity(resolved).Resolve(invalid));
+
+            var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                NowControls.GetControlId(default(NowId), invalid));
+            Assert.AreEqual("line", error.ParamName);
+        }
+
+        var domainError = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            NowControls.ResolveCallSiteStable(root, invalid.token, NowIdDomain.None));
+        Assert.AreEqual("domain", domainError.ParamName);
+    }
+
+    [Test]
     public void IdentityBearingBuildersAcceptAlreadyResolvedIdentity()
     {
         Type modifier = typeof(NowModifierBuilder<NowWaveDeformer>);

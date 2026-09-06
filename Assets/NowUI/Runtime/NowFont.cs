@@ -96,11 +96,28 @@ namespace NowUI
         /// provides falls back to Regular, so it renders as regular text, not as nothing.</summary>
         public bool TryResolveFont(NowFontStyle style, out NowFont font)
         {
+            font = null;
+
+            if (this == null)
+                return false;
+
+            // Most text uses an immediately available font. Only acquire the
+            // cycle guard when resolution actually needs to visit fallbacks.
+            if (TryGetOwnFont(style, out font) && font != null)
+                return true;
+
+            return TryResolveFontFromFallbacks(style, ref font);
+        }
+
+        bool TryResolveFontFromFallbacks(NowFontStyle style, ref NowFont font)
+        {
             var visited = GetVisitCache();
 
             try
             {
-                if (TryResolveFont(style, visited, out font))
+                visited.Add(this);
+
+                if (TryResolveFallbackFont(style, visited, ref font))
                     return true;
 
                 if (style == NowFontStyle.Regular)
@@ -184,6 +201,11 @@ namespace NowUI
             if (TryGetOwnFont(style, out font) && font != null)
                 return true;
 
+            return TryResolveFallbackFont(style, visited, ref font);
+        }
+
+        bool TryResolveFallbackFont(NowFontStyle style, HashSet<NowFontAsset> visited, ref NowFont font)
+        {
             if (_fallbacks == null)
                 return false;
 
@@ -373,11 +395,23 @@ namespace NowUI
 
         public float GetLineHeight(NowFontStyle style = NowFontStyle.Regular)
         {
+            if (this == null)
+                return 1;
+
+            if (TryGetOwnFont(style, out var font) && font != null)
+                return font.GetLineHeight();
+
+            return GetFallbackLineHeight(style);
+        }
+
+        float GetFallbackLineHeight(NowFontStyle style)
+        {
             var visited = GetVisitCache();
 
             try
             {
-                return GetLineHeight(style, visited);
+                visited.Add(this);
+                return GetFallbackLineHeight(style, visited);
             }
             finally
             {
@@ -393,6 +427,11 @@ namespace NowUI
             if (TryGetOwnFont(style, out var font) && font != null)
                 return font.GetLineHeight();
 
+            return GetFallbackLineHeight(style, visited);
+        }
+
+        float GetFallbackLineHeight(NowFontStyle style, HashSet<NowFontAsset> visited)
+        {
             if (_fallbacks != null)
             {
                 for (int i = 0; i < _fallbacks.Length; ++i)
@@ -414,11 +453,23 @@ namespace NowUI
         /// </summary>
         public float GetAscender(NowFontStyle style = NowFontStyle.Regular)
         {
+            if (this == null)
+                return 1;
+
+            if (TryGetOwnFont(style, out var font) && font != null)
+                return font.GetAscender();
+
+            return GetFallbackAscender(style);
+        }
+
+        float GetFallbackAscender(NowFontStyle style)
+        {
             var visited = GetVisitCache();
 
             try
             {
-                return GetAscender(style, visited);
+                visited.Add(this);
+                return GetFallbackAscender(style, visited);
             }
             finally
             {
@@ -434,6 +485,11 @@ namespace NowUI
             if (TryGetOwnFont(style, out var font) && font != null)
                 return font.GetAscender();
 
+            return GetFallbackAscender(style, visited);
+        }
+
+        float GetFallbackAscender(NowFontStyle style, HashSet<NowFontAsset> visited)
+        {
             if (_fallbacks != null)
             {
                 for (int i = 0; i < _fallbacks.Length; ++i)

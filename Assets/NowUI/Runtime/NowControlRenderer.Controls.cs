@@ -277,18 +277,20 @@ namespace NowUI
     {
         public virtual Vector2 MeasureSwitch(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
-            var styles = themeAsset.controlStyles;
+            float toggleGap = themeAsset.controlStyles.toggleGap;
+            float switchWidth = themeAsset.controlStyles.switchWidth;
+            float switchHeight = themeAsset.controlStyles.switchHeight;
             var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            float gap = string.IsNullOrEmpty(label) ? 0f : styles.toggleGap;
+            float gap = string.IsNullOrEmpty(label) ? 0f : toggleGap;
             return new Vector2(
-                styles.switchWidth + gap + labelSize.x,
-                Mathf.Max(styles.switchHeight, labelSize.y));
+                switchWidth + gap + labelSize.x,
+                Mathf.Max(switchHeight, labelSize.y));
         }
 
         public virtual NowRect SwitchGlyphRect(NowThemeAsset themeAsset, NowRect rect)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             return new NowRect(
                 rect.x,
                 rect.y + (rect.height - styles.switchHeight) * 0.5f,
@@ -298,14 +300,14 @@ namespace NowUI
 
         public virtual NowRect SwitchContentRect(NowThemeAsset themeAsset, NowRect rect)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             float offset = styles.switchWidth + styles.toggleGap;
             return new NowRect(rect.x + offset, rect.y, rect.width - offset, rect.height);
         }
 
         public virtual void DrawSwitch(in NowSwitchRenderContext context)
         {
-            var styles = context.themeAsset.controlStyles;
+            float switchKnobInset = context.themeAsset.controlStyles.switchKnobInset;
             var track = context.glyphRect;
             float trackRadius = track.height * 0.5f;
 
@@ -322,7 +324,7 @@ namespace NowUI
                 .SetOutlineColor(Color.LerpUnclamped(context.themeAsset.GetColor(NowColorToken.BorderStrong), Color.clear, context.onT))
                 .Draw();
 
-            float inset = styles.switchKnobInset;
+            float inset = switchKnobInset;
             float knob = track.height - inset * 2f;
             float knobX = Mathf.LerpUnclamped(track.x + inset, track.xMax - inset - knob, context.onT);
             var knobRect = new NowRect(knobX, track.y + inset, knob, knob);
@@ -402,11 +404,12 @@ namespace NowUI
 
         public virtual Vector2 MeasureBadge(NowThemeAsset themeAsset, string label, NowTextStyle textStyle)
         {
-            var styles = themeAsset.controlStyles;
+            float badgeMinSize = themeAsset.controlStyles.badgeMinSize;
+            float badgePaddingX = themeAsset.controlStyles.badgePaddingX;
             var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            float height = Mathf.Max(styles.badgeMinSize, labelSize.y + 4f);
-            return new Vector2(Mathf.Max(height, labelSize.x + styles.badgePaddingX * 2f), height);
+            float height = Mathf.Max(badgeMinSize, labelSize.y + 4f);
+            return new Vector2(Mathf.Max(height, labelSize.x + badgePaddingX * 2f), height);
         }
 
         public virtual void DrawBadge(in NowBadgeRenderContext context)
@@ -427,20 +430,22 @@ namespace NowUI
 
         public virtual Vector2 MeasureChip(NowThemeAsset themeAsset, string label, NowTextStyle textStyle, bool removable)
         {
-            var styles = themeAsset.controlStyles;
+            float chipPaddingX = themeAsset.controlStyles.chipPaddingX;
+            float chipRemoveSize = themeAsset.controlStyles.chipRemoveSize;
+            float chipHeight = themeAsset.controlStyles.chipHeight;
             var text = NowControls.Text(themeAsset, textStyle);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            float width = labelSize.x + styles.chipPaddingX * 2f;
+            float width = labelSize.x + chipPaddingX * 2f;
 
             if (removable)
-                width += styles.chipRemoveSize + 4f;
+                width += chipRemoveSize + 4f;
 
-            return new Vector2(width, styles.chipHeight);
+            return new Vector2(width, chipHeight);
         }
 
         public virtual NowRect ChipRemoveRect(NowThemeAsset themeAsset, NowRect rect)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             float size = styles.chipRemoveSize;
             return new NowRect(
                 rect.xMax - size - styles.chipPaddingX * 0.5f,
@@ -541,11 +546,12 @@ namespace NowUI
 
         public virtual Vector2 MeasureTooltip(NowThemeAsset themeAsset, string text)
         {
-            var styles = themeAsset.controlStyles;
+            float tooltipMaxWidth = themeAsset.controlStyles.tooltipMaxWidth;
+            float tooltipPadding = themeAsset.controlStyles.tooltipPadding;
             var body = NowControls.Text(themeAsset, NowTextStyle.Caption);
             body.mask = default;
             string value = text ?? string.Empty;
-            float wrapWidth = styles.tooltipMaxWidth - styles.tooltipPadding * 2f;
+            float wrapWidth = tooltipMaxWidth - tooltipPadding * 2f;
             Vector2 size;
 
             if (TooltipRunsReusable(value, in body, wrapWidth))
@@ -559,13 +565,13 @@ namespace NowUI
             }
 
             return new Vector2(
-                Mathf.Min(styles.tooltipMaxWidth, size.x + styles.tooltipPadding * 2f),
-                size.y + styles.tooltipPadding * 2f);
+                Mathf.Min(tooltipMaxWidth, size.x + tooltipPadding * 2f),
+                size.y + tooltipPadding * 2f);
         }
 
         public virtual void DrawTooltip(in NowTooltipRenderContext context)
         {
-            var styles = context.themeAsset.controlStyles;
+            float tooltipPadding = context.themeAsset.controlStyles.tooltipPadding;
             Vector4 radius = context.themeAsset.GetRadius(NowRadiusToken.Sm, new Vector4(6f, 6f, 6f, 6f));
 
             DrawElevationShadow(context.themeAsset, context.rect, radius, NowElevationToken.Overlay);
@@ -578,7 +584,7 @@ namespace NowUI
             var text = NowControls.Text(context.themeAsset, NowTextStyle.Caption)
                 .SetColor(context.themeAsset.GetColor(NowColorToken.Background));
             text.mask = default;
-            float pad = styles.tooltipPadding;
+            float pad = tooltipPadding;
             string value = context.text ?? string.Empty;
             float wrapWidth = context.rect.width - pad * 2f;
 
@@ -598,10 +604,11 @@ namespace NowUI
 
         public virtual Vector2 MeasureTab(NowThemeAsset themeAsset, string label)
         {
-            var styles = themeAsset.controlStyles;
+            float tabPaddingX = themeAsset.controlStyles.tabPaddingX;
+            float tabHeight = themeAsset.controlStyles.tabHeight;
             var text = NowControls.Text(themeAsset, NowTextStyle.Body);
             Vector2 labelSize = text.Measure(label ?? string.Empty);
-            return new Vector2(labelSize.x + styles.tabPaddingX * 2f, styles.tabHeight);
+            return new Vector2(labelSize.x + tabPaddingX * 2f, tabHeight);
         }
 
         public virtual void DrawTabBarBackground(NowThemeAsset themeAsset, NowRect rect)
@@ -613,7 +620,8 @@ namespace NowUI
 
         public virtual void DrawTab(in NowTabRenderContext context)
         {
-            var styles = context.themeAsset.controlStyles;
+            float tabIndicatorThickness = context.themeAsset.controlStyles.tabIndicatorThickness;
+            float tabPaddingX = context.themeAsset.controlStyles.tabPaddingX;
 
             if (context.interaction.hovered || context.interaction.held)
             {
@@ -635,8 +643,8 @@ namespace NowUI
 
             if (context.selectedT > 0.01f)
             {
-                float thickness = styles.tabIndicatorThickness;
-                float width = (context.rect.width - styles.tabPaddingX) * context.selectedT;
+                float thickness = tabIndicatorThickness;
+                float width = (context.rect.width - tabPaddingX) * context.selectedT;
                 Color indicator = context.themeAsset.GetColor(NowColorToken.Accent);
                 indicator.a *= context.selectedT;
                 Now.Rectangle(new NowRect(
@@ -677,7 +685,7 @@ namespace NowUI
 
         public virtual void DrawTreeRow(in NowTreeRowRenderContext context)
         {
-            var styles = context.themeAsset.controlStyles;
+            float popupItemRadius = context.themeAsset.controlStyles.popupItemRadius;
 
             if (context.selected || context.interaction.hovered || context.interaction.held)
             {
@@ -688,13 +696,13 @@ namespace NowUI
                         : context.themeAsset.GetColor(NowColorToken.SurfaceHover);
 
                 Now.Rectangle(context.rect)
-                    .SetRadius(styles.popupItemRadius)
+                    .SetRadius(popupItemRadius)
                     .SetColor(fill)
                     .Draw();
             }
 
             if (context.focused)
-                DrawFocusRing(context.themeAsset, context.rect, new Vector4(styles.popupItemRadius, styles.popupItemRadius, styles.popupItemRadius, styles.popupItemRadius));
+                DrawFocusRing(context.themeAsset, context.rect, new Vector4(popupItemRadius, popupItemRadius, popupItemRadius, popupItemRadius));
 
             if (context.hasChildren)
             {

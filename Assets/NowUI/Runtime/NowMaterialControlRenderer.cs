@@ -438,7 +438,7 @@ namespace NowUI
 
         static void DrawStateLayer(NowThemeAsset themeAsset, NowRect rect, Vector4 radius, Color color, float hoverT, bool pressed)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             float opacity = pressed ? styles.pressedStateOpacity : styles.hoverStateOpacity * Mathf.Clamp01(hoverT);
             if (opacity <= 0f)
                 return;
@@ -452,7 +452,7 @@ namespace NowUI
 
         static void DrawButtonRipple(in NowButtonRenderContext context, Vector4 radius)
         {
-            var styles = context.themeAsset.controlStyles;
+            ref readonly var styles = ref context.themeAsset.controlStyles;
             if (styles.rippleDuration <= 0f || styles.rippleOpacity <= 0f)
                 return;
 
@@ -527,7 +527,7 @@ namespace NowUI
 
         static void ApplyFocus(NowThemeAsset themeAsset, ref NowRectangle rectangle, bool field)
         {
-            var styles = themeAsset.controlStyles;
+            ref readonly var styles = ref themeAsset.controlStyles;
             rectangle.outline = Mathf.Max(rectangle.outline, styles.focusOutline);
             rectangle.outlineColor = field
                 ? styles.fieldFocusColor.Resolve(themeAsset)

@@ -689,7 +689,7 @@ namespace NowUI
 
         static StaticList<ushort> _triangles16 = new StaticList<ushort>(NowMesh.INITIAL_INDEX_CAPACITY);
 
-        static StaticList<int> _subMeshIndexCounts = new StaticList<int>(8);
+        static StaticList<SubMeshDescriptor> _subMeshDescriptors = new StaticList<SubMeshDescriptor>(8);
 
         static readonly List<int> _capturedMeshIndices = new List<int>(8);
 
@@ -1907,64 +1907,58 @@ namespace NowUI
                 }
             }
 
+            var indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            bool use16BitIndices = indexFormat == IndexFormat.UInt16;
             _triangles.Clear();
-            _subMeshIndexCounts.Clear();
+            _triangles16.Clear();
+            _subMeshDescriptors.Clear();
+            _subMeshDescriptors.EnsureCapacity(_capturedMeshIndices.Count);
 
             int vertexOffset = 0;
+            int indexCount = 0;
 
+            // Append directly in the upload format and retain the ordered ranges
+            // alongside it. Small meshes avoid an intermediate 32-bit index copy.
             for (int subMesh = 0; subMesh < _capturedMeshIndices.Count; ++subMesh)
             {
                 var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
+                int indexStart = indexCount;
 
-                int indexStart = _triangles.count;
-                mesh.AppendTriangles(ref _triangles, vertexOffset);
-                _subMeshIndexCounts.EnsureCapacity(1);
-                _subMeshIndexCounts.array[_subMeshIndexCounts.count++] = _triangles.count - indexStart;
+                if (use16BitIndices)
+                {
+                    mesh.AppendTriangles(ref _triangles16, vertexOffset);
+                    indexCount = _triangles16.count;
+                }
+                else
+                {
+                    mesh.AppendTriangles(ref _triangles, vertexOffset);
+                    indexCount = _triangles.count;
+                }
+
+                _subMeshDescriptors.array[_subMeshDescriptors.count++] = new SubMeshDescriptor(
+                    indexStart,
+                    indexCount - indexStart)
+                {
+                    firstVertex = vertexOffset,
+                    vertexCount = mesh.vertexCount
+                };
                 vertexOffset += mesh.vertexCount;
             }
 
-            var indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
-            target.SetIndexBufferParams(_triangles.count, indexFormat);
+            target.SetIndexBufferParams(indexCount, indexFormat);
 
-            if (indexFormat == IndexFormat.UInt16)
-            {
-                _triangles16.Clear();
-                _triangles16.EnsureCapacity(_triangles.count);
-
-                var indexSource = _triangles.array;
-                var indexDestination = _triangles16.array;
-
-                for (int i = 0; i < _triangles.count; ++i)
-                    indexDestination[i] = (ushort)indexSource[i];
-
-                _triangles16.count = _triangles.count;
-                target.SetIndexBufferData(_triangles16.array, 0, 0, _triangles.count, NowMesh.IndexUploadFlags);
-            }
+            if (use16BitIndices)
+                target.SetIndexBufferData(_triangles16.array, 0, 0, indexCount, NowMesh.IndexUploadFlags);
             else
-            {
-                target.SetIndexBufferData(_triangles.array, 0, 0, _triangles.count, NowMesh.IndexUploadFlags);
-            }
+                target.SetIndexBufferData(_triangles.array, 0, 0, indexCount, NowMesh.IndexUploadFlags);
 
-            target.subMeshCount = batches.Count;
-
-            int submeshIndexStart = 0;
-            int submeshFirstVertex = 0;
-
-            for (int subMesh = 0; subMesh < _capturedMeshIndices.Count; ++subMesh)
-            {
-                var mesh = _meshes.array[_capturedMeshIndices[subMesh]];
-                int indexCount = _subMeshIndexCounts.array[subMesh];
-
-                var descriptor = new SubMeshDescriptor(submeshIndexStart, indexCount)
-                {
-                    firstVertex = submeshFirstVertex,
-                    vertexCount = mesh.vertexCount
-                };
-
-                target.SetSubMesh(subMesh, descriptor, NowMesh.IndexUploadFlags);
-                submeshIndexStart += indexCount;
-                submeshFirstVertex += mesh.vertexCount;
-            }
+            // One native call replaces the previous per-batch SetSubMesh calls
+            // without changing the draw order or each batch's vertex/index range.
+            target.SetSubMeshes(
+                _subMeshDescriptors.array,
+                0,
+                _subMeshDescriptors.count,
+                NowMesh.IndexUploadFlags);
 
             target.bounds = hasBounds ? NowMesh.ToUnityBounds(combinedBounds) : new Bounds(Vector3.zero, Vector3.zero);
         }

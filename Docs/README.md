@@ -8,7 +8,11 @@ shipped public API:
 
 - [Production gates](Production.md): source-checkout validation, CI, visual
   baselines, allocation gates, and release preparation.
-- [Performance and abuse report](PerformanceReport-2026-08-06.md): current
+- [September optimization pass](PerformanceReport-2026-09-06.md): measured
+  CPU reductions, allocation checks, visual equivalence, and validation limits.
+- [September baseline](PerformanceReport-2026-09-01.md): earlier optimization
+  evidence and remaining hot paths.
+- [Performance and abuse report](PerformanceReport-2026-08-06.md):
   scaling guidance, dated benchmark evidence, and artifact paths.
 - [July performance report](PerformanceReport-2026-07-13.md): prior isolated
   optimization evidence and artifact paths.

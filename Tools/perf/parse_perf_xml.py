@@ -4,8 +4,31 @@ def parse(path):
     tree = ET.parse(path)
     out = {}
     for tc in tree.iter('test-case'):
+        if tc.get('result') != 'Passed':
+            continue
         o = tc.find('output')
         if o is None or not o.text:
+            continue
+        # The human-readable summary rounds sub-millisecond timings to two
+        # decimals. Prefer the full-precision structured performance samples.
+        structured = False
+        for line in o.text.splitlines():
+            if not line.startswith('##performancetestresult2:'):
+                continue
+            result = json.loads(line.split(':', 1)[1])
+            for group in result.get('SampleGroups', []):
+                if group.get('Name') != 'Time' or group.get('Unit') != 2:
+                    continue
+                out[tc.get('name')] = {
+                    'min': group['Min'], 'median': group['Median'],
+                    'max': group['Max'], 'avg': group['Average'],
+                    'std': group['StandardDeviation'],
+                }
+                structured = True
+                break
+            if structured:
+                break
+        if structured:
             continue
         m = re.search(
             r'Time in Milliseconds\nMin:\t\t([\d.]+) ms\nMedian:\t\t([\d.]+) ms\nMax:\t\t([\d.]+) ms\nAvg:\t\t([\d.]+) ms\nStdDev:\t\t([\d.]+) ms',

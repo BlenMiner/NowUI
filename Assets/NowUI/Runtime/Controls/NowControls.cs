@@ -313,8 +313,6 @@ namespace NowUI
         static readonly Dictionary<NowResolvedId, int> _passiveReplayBase =
             new Dictionary<NowResolvedId, int>(32);
 
-        const int InteractionRepaintSeed = 0x4e435249;
-
         struct InteractionRepaintState
         {
             public bool hovered;
@@ -358,13 +356,13 @@ namespace NowUI
 
         readonly struct CallSiteRecord
         {
-            public readonly string file;
+            public readonly ulong payload;
 
             public readonly int line;
 
             public CallSiteRecord(string file, int line)
             {
-                this.file = file;
+                payload = NowIdHash.HashCallSite(file, line);
                 this.line = line;
             }
         }
@@ -406,9 +404,9 @@ namespace NowUI
 
         /// <summary>
         /// Interns a call site (file + line) into an opaque runtime token. The token
-        /// is not itself an authored identity: resolution hashes the full path and line into
-        /// the active 64-bit owner/scope path, avoiding the old 32-bit call-site
-        /// collision boundary. The control
+        /// is not itself an authored identity: the full path and line are hashed once,
+        /// then combined with the active 64-bit owner/scope path at resolution,
+        /// avoiding the old 32-bit call-site collision boundary. The control
         /// factories capture their caller via [CallerFilePath]/[CallerLineNumber]
         /// and pass it here, so every textual call site is automatically its own
         /// control — no explicit id needed. Loops share a site and are
@@ -544,7 +542,7 @@ namespace NowUI
                 throw new ArgumentException("A resolved call-site parent is required.", nameof(parent));
 
             if (_callSites.TryGetValue(identity, out var site))
-                return NowIdHash.DeriveCallSite(parent, domain, site.file, site.line);
+                return NowIdHash.DeriveCallSiteHash(parent, domain, site.payload, site.line);
 
             return NowIdHash.DeriveCallSiteToken(parent, domain, identity);
         }
@@ -906,16 +904,17 @@ namespace NowUI
 
             if (!NowInput.isPassive)
             {
-                NowResolvedId repaintId = id.Child(InteractionRepaintSeed);
                 bool active = interaction.hovered || interaction.held || focused;
 
+                // The private state type already isolates these slots from other
+                // control state, so the resolved control id needs no extra child.
                 // Untouched controls already have the implicit all-false state,
                 // so do not allocate and update a persistent entry for each one.
                 // Once a control has been active, preserve the true -> false edge
                 // so retained hosts still repaint when hover/hold/focus leaves.
                 if (active)
                 {
-                    ref var repaint = ref NowControlState.Get<InteractionRepaintState>(repaintId);
+                    ref var repaint = ref NowControlState.Get<InteractionRepaintState>(id);
 
                     if (repaint.hovered != interaction.hovered ||
                         repaint.held != interaction.held ||
@@ -928,12 +927,12 @@ namespace NowUI
                     repaint.held = interaction.held;
                     repaint.focused = focused;
                 }
-                else if (NowControlState.TryRead<InteractionRepaintState>(repaintId, out var repaint) &&
+                else if (NowControlState.TryRead<InteractionRepaintState>(id, out var repaint) &&
                     (repaint.hovered || repaint.held || repaint.focused))
                 {
                     NowControlState.RequestRepaint();
 
-                    ref var stored = ref NowControlState.Get<InteractionRepaintState>(repaintId);
+                    ref var stored = ref NowControlState.Get<InteractionRepaintState>(id);
                     stored = default;
                 }
             }
@@ -969,8 +968,20 @@ namespace NowUI
 
         public static Vector4 StateColor(NowThemeAsset themeAsset, Vector4 color, float hoverT, bool held)
         {
-            var styles = themeAsset != null ? themeAsset.controlStyles : NowControlStyleSet.Default;
-            float amount = held ? styles.pressedStateOpacity : styles.hoverStateOpacity * Mathf.Clamp01(hoverT);
+            float opacity;
+
+            if (themeAsset != null)
+            {
+                ref readonly var styles = ref themeAsset.controlStyles;
+                opacity = held ? styles.pressedStateOpacity : styles.hoverStateOpacity;
+            }
+            else
+            {
+                var styles = NowControlStyleSet.Default;
+                opacity = held ? styles.pressedStateOpacity : styles.hoverStateOpacity;
+            }
+
+            float amount = held ? opacity : opacity * Mathf.Clamp01(hoverT);
 
             if (amount <= 0f)
                 return color;

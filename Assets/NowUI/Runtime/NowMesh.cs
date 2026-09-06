@@ -1909,6 +1909,25 @@ namespace NowUI.Internal
             triangles.count += count;
         }
 
+        /// <summary>
+        /// Appends directly to a 16-bit upload buffer. The capture caller selects
+        /// this path only when the combined mesh has at most 65535 vertices.
+        /// </summary>
+        internal void AppendTriangles(ref StaticList<ushort> triangles, int vertexOffset)
+        {
+            int count = _tris.count;
+            triangles.EnsureCapacity(count);
+
+            var source = _tris.array;
+            var destination = triangles.array;
+            int destinationBase = triangles.count;
+
+            for (int i = 0; i < count; ++i)
+                destination[destinationBase + i] = (ushort)(source[i] + vertexOffset);
+
+            triangles.count += count;
+        }
+
         public NowRect GetBounds(Vector2 positionOffset)
         {
             if (!_hasBounds)

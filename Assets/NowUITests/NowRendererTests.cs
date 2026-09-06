@@ -461,6 +461,154 @@ public class NowRendererTests
         }
     }
 
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void DrawListUploadPreservesOrderedMixedGeometryAndOffset(bool canvas, bool forceManagedCopy)
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+
+        var layout = canvas ? NowMeshLayout.Canvas : NowMeshLayout.Render;
+        using var drawList = new NowDrawList(layout, "Now Mixed Upload Test");
+        var texture = new Texture2D(2, 2);
+        bool previousForceManagedCopy = NowLottieNative.forceManagedCopy;
+        NowLottieNative.forceManagedCopy = forceManagedCopy;
+
+        try
+        {
+            using (drawList.Begin(new Vector2(128f, 64f), new Vector2(11f, -7f)))
+            {
+                Now.Rectangle(new NowRect(4f, 6f, 32f, 20f)).Draw();
+                Now.Line(new Vector2(8f, 12f), new Vector2(28f, 20f))
+                    .SetWidth(4f)
+                    .SetCap(NowLineCap.Butt)
+                    .Draw();
+                Now.Rectangle(new NowRect(48f, 8f, 16f, 12f)).SetTexture(texture).Draw();
+                Now.Rectangle(new NowRect(80f, 10f, 20f, 16f)).Draw();
+            }
+
+            Mesh mesh = drawList.mesh;
+            Assert.AreEqual(3, drawList.batchCount);
+            Assert.AreEqual(3, mesh.subMeshCount);
+            Assert.AreEqual(20, mesh.vertexCount);
+            Assert.AreEqual(UnityEngine.Rendering.IndexFormat.UInt16, mesh.indexFormat);
+            Assert.AreEqual(NowMeshKind.Rectangle, drawList.batches[0].kind);
+            Assert.AreEqual(NowMeshKind.TexturedRectangle, drawList.batches[1].kind);
+            Assert.AreEqual(NowMeshKind.Rectangle, drawList.batches[2].kind);
+            Assert.AreSame(drawList.batches[0].material, drawList.batches[2].material,
+                "Returning to the first material must retain its later draw position.");
+
+            var first = mesh.GetSubMesh(0);
+            Assert.AreEqual(0, first.indexStart);
+            Assert.AreEqual(24, first.indexCount);
+            Assert.AreEqual(0, first.firstVertex);
+            Assert.AreEqual(12, first.vertexCount);
+            CollectionAssert.AreEqual(new[]
+            {
+                0, 1, 2, 0, 2, 3,
+                4, 8, 9, 4, 9, 5,
+                5, 9, 10, 5, 10, 6,
+                6, 10, 11, 6, 11, 7
+            }, mesh.GetIndices(0));
+
+            var second = mesh.GetSubMesh(1);
+            Assert.AreEqual(24, second.indexStart);
+            Assert.AreEqual(6, second.indexCount);
+            Assert.AreEqual(12, second.firstVertex);
+            Assert.AreEqual(4, second.vertexCount);
+            CollectionAssert.AreEqual(new[] { 12, 13, 14, 12, 14, 15 }, mesh.GetIndices(1));
+
+            var third = mesh.GetSubMesh(2);
+            Assert.AreEqual(30, third.indexStart);
+            Assert.AreEqual(6, third.indexCount);
+            Assert.AreEqual(16, third.firstVertex);
+            Assert.AreEqual(4, third.vertexCount);
+            CollectionAssert.AreEqual(new[] { 16, 17, 18, 16, 18, 19 }, mesh.GetIndices(2));
+            Assert.AreEqual(new Vector3(13f, -35f, 0f), mesh.vertices[0]);
+            Assert.AreEqual(new Vector3(63f, -23f, 0f), mesh.bounds.center);
+            Assert.AreEqual(new Vector3(100f, 24f, 0f), mesh.bounds.size);
+        }
+        finally
+        {
+            NowLottieNative.forceManagedCopy = previousForceManagedCopy;
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [TestCase(16383)]
+    [TestCase(16384)]
+    public void DrawListUploadPreservesIndicesAcross16BitBoundaryAndSmallerRebuilds(int rectangleCount)
+    {
+        Assert.NotNull(Resources.Load<Material>("NowUI/UIMaterial"));
+        using var drawList = new NowDrawList();
+        var surface = new Vector2(128f, 64f);
+
+        using (drawList.Begin(surface))
+        {
+            for (int i = 0; i < rectangleCount; ++i)
+                Now.Rectangle(new NowRect(4f, 6f, 32f, 20f)).Draw();
+        }
+
+        Mesh mesh = drawList.mesh;
+        int expectedVertices = rectangleCount * 4;
+        Assert.AreEqual(expectedVertices, mesh.vertexCount);
+        Assert.AreEqual(expectedVertices > 65535
+            ? UnityEngine.Rendering.IndexFormat.UInt32
+            : UnityEngine.Rendering.IndexFormat.UInt16, mesh.indexFormat);
+        Assert.Greater(mesh.subMeshCount, 1, "The frame must span multiple internal mesh pages.");
+        Assert.AreEqual(drawList.batchCount, mesh.subMeshCount);
+
+        int nextVertex = 0;
+        int nextIndex = 0;
+
+        for (int subMesh = 0; subMesh < mesh.subMeshCount; ++subMesh)
+        {
+            var descriptor = mesh.GetSubMesh(subMesh);
+            Assert.AreEqual(nextVertex, descriptor.firstVertex);
+            Assert.AreEqual(nextIndex, descriptor.indexStart);
+            Assert.AreEqual(descriptor.vertexCount / 4 * 6, descriptor.indexCount);
+            int[] indices = mesh.GetIndices(subMesh);
+            Assert.AreEqual(descriptor.indexCount, indices.Length);
+
+            for (int i = 0; i < indices.Length; i += 6)
+            {
+                int vertex = nextVertex + i / 6 * 4;
+                Assert.AreEqual(vertex, indices[i]);
+                Assert.AreEqual(vertex + 1, indices[i + 1]);
+                Assert.AreEqual(vertex + 2, indices[i + 2]);
+                Assert.AreEqual(vertex, indices[i + 3]);
+                Assert.AreEqual(vertex + 2, indices[i + 4]);
+                Assert.AreEqual(vertex + 3, indices[i + 5]);
+            }
+
+            nextVertex += descriptor.vertexCount;
+            nextIndex += descriptor.indexCount;
+        }
+
+        Assert.AreEqual(expectedVertices, nextVertex);
+        Assert.AreEqual(rectangleCount * 6, nextIndex);
+
+        using (drawList.Begin(surface))
+            Now.Rectangle(new NowRect(4f, 6f, 32f, 20f)).Draw();
+
+        Assert.AreEqual(4, mesh.vertexCount);
+        Assert.AreEqual(1, drawList.batchCount);
+        Assert.AreEqual(1, mesh.subMeshCount);
+        Assert.AreEqual(UnityEngine.Rendering.IndexFormat.UInt16, mesh.indexFormat);
+        Assert.AreEqual(0, mesh.GetSubMesh(0).indexStart);
+        Assert.AreEqual(0, mesh.GetSubMesh(0).firstVertex);
+        CollectionAssert.AreEqual(new[] { 0, 1, 2, 0, 2, 3 }, mesh.GetIndices(0));
+
+        using (drawList.Begin(surface))
+        {
+        }
+
+        Assert.IsFalse(drawList.hasGeometry);
+        Assert.AreEqual(0, mesh.vertexCount);
+        Assert.AreEqual(0, drawList.batchCount);
+    }
+
     [Test]
     public void FullyMaskedLineDoesNotEmitGeometry()
     {

@@ -165,12 +165,30 @@ namespace NowUI
             if (line < 0)
                 throw new ArgumentOutOfRangeException(nameof(line), "Call-site line cannot be negative.");
 
+            return DeriveHashed(parent, domain, SegmentKind.CallSite, HashCallSite(file, line));
+        }
+
+        // Call-site tokens can be captured before an authored id overrides the
+        // fallback. Hashing must therefore leave validation until resolution.
+        internal static ulong HashCallSite(string file, int line)
+        {
             ulong fileHash = file != null
                 ? HashString(file)
                 : Avalanche(StringSeed ^ GoldenRatio);
             ulong lineHash = HashInt(line);
-            ulong payload = Avalanche(
-                fileHash ^ RotateLeft(lineHash, 31) ^ CallSiteSeed);
+            return Avalanche(fileHash ^ RotateLeft(lineHash, 31) ^ CallSiteSeed);
+        }
+
+        internal static NowResolvedId DeriveCallSiteHash(
+            NowResolvedId parent,
+            NowIdDomain domain,
+            ulong payload,
+            int line)
+        {
+            ValidateParentAndDomain(parent, domain);
+
+            if (line < 0)
+                throw new ArgumentOutOfRangeException(nameof(line), "Call-site line cannot be negative.");
 
             return DeriveHashed(parent, domain, SegmentKind.CallSite, payload);
         }

@@ -1855,6 +1855,160 @@ public class NowThemeAssetTests
         }
     }
 
+    static void SetSnapshotControlStyles(NowThemeAsset theme)
+    {
+        var serializedTheme = new SerializedObject(theme);
+        var styles = serializedTheme.FindProperty("_controlStyles");
+        styles.FindPropertyRelative("_toggleGap").floatValue = 13f;
+        styles.FindPropertyRelative("_switchWidth").floatValue = 80f;
+        styles.FindPropertyRelative("_switchHeight").floatValue = 45f;
+        styles.FindPropertyRelative("_badgeMinSize").floatValue = 41f;
+        styles.FindPropertyRelative("_badgePaddingX").floatValue = 31f;
+        styles.FindPropertyRelative("_chipPaddingX").floatValue = 23f;
+        styles.FindPropertyRelative("_chipRemoveSize").floatValue = 29f;
+        styles.FindPropertyRelative("_chipHeight").floatValue = 39f;
+        styles.FindPropertyRelative("_tooltipPadding").floatValue = 17f;
+        styles.FindPropertyRelative("_tooltipMaxWidth").floatValue = 300f;
+        styles.FindPropertyRelative("_tabPaddingX").floatValue = 27f;
+        styles.FindPropertyRelative("_tabHeight").floatValue = 53f;
+        styles.FindPropertyRelative("_tabIndicatorThickness").floatValue = 11f;
+        serializedTheme.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    [TestCase("switch", 93f, 45f)]
+    [TestCase("badge", 62f, 41f)]
+    [TestCase("chip", 79f, 39f)]
+    [TestCase("tooltip", 34f, 34f)]
+    [TestCase("tab", 54f, 53f)]
+    public void ControlMeasurementKeepsStyleValuesWhenTextPreprocessingChangesTheTheme(
+        string control, float expectedWidth, float expectedHeight)
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+
+        try
+        {
+            SetSnapshotControlStyles(theme);
+            int calls = 0;
+            Now.SetTextPreprocessor(value =>
+            {
+                ++calls;
+                theme.ResetToDefaults(false);
+                return string.Empty;
+            });
+
+            var renderer = theme.controlRenderer;
+            string label = "snapshot-measure-" + control;
+            Vector2 measured = control switch
+            {
+                "switch" => renderer.MeasureSwitch(theme, label, NowTextStyle.Body),
+                "badge" => renderer.MeasureBadge(theme, label, NowTextStyle.Body),
+                "chip" => renderer.MeasureChip(theme, label, NowTextStyle.Body, true),
+                "tooltip" => renderer.MeasureTooltip(theme, label),
+                _ => renderer.MeasureTab(theme, label)
+            };
+
+            Assert.AreEqual(1, calls, "The measurement must invoke the mutating preprocessor.");
+            Assert.AreEqual(NowControlStyleSet.Default.tabPaddingX, theme.controlStyles.tabPaddingX);
+            Assert.AreEqual(new Vector2(expectedWidth, expectedHeight), measured);
+        }
+        finally
+        {
+            Now.ClearTextPreprocessor();
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    [Test]
+    public void TabIndicatorKeepsStyleValuesWhenItsLabelChangesTheTheme()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        using var drawList = new NowDrawList();
+
+        try
+        {
+            SetSnapshotControlStyles(theme);
+            int calls = 0;
+            Now.SetTextPreprocessor(value =>
+            {
+                ++calls;
+                theme.ResetToDefaults(false);
+                return string.Empty;
+            });
+
+            using (drawList.Begin(new Vector2(200f, 100f)))
+            {
+                theme.controlRenderer.DrawTab(new NowTabRenderContext(
+                    theme, new NowRect(20f, 10f, 160f, 60f), "snapshot-tab-label",
+                    true, 1f, default, false, 0f));
+            }
+
+            Assert.AreEqual(1, calls);
+            Vector4 indicator = LastBatchValue(drawList, NowMeshKind.Rectangle, 1);
+            // The 27 px padding places the edges at 33.5 and 166.5;
+            // rectangle pixel snapping rounds those to 34 and 166.
+            Assert.AreEqual(132f, indicator.z, 0.0001f);
+            Assert.AreEqual(11f, indicator.w, 0.0001f);
+        }
+        finally
+        {
+            Now.ClearTextPreprocessor();
+            Object.DestroyImmediate(theme);
+        }
+    }
+
+    sealed class ThemeResettingShadowRenderer : NowControlRenderer
+    {
+        public bool resetTheme;
+        public int shadowCalls;
+
+        public override void DrawElevationShadow(
+            NowThemeAsset themeAsset, NowRect rect, Vector4 radius, NowElevationToken level)
+        {
+            ++shadowCalls;
+            if (resetTheme)
+                themeAsset.ResetToDefaults(false);
+        }
+    }
+
+    [Test]
+    public void TooltipPaddingIsCapturedBeforeTheShadowCallbackChangesTheTheme()
+    {
+        var theme = ScriptableObject.CreateInstance<NowThemeAsset>();
+        var renderer = ScriptableObject.CreateInstance<ThemeResettingShadowRenderer>();
+        var previousFont = Now.defaultFont;
+        using var drawList = new NowDrawList();
+
+        try
+        {
+            Now.defaultFont = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+            Assert.IsNotNull(Now.defaultFont);
+            SetSnapshotControlStyles(theme);
+            var context = new NowTooltipRenderContext(
+                theme, new NowRect(20f, 10f, 200f, 60f), "Tooltip snapshot");
+
+            using (drawList.Begin(new Vector2(260f, 100f)))
+                renderer.DrawTooltip(context);
+
+            Vector3[] expectedVertices = drawList.mesh.vertices;
+            Assert.Greater(expectedVertices.Length, 4, "The tooltip must include text geometry.");
+            renderer.resetTheme = true;
+
+            using (drawList.Begin(new Vector2(260f, 100f)))
+                renderer.DrawTooltip(context);
+
+            Assert.AreEqual(2, renderer.shadowCalls);
+            Assert.AreEqual(NowControlStyleSet.Default.tooltipPadding, theme.controlStyles.tooltipPadding);
+            CollectionAssert.AreEqual(expectedVertices, drawList.mesh.vertices,
+                "A theme change inside the shadow callback must not move this tooltip's text.");
+        }
+        finally
+        {
+            Now.defaultFont = previousFont;
+            Object.DestroyImmediate(renderer);
+            Object.DestroyImmediate(theme);
+        }
+    }
+
     [Test]
     public void ThemeGeneratorSettingsAreSerializedAndCopyable()
     {
