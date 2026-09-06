@@ -92,6 +92,20 @@ if ($packResults.Count -ne 1) {
 }
 
 $entries = @($packResults[0].files)
+$requiredAgentFiles = @(
+    "AGENTS.md",
+    "AI~/AGENTS.snippet.md",
+    "AI~/skills/nowui/SKILL.md",
+    "AI~/skills/nowui/agents/openai.yaml",
+    "Documentation~/AI_GUIDE.md",
+    "Editor/NowUIAgentSkillInstaller.cs"
+)
+$packedPaths = @($entries | ForEach-Object { ([string] $_.path).Replace('\', '/') })
+$missingAgentFiles = @($requiredAgentFiles | Where-Object { $_ -cnotin $packedPaths })
+if ($missingAgentFiles.Count -gt 0) {
+    throw "Packaged agent integration files are missing: $($missingAgentFiles -join ', ')."
+}
+
 $packedFailures = @(
     $entries | Where-Object {
         ([string] $_.path).Replace('\', '/') -match '^(Tests(?:/|\.meta$)|NowUITests(?:/|\.meta$)|Editor/Harness(?:/|\.meta$)|NowUIHarness(?:/|\.meta$))'

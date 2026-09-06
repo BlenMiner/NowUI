@@ -18,30 +18,25 @@ needed for the task.
 
 ## Source of truth
 
-Prefer information in this order:
-
-1. Documentation and package metadata beside this file.
-2. XML comments and public source in the same installed package.
-3. Packaged samples from the same installed package, plus repository tests
-   when working in a NowUI source checkout.
-4. Documentation for the exact installed tag or revision.
-
-Do not use documentation from GitHub `main` to guess APIs in an older cached
-revision. Do not invent a symbol from a feature name; search the installed
-source when an exact signature is uncertain.
+Start with the documentation and package metadata beside this file. Confirm
+uncertain signatures in the same package's public source and XML comments; if
+they disagree with the docs, use the installed implementation and report or
+correct the discrepancy. Use packaged examples when helpful, and remote docs
+only for the installed tag/revision when local material is missing. GitHub
+`main` and model memory may describe a different API.
 
 When consuming NowUI, treat `Library/PackageCache` as read-only. Put project
 scripts, markup, themes, and other authored assets under the project's `Assets`
-directory. Only edit NowUI itself when the task explicitly targets an embedded
-package or the NowUI source repository.
+directory. Edit NowUI itself only when package changes are in scope, using an
+editable source checkout or embedded/local dependency.
 
 ## Workflow
 
 1. Confirm `com.blenminer.nowui` is the selected UI package for the task.
 2. Choose the rendering host from the table below.
 3. Choose explicit `Now` placement, measured `NowLayout`, or a mixture.
-4. Read the routed topic guide and a nearby public example before coding.
-5. Implement outside PackageCache, compile, and address analyzer diagnostics.
+4. Read the routed topic guide; use a nearby public example when needed.
+5. Implement and validate the affected behavior as described below.
 
 If NowUI is merely installed but the user or project has chosen a different UI
 framework, preserve that choice. Do not rewrite an established UI system
@@ -57,25 +52,19 @@ without an explicit reason.
 | World-space mesh | `NowWorldGraphic` | `NowWorldLayoutGraphic` | Host |
 | Built-in `OnPostRender` | `Now.StartUI(...)` | `Now.StartUI(...)` plus `NowLayout.RunMeasured(...)` | Caller |
 | RenderTexture/command buffer | `NowRenderer.Begin(...)` | `NowRenderer.Begin(...)` plus `NowLayout.RunMeasured(...)` | Caller |
-| Runtime IMGUI | `NowGUI` / `NowGUILayout` | Same helper scope | Helper |
-| Editor IMGUI | `NowEditorGUI` / `NowEditorGUILayout` | Same helper scope | Helper |
+| Runtime IMGUI | `NowGUI.Auto(...)` / `NowGUILayout.Auto(...)` | Helper scope plus `NowLayout.RunMeasured(...)` | Helper |
+| Editor IMGUI | `NowEditorGUI.Auto(...)` / `NowEditorGUILayout.Auto(...)` | Helper scope plus `NowLayout.RunMeasured(...)` | Helper |
 
-Before choosing UGUI or UI Toolkit, confirm that Unity resolves
-`com.unity.ugui` or `com.unity.modules.uielements`, respectively. NowUI's
-assembly version defines detect direct and transitive dependencies; never ask a
-consumer to set `NOWUI_UGUI` or `NOWUI_UITOOLKIT` manually. If the project uses
-one of these hosts and no other dependency supplies its package, add that
-package to the project manifest.
+UGUI requires resolved `com.unity.ugui`; UI Toolkit requires
+`com.unity.modules.uielements`. NowUI detects direct and transitive dependencies
+with assembly version defines; do not set `NOWUI_UGUI`, `NOWUI_UITOOLKIT`, or
+input defines manually. Add a missing host dependency when needed for the task.
 
-Input System support is optional and follows the same direct-or-transitive
-detection. Never ask a consumer to add a NowUI input define. The default
-provider prefers the Input System when its package is resolved and the backend
-is enabled, then falls back to the legacy Input Manager when enabled. That
-fallback covers mouse, touch, keyboard navigation, text, and IME, but reliable
-default gamepad navigation requires the Input System because legacy mappings
-are project-defined. Only use `KeyBindingField`, `NowKeyInput`, or
-`NowKeyNames` after confirming `com.unity.inputsystem` resolves; their public
-API uses `UnityEngine.InputSystem.Key`.
+Input System support is optional. The default provider prefers it when resolved
+and enabled, then falls back to an enabled legacy Input Manager. Reliable default
+gamepad navigation requires the Input System because legacy mappings are
+project-defined. `KeyBindingField`, `NowKeyInput`, and `NowKeyNames` require
+resolved `com.unity.inputsystem`; their public API uses its `Key` type.
 
 Read [Render Pipeline Integrations](RenderPipelines.md) before creating UGUI,
 UI Toolkit, URP, or HDRP integration. Read [World Space](WorldSpace.md) for
@@ -88,7 +77,12 @@ Host lifecycle rules:
   `NowLayout.RunMeasured` inside them.
 - A manual host must wrap drawing in `using (Now.StartUI(...))` or the
   appropriate `NowRenderer`/IMGUI helper scope.
+- `NowRenderer.Begin(...)` only captures drawing. Dispose that scope before
+  calling `Render(target)`, or recording `Draw(...)` into a command buffer the
+  caller executes; see [Feature Usage](Features.md#rendertexture-and-command-buffers).
 - Use `NowLayout.RunMeasured` only when a manual host needs `NowLayout`.
+- Editor IMGUI must use the editor wrappers so each panel's state, capture,
+  focus, and repaint requests belong to its owning window.
 - Call `MarkDirty()` when retained component state changes. Rebuild every frame
   only for continuously changing content.
 
@@ -109,13 +103,14 @@ Host lifecycle rules:
 | --- | --- | --- |
 | Frame lifecycle, rectangles, input, text, fonts, renderer | `Now`, `NowInput`, `NowRenderer` | [Feature Usage](Features.md) |
 | Text outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Gradients And Animation](TextStyling.md) |
+| Localization and shared text transformations | `Now.SetTextPreprocessor` | [Text Preprocessor](TextPreprocessor.md) |
 | Supported public assemblies and types | Runtime and extension namespaces | [Public API](API.md) |
 | Rows, columns, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
 | Buttons, fields, pickers, lists, dialogs, inspection | `Now` / `NowLayout` controls | [Controls](Controls.md) |
 | New or restyled controls | Control builders and interaction primitives | [Custom Controls](CustomControls.md) |
 | Authored, resolved, repeated, or composite identity | `NowId`, `NowResolvedId`, `KeyedItem` | [Identity](Identity.md) |
 | Themes and reusable style tokens | `NowThemeAsset` | [Styles and Themes](StylesAndThemes.md) |
-| Lines, Beziers, dashes, arrows | `Now.Line`, `Now.Bezier` | [Lines](Lines.md) |
+| Lines, sampled paths, Beziers, dashes, arrows | `Now.Line`, `Now.DrawPolyline`, `Now.Bezier` | [Lines](Lines.md) |
 | Linear, radial, and conic fills | `Now.Gradient` | [Gradients](Gradients.md) |
 | Circles, triangles, polygons | Shape builders | [Shapes](Shapes.md) |
 | Non-rectangular or soft clipping | `NowMaskShape` and `Now.Mask` | [Masks](Masks.md) |
@@ -147,13 +142,17 @@ Host lifecycle rules:
   reorderable items.
 - Wrap composite custom-control bodies in `NowControls.ControlScope(...)` so
   their local child IDs resolve within the invocation instead of sharing focus
-  and state with another instance.
+  and state with another instance. Reusable wrappers must forward caller-file
+  and caller-line information; repeated instances also need stable explicit
+  keys. Read [Custom Controls](CustomControls.md) and [Identity](Identity.md)
+  before implementing wrappers or custom builders.
 - Keep authored local keys as `NowId` and already-resolved runtime paths as
   `NowResolvedId`. Pass resolved values directly and derive sub-controls with
   `.Child(...)`; never convert them back into authored IDs. Integer zero is a
   valid authored key. `NowControls.SiteId(...)` returns an opaque
   `NowCallSiteId` fallback for a custom builder, not an authored or resolved
-  control identity.
+  control identity. Consult [Identity](Identity.md) for typed fallback and
+  migration examples.
 - Parent controls containing independent child controls must exclude child hit
   rectangles with `NowInteractionRegion` before parent interaction.
 - Use `NowContextAction.Resolve(...)` when either a secondary pointer or an
@@ -165,8 +164,14 @@ Host lifecycle rules:
   source to the named overload when the overlay needs identity. Deferred draws
   run with the input provider/pass/surface and host/id context captured when
   they were queued.
+- For custom keyboard, focus, drag, or popup behavior, follow
+  [Custom Controls](CustomControls.md) and, in IMGUI, [IMGUI](EditorGUI.md).
+  Handle cancellation as an aborted gesture and claim only input you handle.
 - Preserve draw order. Glass samples prior content, and material changes can
   flush the current batch.
+- Supply theme and builder colors as display/sRGB values; do not pre-convert
+  them with `.linear`. Keep custom popup selection text readable against its
+  background; see [Styles and Themes](StylesAndThemes.md).
 - Use the input provider established by the host. Scope a custom
   `INowInputProvider` for RenderTextures, remote input, or tests.
 - Add explicit assembly references such as `NowUI.Runtime` or a
@@ -176,24 +181,14 @@ Host lifecycle rules:
 
 ## Performance and ownership
 
-"Allocation-free" means steady state after representative warmup. First use,
-new IDs, new glyphs, material batches, Lottie geometry, effect textures,
-diagnostics capacity, and buffer growth can allocate.
+"Allocation-free" means steady state after representative warmup. New IDs,
+glyphs, geometry, textures, and growing buffers can allocate. Before profiling,
+read [Performance](Performance.md) and warm the actual host state and input
+interactions; a separate draw list may not warm retained host buffers.
 
-- Warm the actual UI shape with `NowDrawList.Warmup(...)` or
-  `NowRenderer.Warmup(...)` before measuring.
-- For retained hosts, exercise the representative host state and interactions
-  before profiling; a separate synthetic draw list may not warm host-owned
-  buffers.
-- Use input-aware warmup when controls consume pointer or focus state.
-- Warm known control-state IDs with `NowControlState.Warmup<T>(id)`.
-- Reserve glass diagnostic capacity before recording diagnostics.
-- Dispose caller-owned `NowRenderer`, command buffers, model previews, and
-  other documented disposable resources.
-- Do not assume native plugins are required everywhere. Consult the installed
-  text and Lottie documentation for backend-specific behavior and limitations.
-
-See [Performance](Performance.md) for the focused checklist.
+Dispose caller-owned `NowRenderer`, command buffers, model previews, and other
+documented disposable resources. Consult the relevant text or Lottie guide for
+native backend requirements rather than assuming a plugin is always needed.
 
 ## Markup generation
 
@@ -207,14 +202,13 @@ event/state APIs.
 
 ## Verification
 
-1. Search the installed package source for every uncertain type or method.
-2. Confirm the selected host owns the lifecycle expected by the implementation.
-3. Compile the Unity project and fix all C# errors.
-4. Resolve `NOWUI001` and `NOWUI002` warnings.
-5. Run relevant project tests or a focused scene/play-mode check.
-6. For performance-sensitive work, warm representative state before measuring.
-7. Review the diff and confirm no file under `Library/PackageCache` changed.
+For code changes, compile against the installed package, fix C# errors and
+`NOWUI001`/`NOWUI002` diagnostics, then run relevant tests or a focused scene or
+editor check. Check the affected behavior: for example, first-frame layout,
+stable focus after row reordering, or editor scrolling and gesture cancellation.
+Review the diff for accidental PackageCache edits.
 
-When validation requires maintainer-only NowUI harnesses, first confirm the task
-is running in the NowUI source checkout. Consumer projects should use their own
-compile, tests, and scene checks rather than repository-only commands.
+Use maintainer harnesses only in the NowUI source repository; consumer projects
+use their own compile, tests, and scene checks. For documentation-only changes,
+check links and API claims. Report what was actually verified and any checks
+that could not run in the current environment.

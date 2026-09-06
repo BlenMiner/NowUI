@@ -7,8 +7,8 @@ IMGUI, and world-space meshes.
 
 ## Start here
 
-- AI coding agents: read [AGENTS.md](AGENTS.md), then
-  [Documentation~/AI_GUIDE.md](Documentation~/AI_GUIDE.md).
+- AI coding agents: start with [AI Guide](Documentation~/AI_GUIDE.md).
+  For package contributions, also read [AGENTS.md](AGENTS.md).
 - Everyone else: open the [documentation index](Documentation~/README.md) and
   import the Quick Start sample from Package Manager.
 - For exact API questions, consult the relevant guide first, then the XML
@@ -19,16 +19,7 @@ them over documentation from another branch or release.
 
 ## Pick the API in two decisions
 
-First choose placement:
-
-- Use `Now` when you already have a `NowRect` and want exact placement.
-- Use `NowLayout` when NowUI should arrange rows, columns, spacing, growth, and
-  alignment. `Row`/`Horizontal` and `Column`/`Vertical` are identical fluent
-  naming pairs.
-- Use `NowLayout.ReserveRect(...)` to reserve layout space for an explicit
-  `Now` primitive.
-
-Then choose the host:
+First choose the host for the target surface:
 
 | Surface | Explicit placement | Measured layout |
 | --- | --- | --- |
@@ -37,6 +28,15 @@ Then choose the host:
 | URP or HDRP | `NowPipelineGraphic` | `NowPipelineLayoutGraphic` |
 | World-space mesh | `NowWorldGraphic` | `NowWorldLayoutGraphic` |
 | Manual/Built-in callback | `Now.StartUI(...)` | `Now.StartUI(...)` + `NowLayout.RunMeasured(...)` |
+
+Then choose placement and the corresponding type from that row:
+
+- Use `Now` when you already have a `NowRect` and want exact placement.
+- Use `NowLayout` when NowUI should arrange rows, columns, spacing, growth, and
+  alignment. `Row`/`Horizontal` and `Column`/`Vertical` are identical fluent
+  naming pairs.
+- Use `NowLayout.ReserveRect(...)` to reserve layout space for an explicit
+  `Now` primitive.
 
 The UGUI row is available when Unity resolves `com.unity.ugui`; the UI Toolkit
 row is available when it resolves `com.unity.modules.uielements`. NowUI detects
@@ -95,20 +95,29 @@ Do not call `Now.StartUI` or `NowLayout.RunMeasured` inside their
 
 ## Agent integration
 
-This package ships three complementary layers:
+The [AI guide](Documentation~/AI_GUIDE.md) routes usage tasks to the relevant
+feature docs. [AGENTS.md](AGENTS.md) adds package contribution rules. To make the
+guide discoverable from a consuming project, choose either integration:
 
-1. `AGENTS.md` provides concise instructions when an agent is working in the
-   package tree.
-2. `Documentation~/AI_GUIDE.md` is the versioned feature and practice router.
-3. `AI~/skills/nowui` is an installable skill that locates the active package
-   and loads the local guide on demand.
+- **Skill:** In Unity, choose **Tools > NowUI > AI > Install Agent Skill**.
+  This copies [the packaged skill](AI~/skills/nowui/SKILL.md) to the project's
+  `.agents/skills/nowui`. This is a supported [Codex skill location](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills);
+  open Codex at the Unity project root or below. If the skill does not appear,
+  restart Codex. Other agents may use different skill locations.
+- **Project instructions:** Choose **Tools > NowUI > AI > Copy Project AGENTS.md Snippet**
+  and paste the block into the consuming project's root `AGENTS.md`. The
+  [snippet](AI~/AGENTS.snippet.md) selects NowUI for new custom UI while
+  preserving existing implementations and explicit framework choices. Edit
+  that preference if needed, and replace an existing marked block rather than
+  appending duplicates.
 
-In Unity, choose **Tools > NowUI > AI > Install Agent Skill** to install the skill into
-the current project's `.agents/skills/nowui` directory. The action is explicit,
-will not run on package import, and protects locally modified installations.
-For project-level instructions usable without a skill, choose
-**Tools > NowUI > AI > Copy Project AGENTS.md Snippet** and paste the copied block into
-the consuming project's root `AGENTS.md`.
+Neither action runs on package import. Rerun the skill installer after package
+updates to refresh the router; it updates known unmodified copies and leaves
+customized or unrecognized installations untouched. Merge those copies
+manually. The skill always reads API guidance from the active package, so it
+does not carry a frozen copy of the API docs. You can also copy the entire
+`AI~/skills/nowui` folder manually; the installer will not overwrite a differing
+manual copy without its install receipt.
 
 ## Important rules
 

@@ -252,18 +252,36 @@ namespace NowUI.Editor
             }
 
             string packageCache = Path.Combine(projectRoot, "Library", "PackageCache");
-            if (Directory.Exists(packageCache))
+            return ResolveUnambiguousCachedPackageRoot(packageCache, out packageVersion);
+        }
+
+        internal static string ResolveUnambiguousCachedPackageRoot(string packageCache, out string packageVersion)
+        {
+            packageVersion = string.Empty;
+            if (!Directory.Exists(packageCache))
+                return null;
+
+            string selectedRoot = null;
+            string[] cachedRoots = Directory.GetDirectories(packageCache, PackageName + "@*");
+            for (int i = 0; i < cachedRoots.Length; i++)
             {
-                string[] cachedRoots = Directory.GetDirectories(packageCache, PackageName + "@*");
-                Array.Sort(cachedRoots, StringComparer.Ordinal);
-                for (int i = cachedRoots.Length - 1; i >= 0; i--)
+                if (!TryUsePackageRoot(cachedRoots[i], out string candidateVersion))
+                    continue;
+
+                if (selectedRoot != null)
                 {
-                    if (TryUsePackageRoot(cachedRoots[i], out packageVersion))
-                        return Path.GetFullPath(cachedRoots[i]);
+                    packageVersion = string.Empty;
+                    throw new InvalidOperationException(
+                        "Multiple cached NowUI packages were found, but Unity did not identify the active package. " +
+                        "Let Package Manager finish resolving packages and run the command again. " +
+                        "No cached revision was selected.");
                 }
+
+                selectedRoot = Path.GetFullPath(cachedRoots[i]);
+                packageVersion = candidateVersion;
             }
 
-            return null;
+            return selectedRoot;
         }
 
         static string FindPackageRootAbove(string sourceFilePath, out string packageVersion)

@@ -1,62 +1,46 @@
 ---
 name: nowui
-description: Build, modify, review, or debug Unity interfaces with the installed com.blenminer.nowui package, including HUDs, menus, panels, editor tools, UGUI, UI Toolkit, render-pipeline and world-space hosts, layout, controls, text, themes, effects, Markdown, markup, docking, node graphs, and other NowUI extensions. Use when the user names NowUI, project instructions select it, or existing code already uses NowUI. Do not replace a user-selected or established different UI framework merely because NowUI is installed.
+description: Build, review, or debug Unity UI with the installed NowUI package. Use when the user names NowUI, project instructions select it, or the affected code uses it. Do not select NowUI merely because it is installed when the task uses another UI framework.
 ---
 
 # NowUI
 
-Use the installed package as the version-specific source of truth. Keep this
-skill focused on discovery and workflow; do not rely on copied API details.
+Locate the active package, then use its versioned documentation and public
+source to carry out the task. This skill is a router, not an API reference.
 
-## Resolve the active package
+## Find the active package
 
-1. Confirm that `com.blenminer.nowui` is installed or that the current
-   repository is the NowUI source checkout. Do not add or upgrade the package
-   unless the user asks.
-2. Locate candidate `package.json` files in this order:
-   - `Packages/com.blenminer.nowui/package.json` for an embedded package.
-   - `Assets/NowUI/package.json` in the NowUI source checkout.
-   - `Library/PackageCache/com.blenminer.nowui@*/package.json` for a cached
-     package.
-3. Validate that the manifest `name` is `com.blenminer.nowui`. Do not hardcode
-   a semantic version after `@`; Unity cache suffixes can be content hashes.
-4. If multiple cache candidates exist, use the project lock data, generated
-   project references, or Unity package information to identify the active
-   one. Do not choose a candidate merely by lexical order.
-5. If the package is absent, report that fact. Do not hallucinate its API or
-   change `Packages/manifest.json` without authorization.
+- In a Unity project, prefer Unity Package Manager's resolved path for
+  `com.blenminer.nowui`. Otherwise inspect `Packages/manifest.json`,
+  `Packages/packages-lock.json`, and generated project/source references.
+  Follow local `file:` dependencies as well as embedded and cached packages.
+- Common locations are `Packages/com.blenminer.nowui`, `Assets/NowUI` in the
+  source repository, and `Library/PackageCache/com.blenminer.nowui@*`.
+  Embedded folders and local dependencies may have other names or locations;
+  a standalone package checkout may itself be the root.
+- Validate the candidate's `package.json` name is `com.blenminer.nowui`.
+  Cache suffixes can be hashes. If several revisions exist, identify the active
+  one from resolved package information or source references, not lexical order
+  or the highest version. If still ambiguous, ask for the active package path.
+- If the package is absent, report it. Installation or upgrades are separate
+  work unless already part of the user's request.
 
-## Load local guidance
+## Use the installed guidance
 
-1. Read `<package-root>/AGENTS.md`.
-2. Read `<package-root>/Documentation~/AI_GUIDE.md` completely.
-3. Follow its host and placement routers.
-4. Read only the linked feature guides relevant to the task.
-5. Search the installed public source and XML comments for uncertain signatures.
-6. Use packaged examples to confirm behavior. In a NowUI source checkout,
-   repository tests under `Assets/NowUITests` provide additional evidence;
-   neither is permission to call internal APIs.
+Read `<package-root>/Documentation~/AI_GUIDE.md` for host/placement choices and
+essential contracts, then only the feature guides relevant to the task. Search
+the installed public source and XML comments for uncertain signatures; do not
+guess from model memory or GitHub `main`. Use a nearby example when helpful.
 
-Prefer local, installed documentation over GitHub `main` or model memory.
+Consumer code belongs under the project's `Assets` directory; PackageCache is
+read-only. For package contributions, also read `<package-root>/AGENTS.md`.
+An embedded or local dependency does not imply that it should be modified.
 
-## Implement safely
+## Verify the change
 
-1. Determine whether the task is consumer work or an explicit NowUI package
-   contribution.
-2. For consumer work, treat PackageCache as read-only and create or modify
-   files under the project's `Assets` directory.
-3. Choose the host before the drawing or control API.
-4. Choose `Now` for known rectangles, `NowLayout` for measured arrangement, or
-   `NowLayout.ReserveRect(...)` for mixed placement.
-5. Preserve host lifecycle, stable ID, draw order, ownership, and warmup rules
-   from the installed guide.
-6. Add required `NowUI.*` assembly references when consumer code uses an
-   assembly definition.
-
-## Verify
-
-1. Compile the Unity project against the installed package.
-2. Resolve `NOWUI001` and `NOWUI002` analyzer diagnostics.
-3. Run relevant project tests or focused scene/play-mode checks.
-4. Warm representative state before evaluating allocation-sensitive paths.
-5. Review the diff and confirm consumer work did not modify PackageCache.
+For code changes, compile against the installed package, address `NOWUI001` and
+`NOWUI002`, and run relevant tests or a focused scene/editor check. For
+performance work, warm representative state before measuring. Use source-repo
+harnesses only when working in that repository. For documentation-only changes,
+check links and API claims. Report validation performed and any unavailable
+checks; do not claim a compile or runtime check that was not run.

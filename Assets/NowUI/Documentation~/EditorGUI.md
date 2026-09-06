@@ -1,8 +1,8 @@
 # IMGUI
 
-`NowGUI` renders NowUI inside IMGUI. It can be called from any existing
-`OnGUI` method in runtime scripts, custom inspectors, property drawers, editor
-windows, or small debugging panels. Callers do not inherit from a NowUI-specific
+The NowUI IMGUI bridge works inside existing `OnGUI` methods in runtime scripts,
+custom inspectors, property drawers, and editor windows. Use `NowGUI` at runtime
+and `NowEditorGUI` in editor code. Callers do not inherit from a NowUI-specific
 base class.
 
 The bridge renders NowUI into an internally cached `RenderTexture`, then draws
@@ -12,6 +12,7 @@ that texture into the requested IMGUI rect. Rendering only happens during
 ## Runtime OnGUI
 
 ```csharp
+using NowUI;
 using UnityEngine;
 
 public sealed class RuntimeOnGUIExample : MonoBehaviour
@@ -48,6 +49,8 @@ wrappers also pass editor pixel density and dispose cached textures before
 assembly reload.
 
 ```csharp
+using NowUI;
+using NowUI.Editor;
 using UnityEditor;
 using UnityEngine;
 
