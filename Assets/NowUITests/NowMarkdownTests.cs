@@ -1299,28 +1299,28 @@ public class NowMarkdownTests
         var document = NowMarkdownDocument.Parse("steady *state* drawing with [a link](https://x.y)");
         var rect = new NowRect(0, 0, 300f, 100f);
 
+        // Default document identity includes the caller site. Warm the exact
+        // same declaration in separate frame scopes, not three distinct sites
+        // appending new control state to one capture.
+        void DrawDocument() => document.Draw(rect);
+        for (int i = 0; i < 3; ++i)
+        {
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                DrawDocument();
+        }
+
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
-            document.Draw(rect);
-            document.Draw(rect);
+            using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+            allocations.RequireAvailable();
+            allocations.Begin();
 
-            long before;
+            DrawDocument();
+            long allocated = allocations.End();
 
-            try
-            {
-                before = System.GC.GetAllocatedBytesForCurrentThread();
-            }
-            catch (System.NotImplementedException)
-            {
-                Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-                return;
-            }
-
-            document.Draw(rect);
-            long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
-
-            Assert.AreEqual(0, allocated, "steady-state markdown draw must not allocate");
+            allocations.AssertZero(allocated, "steady-state markdown draw must not allocate");
         }
     }
 
@@ -1355,28 +1355,25 @@ public class NowMarkdownTests
     {
         var rect = new NowRect(0, 0, 300f, 100f);
 
+        void DrawDocument() => NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
+        for (int i = 0; i < 3; ++i)
+        {
+            using (NowInput.Begin(_provider, Surface))
+            using (_drawList.Begin(Surface))
+                DrawDocument();
+        }
+
         using (NowInput.Begin(_provider, Surface))
         using (_drawList.Begin(Surface))
         {
-            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
-            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
+            using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+            allocations.RequireAvailable();
+            allocations.Begin();
 
-            long before;
+            DrawDocument();
+            long allocated = allocations.End();
 
-            try
-            {
-                before = System.GC.GetAllocatedBytesForCurrentThread();
-            }
-            catch (System.NotImplementedException)
-            {
-                Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-                return;
-            }
-
-            NowMarkdown.Document("styled *steady* state body").SetFontSize(19f).Draw(rect);
-            long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
-
-            Assert.AreEqual(0, allocated, "steady-state styled markdown draw must not reparse or allocate");
+            allocations.AssertZero(allocated, "steady-state styled markdown draw must not reparse or allocate");
         }
     }
 
@@ -1396,22 +1393,14 @@ public class NowMarkdownTests
 
                 NowMarkdownImages.SetTexture("local/versioned-image", texture);
 
-                long before;
-
-                try
-                {
-                    before = System.GC.GetAllocatedBytesForCurrentThread();
-                }
-                catch (System.NotImplementedException)
-                {
-                    Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-                    return;
-                }
+                using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+                allocations.RequireAvailable();
+                allocations.Begin();
 
                 float plainAfter = withoutImages.MeasureHeight(400f);
-                long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+                long allocated = allocations.End();
 
-                Assert.AreEqual(0, allocated, "image version bumps must not relayout image-free documents");
+                allocations.AssertZero(allocated, "image version bumps must not relayout image-free documents");
                 Assert.AreEqual(plainHeight, plainAfter, 0.001f);
                 Assert.AreNotEqual(imageBefore, withImages.MeasureHeight(400f),
                     "documents that reference the loaded image must relayout");

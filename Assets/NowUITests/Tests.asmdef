@@ -15,6 +15,7 @@
         "NowUI.Extensions.NodeGraph",
         "NowUI.Extensions.Sdf",
         "Unity.PerformanceTesting",
+        "NowUI.BenchmarkSupport",
         "UnityEngine.UI",
         "Unity.InputSystem"
     ],

@@ -40,7 +40,7 @@ namespace NowUI.Editor
             for (int i = 0; i < WarmupFrames; ++i)
                 NowHarnessScenarios.CapturePngBytes(scenario);
 
-            long allocatedBefore = AllocatedBytesOrZero();
+            long? allocatedBefore = ProbeAllocationBytes();
             var stopwatch = Stopwatch.StartNew();
             NowHarnessCapture last = null;
 
@@ -59,7 +59,11 @@ namespace NowUI.Editor
             }
 
             stopwatch.Stop();
-            long allocatedAfter = AllocatedBytesOrZero();
+            long? allocatedAfter = allocatedBefore.HasValue ? AllocatedBytesOrNull() : null;
+            long? allocatedBytes = allocatedBefore.HasValue && allocatedAfter.HasValue &&
+                allocatedAfter.Value >= allocatedBefore.Value
+                ? allocatedAfter.Value - allocatedBefore.Value
+                : (long?)null;
 
             return new PerfMetric
             {
@@ -69,13 +73,27 @@ namespace NowUI.Editor
                 frames = MeasureFrames,
                 totalMilliseconds = stopwatch.Elapsed.TotalMilliseconds,
                 averageMilliseconds = stopwatch.Elapsed.TotalMilliseconds / MeasureFrames,
-                allocatedBytes = Math.Max(0, allocatedAfter - allocatedBefore),
+                allocatedBytes = allocatedBytes,
                 batchCount = last != null ? last.batchCount : 0,
                 vertexCount = last != null ? last.vertexCount : 0
             };
         }
 
-        static long AllocatedBytesOrZero()
+        static long? ProbeAllocationBytes()
+        {
+            long? before = AllocatedBytesOrNull();
+            if (!before.HasValue)
+                return null;
+
+            // Some Mono versions expose the API but always return zero. Keep
+            // this probe outside the capture timer and measured allocation span.
+            var probe = new byte[4096];
+            long? after = AllocatedBytesOrNull();
+            GC.KeepAlive(probe);
+            return after.HasValue && after.Value - before.Value >= 4096 ? after : null;
+        }
+
+        static long? AllocatedBytesOrNull()
         {
             try
             {
@@ -83,8 +101,10 @@ namespace NowUI.Editor
             }
             catch (NotImplementedException)
             {
-                return 0;
+                return null;
             }
+            catch (NotSupportedException) { return null; }
+            catch (MissingMethodException) { return null; }
         }
 
         static string BuildJson(IEnumerable<PerfMetric> metrics)
@@ -108,7 +128,11 @@ namespace NowUI.Editor
                 json.AppendFormat("\"frames\": {0}, ", metric.frames);
                 json.AppendFormat("\"totalMilliseconds\": {0:0.###}, ", metric.totalMilliseconds);
                 json.AppendFormat("\"averageMilliseconds\": {0:0.###}, ", metric.averageMilliseconds);
-                json.AppendFormat("\"allocatedBytes\": {0}, ", metric.allocatedBytes);
+                json.Append("\"allocationBytesAvailable\": ");
+                json.Append(metric.allocatedBytes.HasValue ? "true, " : "false, ");
+                json.Append("\"allocatedBytes\": ");
+                json.Append(metric.allocatedBytes.HasValue ? metric.allocatedBytes.Value.ToString() : "null");
+                json.Append(", ");
                 json.AppendFormat("\"batchCount\": {0}, \"vertexCount\": {1}", metric.batchCount, metric.vertexCount);
                 json.Append(" }");
             }
@@ -127,7 +151,7 @@ namespace NowUI.Editor
             public int frames;
             public double totalMilliseconds;
             public double averageMilliseconds;
-            public long allocatedBytes;
+            public long? allocatedBytes;
             public int batchCount;
             public int vertexCount;
         }

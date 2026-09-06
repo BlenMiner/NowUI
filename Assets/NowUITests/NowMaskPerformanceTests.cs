@@ -145,34 +145,20 @@ public class NowMaskPerformanceTests
             UnityEngine.Object.DestroyImmediate(value);
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     static void RecordSteadyStateAllocations(Action drawFrame)
     {
         drawFrame();
         drawFrame();
         drawFrame();
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations();
+        allocations.Begin();
 
         for (int i = 0; i < AllocationSampleFrames; ++i)
             drawFrame();
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Measure.Custom(
-            new SampleGroup("GC.Alloc", SampleUnit.Byte, false),
-            allocated / (double)AllocationSampleFrames);
+        long allocated = allocations.End();
+        allocations.Report(allocated / (double)AllocationSampleFrames);
     }
 
     void PushMasks(MaskKind kind, int depth, ref int pushed)

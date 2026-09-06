@@ -32,7 +32,7 @@ namespace NowUI.NodeGraph
         /// <summary>True when a link feeds the given input port.</summary>
         public bool HasInput(string portId)
         {
-            return graph != null && node != null && graph.TryGetInputLink(node.id, portId, out _);
+            return _evaluator != null && _evaluator.HasInput(graph, node, portId);
         }
 
         /// <summary>True when a link feeds the given input port.</summary>
@@ -77,6 +77,9 @@ namespace NowUI.NodeGraph
         readonly Dictionary<int, NowNodeEvalHandler<T>> _handlers = new Dictionary<int, NowNodeEvalHandler<T>>(8);
         readonly Dictionary<(string nodeId, string portId), T> _memo = new Dictionary<(string, string), T>(32);
         readonly HashSet<(string nodeId, string portId)> _visiting = new HashSet<(string, string)>();
+        Dictionary<string, NowNode> _indexedNodes;
+        Dictionary<(string nodeId, string portId), NowNodeLink> _indexedInputs;
+        NowNodeGraph _indexedGraph;
         int _batchDepth;
         int _maximumDepth = DefaultMaximumDepth;
 
@@ -115,10 +118,74 @@ namespace NowUI.NodeGraph
             return new BatchScope(this);
         }
 
+        /// <summary>
+        /// Starts a batch with indexed node IDs and input links for one graph.
+        /// Building the index is linear in graph size; dependency lookups then
+        /// avoid scanning the public lists. Storage is reused across scopes.
+        /// </summary>
+        /// <remarks>
+        /// Finish the scope before editing node IDs, ports, or topology. Direct
+        /// list edits, renames and reordering are picked up at the next scope.
+        /// Duplicate IDs/input links resolve to the first entry, as in live
+        /// evaluation. Node value fields remain live until their outputs are
+        /// memoized. Use BeginBatch or ordinary Evaluate calls when handlers
+        /// need to change topology and immediately follow the changed links.
+        /// Indexed scopes may nest for the same graph; a different graph or an
+        /// existing live evaluation/batch cannot be switched into indexed mode.
+        /// Dispose scopes in reverse order and exactly once.
+        /// </remarks>
+        public BatchScope BeginIndexedBatch(NowNodeGraph graph)
+        {
+            if (graph == null)
+                throw new ArgumentNullException(nameof(graph));
+            if (_batchDepth != 0)
+            {
+                if (!ReferenceEquals(_indexedGraph, graph))
+                    throw new InvalidOperationException("An indexed batch cannot replace an active evaluation batch.");
+                return BeginBatch();
+            }
+            if (_visiting.Count != 0)
+                throw new InvalidOperationException("An indexed batch must begin outside an evaluation handler.");
+
+            // These lists and node IDs are publicly mutable. Rebuild at every
+            // explicit scope boundary rather than retaining stale lookups.
+            _indexedNodes ??= new Dictionary<string, NowNode>(StringComparer.Ordinal);
+            _indexedInputs ??= new Dictionary<(string, string), NowNodeLink>();
+            _indexedNodes.Clear();
+            _indexedInputs.Clear();
+            try
+            {
+                for (int i = 0; i < graph.nodes.Count; ++i)
+                {
+                    var node = graph.nodes[i];
+                    if (node != null && !string.IsNullOrEmpty(node.id))
+                        _indexedNodes.TryAdd(node.id, node);
+                }
+                for (int i = 0; i < graph.links.Count; ++i)
+                {
+                    var link = graph.links[i];
+                    _indexedInputs.TryAdd((link.inputNodeId, link.inputPortId), link);
+                }
+            }
+            catch
+            {
+                _indexedNodes?.Clear();
+                _indexedInputs?.Clear();
+                throw;
+            }
+            _indexedGraph = graph;
+            return BeginBatch();
+        }
+
         void EndBatch()
         {
             if (_batchDepth > 0 && --_batchDepth == 0)
+            {
                 _memo.Clear();
+                _indexedGraph = null;
+                _indexedNodes?.Clear();
+                _indexedInputs?.Clear();
+            }
         }
 
         /// <summary>Handle for one <see cref="BeginBatch"/> call; dispose exactly once per scope.</summary>
@@ -189,7 +256,7 @@ namespace NowUI.NodeGraph
         public bool TryEvaluate(NowNodeGraph graph, string nodeId, string portId, T fallback, out T value)
         {
             value = fallback;
-            var node = graph?.FindNode(nodeId);
+            var node = FindNode(graph, nodeId);
 
             if (node == null)
                 return false;
@@ -229,13 +296,44 @@ namespace NowUI.NodeGraph
 
         internal T EvaluateInput(NowNodeGraph graph, NowNode node, string portId, T fallback)
         {
-            if (graph == null || node == null || !graph.TryGetInputLink(node.id, portId, out var link))
+            if (node == null || !TryGetInputLink(graph, node.id, portId, out var link))
                 return fallback;
 
-            if (!graph.TryFindPort(link.outputNodeId, link.outputPortId, NowNodePortDirection.Output, out var sourceNode, out var sourcePort))
+            var sourceNode = FindNode(graph, link.outputNodeId);
+            if (sourceNode == null || !sourceNode.TryGetPort(link.outputPortId, NowNodePortDirection.Output, out var sourcePort))
                 return fallback;
 
             return EvaluatePort(graph, sourceNode, sourcePort, fallback);
+        }
+
+        internal bool HasInput(NowNodeGraph graph, NowNode node, string portId)
+        {
+            return node != null && TryGetInputLink(graph, node.id, portId, out _);
+        }
+
+        NowNode FindNode(NowNodeGraph graph, string nodeId)
+        {
+            if (_indexedGraph == null)
+                return graph?.FindNode(nodeId);
+            RequireIndexedGraph(graph);
+            return !string.IsNullOrEmpty(nodeId) && _indexedNodes.TryGetValue(nodeId, out var node) ? node : null;
+        }
+
+        bool TryGetInputLink(NowNodeGraph graph, string nodeId, string portId, out NowNodeLink link)
+        {
+            if (_indexedGraph != null)
+            {
+                RequireIndexedGraph(graph);
+                return _indexedInputs.TryGetValue((nodeId, portId), out link);
+            }
+            link = default;
+            return graph != null && graph.TryGetInputLink(nodeId, portId, out link);
+        }
+
+        void RequireIndexedGraph(NowNodeGraph graph)
+        {
+            if (!ReferenceEquals(_indexedGraph, graph))
+                throw new InvalidOperationException("Evaluate the indexed graph until its batch scope is disposed.");
         }
 
         T EvaluatePort(NowNodeGraph graph, NowNode node, NowNodePort port, T fallback)

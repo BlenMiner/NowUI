@@ -41,22 +41,35 @@ public class NowHarnessAnimationTests
     }
 
     [Test]
-    public void ReadmeShowcasesAreRegisteredAsFourSecondLoops()
+    public void ReadmeShowcasesHaveTheirDeclaredCaptureDurations()
     {
         var scenarios = NowHarnessAnimationScenarios.All();
+        var expected = new (string name, int frameCount)[]
+        {
+            ("sdf-metamorphosis", 96),
+            ("sdf-image-effects", 96),
+            ("sdf-image-blend", 96),
+            ("music-player", 120),
+            ("desktop-fidelity", 96),
+            ("sdf-shader-xray", 96)
+        };
 
-        Assert.AreEqual(3, scenarios.Count);
-        Assert.AreEqual("sdf-metamorphosis", scenarios[0].name);
-        Assert.AreEqual("desktop-fidelity", scenarios[1].name);
-        Assert.AreEqual("sdf-shader-xray", scenarios[2].name);
+        Assert.AreEqual(expected.Length, scenarios.Count);
 
         for (int i = 0; i < scenarios.Count; ++i)
         {
+            Assert.AreEqual(expected[i].name, scenarios[i].name);
             Assert.AreEqual(960, scenarios[i].width, scenarios[i].name);
             Assert.AreEqual(540, scenarios[i].height, scenarios[i].name);
-            Assert.AreEqual(96, scenarios[i].frameCount, scenarios[i].name);
+            Assert.AreEqual(expected[i].frameCount, scenarios[i].frameCount, scenarios[i].name);
             Assert.AreEqual(24f, scenarios[i].framesPerSecond, scenarios[i].name);
-            Assert.AreEqual(4f, scenarios[i].frameCount / scenarios[i].framesPerSecond, scenarios[i].name);
+            Assert.NotNull(scenarios[i].draw, scenarios[i].name);
+
+            var lastFrame = new NowHarnessAnimationFrame(
+                scenarios[i].frameCount - 1, scenarios[i].frameCount, scenarios[i].framesPerSecond);
+            Assert.AreEqual(expected[i].frameCount / 24f, lastFrame.durationSeconds, scenarios[i].name);
+            Assert.Less(lastFrame.normalizedTime, 1f, scenarios[i].name);
+            Assert.AreEqual(lastFrame.durationSeconds - 1f / 24f, lastFrame.timeSeconds, 0.000001f, scenarios[i].name);
         }
     }
 }

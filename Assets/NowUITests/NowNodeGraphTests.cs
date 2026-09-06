@@ -109,19 +109,6 @@ public class NowNodeGraphTests
     FakeKeyboard _keyboard;
     NowDrawList _drawList;
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     [SetUp]
     public void SetUp()
     {
@@ -811,11 +798,13 @@ public class NowNodeGraphTests
         Frame(graph, schema);
         Frame(graph, schema);
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
         Frame(graph, schema);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
 
-        Assert.AreEqual(0, allocated, "steady-state node graph draw must not allocate after warmup");
+        allocations.AssertZero(allocated, "steady-state node graph draw must not allocate after warmup");
     }
 
     [Test]

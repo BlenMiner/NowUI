@@ -273,10 +273,12 @@ public class NowGradientTests
         DrawFrame();
         DrawFrame();
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
         DrawFrame();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.AreEqual(0, allocated, "steady-state gradient draw-list build must not allocate");
+        long allocated = allocations.End();
+        allocations.AssertZero(allocated, "steady-state gradient draw-list build must not allocate");
     }
 
     static Gradient CreateRamp(Color from, Color to)
@@ -321,16 +323,4 @@ public class NowGradientTests
         return (DecodeFlags(encoded) & 1 << 5) != 0;
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
 }

@@ -4,7 +4,11 @@
 
 Labels take 12–15% less CPU time, the 1,000-row scroll workload takes 17%
 less, and the 1,000-control frame plus batch-heavy upload take about 8%
-less. All ten recorded steady-state allocation counters remain at 0 B/frame.
+less. The ten recorded steady-state allocation counters printed 0 B/frame,
+but a later known-allocation probe found that this Mono runtime's byte API
+always returns zero. Those byte results do not establish allocation-free
+execution; the [expanded benchmark overview](BenchmarkOverview-2026-09-06.md)
+uses a validated allocation-event fallback.
 All 52 before/after visual captures are byte-identical, with unchanged batch
 and vertex counts.
 
@@ -109,7 +113,9 @@ Artifacts are under `artifacts/optimization-20260906`:
   and large-to-small-to-empty rebuilds.
 - All 54 canonical tests pass in all six comparable benchmark launches.
   Every recorded `GC.Alloc` sample remains zero, and the existing allocation
-  assertions pass.
+  assertions pass, but the later byte-counter probe makes those allocation
+  assertions inconclusive on this runtime. Timing and visual evidence are
+  unaffected by that instrumentation limitation.
 - All 52 PNGs match byte-for-byte. Batch counts, vertex counts, and image
   dimensions also match for every capture.
 - PlayMode: 144 passed, 4 ignored, no failures.

@@ -359,6 +359,33 @@ float result = evaluator.Evaluate(_graph, "sum");
   link-following the evaluator uses when you need to walk dependencies
   yourself.
 
+For several roots, `BeginBatch()` shares computed output values until the scope
+ends. For large graphs whose topology stays fixed during evaluation, use
+`BeginIndexedBatch(graph)` to also replace repeated node/link list scans with
+indexed lookups:
+
+```csharp
+using (evaluator.BeginIndexedBatch(_graph))
+{
+    float sum = evaluator.Evaluate(_graph, "sum");
+    float product = evaluator.Evaluate(_graph, "product");
+}
+```
+
+Index construction is linear in nodes plus links and is paid once per outer
+indexed scope; its storage is reused. A single deep root can benefit too.
+Finish the scope before changing node IDs, ports, or topology. Direct list
+edits, renames, replacement and reordering are observed on the next scope;
+duplicate node IDs and input links keep their first-entry resolution. Node
+values remain live until their outputs are memoized, as with `BeginBatch`.
+
+Indexed scopes nest for the same graph and must be disposed in reverse order.
+An ordinary nested batch shares the current indexed mode. Evaluating another
+graph, or starting indexed mode inside a live batch/evaluation callback, throws
+instead of silently changing lookup or memo behavior. Existing `Evaluate` and
+`BeginBatch` retain live topology lookup for handlers that edit links while
+evaluating.
+
 Store compact numeric state in `node.userId`, small serialized strings in
 `node.SetData(key, value)`, or larger domain objects in your own dictionary
 keyed by `node.id`. `userId` and keyed node data both round-trip through

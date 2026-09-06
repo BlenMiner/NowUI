@@ -2,11 +2,22 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "Animation", "Encode", "All")]
+    [ValidateSet("EditMode", "PlayMode", "Visual", "Golden", "Perf", "Benchmark", "Animation", "Encode", "All")]
     [string] $Mode = "All",
 
     [Parameter(Mandatory = $false)]
     [string] $Filter,
+
+    [Parameter(Mandatory = $false)]
+    [string] $Category,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 10)]
+    [int] $BenchmarkRuns = 1,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("Both", "EditMode", "PlayMode")]
+    [string] $BenchmarkPlatform = "Both",
 
     [Parameter(Mandatory = $false)]
     [string] $ScenarioFilter,
@@ -390,9 +401,13 @@ function Read-UnityTestResults {
 }
 
 function Invoke-TestRun {
-    param([string] $TestPlatform)
+    param(
+        [string] $TestPlatform,
+        [string] $TestCategory = $Category,
+        [string] $RunArtifactsPath = $ArtifactsPath
+    )
 
-    $platformArtifacts = Join-Path $ArtifactsPath $TestPlatform
+    $platformArtifacts = Join-Path $RunArtifactsPath $TestPlatform
     New-Item -ItemType Directory -Force -Path $platformArtifacts | Out-Null
 
     $resultPath = Join-Path $platformArtifacts "NowUI-$TestPlatform-results.xml"
@@ -411,6 +426,10 @@ function Invoke-TestRun {
         $args += @("-testFilter", $Filter)
     }
 
+    if (![string]::IsNullOrWhiteSpace($TestCategory)) {
+        $args += @("-testCategory", $TestCategory)
+    }
+
     Invoke-Unity -UnityArgs $args -LogPath $logPath
 
     try {
@@ -423,6 +442,58 @@ function Invoke-TestRun {
         }
 
         throw
+    }
+}
+
+function Invoke-Benchmarks {
+    # This is separate from -Mode Perf, whose timer includes capture/PNG/I/O.
+    $pythonPath = Resolve-Tool -Name "python" -RequestedPath $Python `
+        -EnvironmentVariables @("PYTHON", "PYTHON_PATH") `
+        -Hint "Python 3 is required for benchmark reports. Pass -Python or set PYTHON."
+    $reportScript = Join-Path $PSScriptRoot "perf/benchmark_report.py"
+    $resultPaths = [System.Collections.Generic.List[string]]::new()
+    $platforms = if ($BenchmarkPlatform -eq "Both") { @("EditMode", "PlayMode") } else { @($BenchmarkPlatform) }
+    $benchmarkCategory = if ([string]::IsNullOrWhiteSpace($Category)) { "Performance" } else { $Category }
+
+    $metadata = [ordered] @{
+        StartedUtc = [DateTime]::UtcNow.ToString("o")
+        ProjectPath = $ProjectPath
+        UnityVersion = Get-ProjectUnityVersion $ProjectPath
+        Execution = "Unity Editor batchmode (PlayMode is not a standalone player)"
+        OS = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+        Architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+        LogicalProcessors = [Environment]::ProcessorCount
+        Category = $benchmarkCategory
+        Filter = $Filter
+        RunsPerPlatform = $BenchmarkRuns
+        Platforms = $platforms
+    }
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        $metadata.Commit = (& git -C $ProjectPath rev-parse HEAD 2>$null | Out-String).Trim()
+        $metadata.WorktreeChanges = @(& git -C $ProjectPath status --porcelain 2>$null)
+    }
+    if ($IsWindows -and (Get-Command Get-CimInstance -ErrorAction SilentlyContinue)) {
+        try {
+            $metadata.CPU = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors)
+            $metadata.GPU = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion)
+        } catch {
+            Write-Warning "Hardware metadata unavailable: $($_.Exception.Message)"
+        }
+    }
+    $metadataPath = Join-Path $ArtifactsPath "environment.json"
+    $metadata | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metadataPath -Encoding utf8
+
+    for ($run = 1; $run -le $BenchmarkRuns; ++$run) {
+        $runPath = Join-Path $ArtifactsPath "run$run"
+        foreach ($platform in $platforms) {
+            Invoke-TestRun -TestPlatform $platform -TestCategory $benchmarkCategory -RunArtifactsPath $runPath
+            $resultPaths.Add((Join-Path $runPath "$platform/NowUI-$platform-results.xml"))
+        }
+    }
+
+    & $pythonPath $reportScript --output (Join-Path $ArtifactsPath "overview") --metadata $metadataPath @resultPaths
+    if ($LASTEXITCODE -ne 0) {
+        throw "Benchmark report generation failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -625,6 +696,7 @@ switch ($Mode) {
     "Visual" { Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.Capture" "visual" }
     "Golden" { Invoke-ExecuteMethod "NowUI.Editor.NowVisualHarnessRunner.CompareGoldens" "golden" }
     "Perf" { Invoke-ExecuteMethod "NowUI.Editor.NowPerfSmokeRunner.Run" "perf" }
+    "Benchmark" { Invoke-Benchmarks }
     "Animation" { Invoke-AnimationCapture }
     "Encode" { Invoke-AnimationReencode }
     "All" {

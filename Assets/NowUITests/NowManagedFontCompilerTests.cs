@@ -279,16 +279,17 @@ public class NowManagedFontCompilerTests
 
             // Warm the call and the runtime allocation counter before measuring.
             Assert.IsTrue(session.TryCopyAtlas(destination, out error), error);
-            _ = GC.GetAllocatedBytesForCurrentThread();
-            long before = GC.GetAllocatedBytesForCurrentThread();
+            using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+            allocations.RequireAvailable();
+            allocations.Begin();
             bool copied = true;
 
             for (int i = 0; i < 32; ++i)
                 copied &= session.TryCopyAtlas(destination, out error);
 
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            long allocated = allocations.End();
             Assert.IsTrue(copied, error);
-            Assert.AreEqual(0, allocated, "Direct atlas copies must not allocate managed staging buffers.");
+            allocations.AssertZero(allocated, "Direct atlas copies must not allocate managed staging buffers.");
         }
         finally
         {

@@ -3,6 +3,8 @@
     "rootNamespace": "",
     "references": [
         "UnityEngine.TestRunner",
+        "Unity.PerformanceTesting",
+        "NowUI.BenchmarkSupport",
         "NowUI.Runtime",
         "NowUI.Extensions.Sdf",
         "UnityEngine.UI",

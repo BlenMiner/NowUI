@@ -19,9 +19,9 @@ using NowUI.Sdf;
 /// parsing, markup steady-state drawing, node graph canvas rebuilds, code
 /// editor repaint, Lottie frame tessellation, SDF scene constant upload, and
 /// docking layout. Timings catch regressions relative to previous runs;
-/// steady-state allocation counts are recorded as a "GC.Alloc" sample group
-/// (bytes over a fixed number of frames) for before/after visibility without
-/// failing the run on current behavior.
+/// steady-state allocations are recorded as verified "GC.Alloc" bytes, or
+/// "GC.Alloc.Calls" when only event counts are available, over a fixed number
+/// of frames for before/after visibility without failing on current behavior.
 /// </summary>
 public class NowExtensionsPerformanceTests
 {
@@ -112,28 +112,20 @@ public class NowExtensionsPerformanceTests
     }
 
     /// <summary>
-    /// Records the bytes allocated across a fixed number of already-warm frames
-    /// as a custom sample group, so allocation regressions are visible in the
+    /// Records verified allocation bytes or calls across a fixed number of
+    /// already-warm frames, so allocation regressions are visible in the
     /// Performance Test Report without asserting on current behavior.
     /// </summary>
     static void RecordSteadyStateAllocations(Action drawFrame)
     {
-        long before;
-
-        try
-        {
-            before = GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations();
+        allocations.Begin();
 
         for (int i = 0; i < AllocationSampleFrames; ++i)
             drawFrame();
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Measure.Custom(new SampleGroup("GC.Alloc", SampleUnit.Byte, false), allocated);
+        long allocated = allocations.End();
+        allocations.Report(allocated);
     }
 
     static string[] CreateSdfSceneIds()

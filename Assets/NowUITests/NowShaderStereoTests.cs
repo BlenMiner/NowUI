@@ -13,7 +13,11 @@ public class NowShaderStereoTests
     const string PackageIncludePrefix = "Packages/com.blenminer.nowui/";
 
     static readonly Regex ProgramPattern = new Regex(
-        @"\b(?:CGPROGRAM|HLSLPROGRAM)\b(?<body>.*?)\b(?:ENDCG|ENDHLSL)\b",
+        @"\b(?<language>CG|HLSL)PROGRAM\b(?<body>.*?)\b(?:ENDCG|ENDHLSL)\b",
+        RegexOptions.Singleline);
+
+    static readonly Regex SharedIncludePattern = new Regex(
+        @"\b(?<language>CG|HLSL)INCLUDE\b(?<body>.*?)\b(?:ENDCG|ENDHLSL)\b",
         RegexOptions.Singleline);
 
     static readonly Regex VertexPragmaPattern = new Regex(
@@ -38,6 +42,10 @@ public class NowShaderStereoTests
             {
                 "Assets/NowUI/Assets/Shaders/LottiePreview.shader",
                 "It is an Editor-only offscreen preview drawn with Graphics.DrawMeshNow, never XR camera geometry."
+            },
+            {
+                "Assets/NowUI/Extensions/Sdf/NowSdfImageField.shader",
+                "Its five image-field bake and atlas-stamp passes use Graphics.Blit into flat texture caches, never XR camera geometry."
             }
         };
 
@@ -52,7 +60,8 @@ public class NowShaderStereoTests
         {
             // UnityCG's vert_img owns the instance input, stereo output, setup,
             // and initialization macros. NowUI should not duplicate that helper.
-            { "Assets/NowUI/Assets/Shaders/UIGlassBlur.shader::vert_img", "UnityCG.cginc" }
+            { "Assets/NowUI/Assets/Shaders/UIGlassBlur.shader::vert_img", "UnityCG.cginc" },
+            { "Assets/NowUI/Extensions/Sdf/NowSdfImageField.shader::vert_img", "UnityCG.cginc" }
         };
 
     static readonly HashSet<string> SerializedResolveVertexEntries =
@@ -96,7 +105,7 @@ public class NowShaderStereoTests
 
             for (int programIndex = 0; programIndex < programs.Count; ++programIndex)
             {
-                string body = programs[programIndex].Groups["body"].Value;
+                string body = ProgramSourceWithSharedIncludes(source, programs[programIndex]);
                 MatchCollection vertexPragmas = VertexPragmaPattern.Matches(body);
 
                 Assert.AreEqual(
@@ -197,7 +206,7 @@ public class NowShaderStereoTests
 
             for (int programIndex = 0; programIndex < programs.Count; ++programIndex)
             {
-                string body = programs[programIndex].Groups["body"].Value;
+                string body = ProgramSourceWithSharedIncludes(source, programs[programIndex]);
                 int pragmaCount = OrdinaryInstancingPragmaPattern.Matches(body).Count;
 
                 if (isExempt)
@@ -246,6 +255,118 @@ public class NowShaderStereoTests
                 @"float\s+NowGlassBackdropSlice\s*\(\s*float\s+sliceCount\s*\).*?min\s*\(.*?unity_StereoEyeIndex.*?max\s*\(\s*0\.0\s*,\s*sliceCount\s*-\s*1\.0\s*\)",
                 RegexOptions.Singleline),
             "Array sampling must clamp the eye index so a one-slice XR array remains valid for the right eye.");
+    }
+
+    [TestCase("CG", "ENDCG")]
+    [TestCase("HLSL", "ENDHLSL")]
+    public void SharedIncludesResolveVertexFunctionsAndPragmas(string language, string terminator)
+    {
+        string source = "Shader \"SharedVertex\" {\n" + language + "INCLUDE\n" +
+            "float4 SharedVertex(float4 position) { return position; }\n" +
+            "#pragma multi_compile_instancing\n" + terminator + "\n" +
+            "SubShader { Pass {\n" + language + "PROGRAM\n" +
+            "#pragma vertex SharedVertex\n" + terminator + "\n} } }";
+        var programs = ProgramPattern.Matches(source);
+        Assert.AreEqual(1, programs.Count);
+        string effective = ProgramSourceWithSharedIncludes(source, programs[0]);
+        AssertVertexFunctionExists(effective, "SharedVertex", "shared-include fixture");
+        Assert.AreEqual(1, OrdinaryInstancingPragmaPattern.Matches(effective).Count);
+    }
+
+    [Test]
+    public void SharedIncludesDoNotLeakIntoSiblingSubshaders()
+    {
+        const string source = @"Shader ""ScopedVertex"" {
+            SubShader {
+                CGINCLUDE
+                float4 ScopedVertex(float4 position) { return position; }
+                #pragma multi_compile_instancing
+                ENDCG
+                Pass {
+                    CGPROGRAM
+                    #pragma vertex ScopedVertex
+                    ENDCG
+                }
+            }
+            SubShader {
+                Pass {
+                    CGPROGRAM
+                    #pragma vertex ScopedVertex
+                    ENDCG
+                }
+            }
+        }";
+        var programs = ProgramPattern.Matches(source);
+        Assert.AreEqual(2, programs.Count);
+        AssertVertexFunctionExists(
+            ProgramSourceWithSharedIncludes(source, programs[0]), "ScopedVertex", "owning SubShader");
+        string sibling = ProgramSourceWithSharedIncludes(source, programs[1]);
+        Assert.Throws<AssertionException>(() =>
+            AssertVertexFunctionExists(sibling, "ScopedVertex", "sibling SubShader"));
+        Assert.Zero(OrdinaryInstancingPragmaPattern.Matches(sibling).Count,
+            "A sibling's instancing pragma must not satisfy the XR geometry gate.");
+    }
+
+    [Test]
+    public void ImageFieldBakingPassesUseTheirSharedUnityBlitVertexProvider()
+    {
+        const string assetPath = "Assets/NowUI/Extensions/Sdf/NowSdfImageField.shader";
+        string source = StripComments(File.ReadAllText(AssetPathToFullPath(assetPath)));
+        var programs = ProgramPattern.Matches(source);
+        string[] fragments = { "SeedFragment", "FloodFragment", "ResolveFragment", "StampFragment", "DilateFragment" };
+        Assert.AreEqual(fragments.Length, programs.Count);
+        for (int i = 0; i < programs.Count; ++i)
+        {
+            string effective = ProgramSourceWithSharedIncludes(source, programs[i]);
+            Assert.AreEqual("vert_img", VertexPragmaPattern.Match(effective).Groups["entry"].Value);
+            Assert.IsTrue(Includes(effective, "UnityCG.cginc"), fragments[i]);
+            AssertVertexFunctionExists(effective, fragments[i], assetPath);
+            Assert.IsTrue(Regex.IsMatch(effective, @"(?m)^\s*#pragma\s+fragment\s+" + fragments[i] + @"\s*$"));
+            Assert.Zero(OrdinaryInstancingPragmaPattern.Matches(effective).Count);
+        }
+    }
+
+    static string ProgramSourceWithSharedIncludes(string shaderSource, Match program)
+    {
+        var effective = new StringBuilder();
+        var programScopes = EnclosingShaderScopes(shaderSource, program.Index);
+        string language = program.Groups["language"].Value;
+        foreach (Match include in SharedIncludePattern.Matches(shaderSource))
+        {
+            if (include.Groups["language"].Value != language)
+                continue;
+            var includeScopes = EnclosingShaderScopes(shaderSource, include.Index);
+            int includeOwner = includeScopes[includeScopes.Count - 1];
+            if (programScopes.Contains(includeOwner))
+                effective.AppendLine(include.Groups["body"].Value);
+        }
+        effective.Append(program.Groups["body"].Value);
+        return effective.ToString();
+    }
+
+    static List<int> EnclosingShaderScopes(string source, int position)
+    {
+        // ShaderLab shared includes apply at Shader/SubShader scope. Retain
+        // their owning brace so a sibling pass/subshader cannot provide missing
+        // functions or instancing pragmas to an unrelated geometry program.
+        var scopes = new List<int> { -1 };
+        bool quoted = false;
+        for (int i = 0; i < position; ++i)
+        {
+            char value = source[i];
+            if (quoted && value == '\\')
+            {
+                ++i;
+                continue;
+            }
+            if (value == '"')
+                quoted = !quoted;
+            else if (!quoted && value == '{')
+                scopes.Add(i);
+            else if (!quoted && value == '}' && scopes.Count > 1)
+                scopes.RemoveAt(scopes.Count - 1);
+        }
+        return scopes;
     }
 
     static void AssertStereoVertexContract(string source, string owner)

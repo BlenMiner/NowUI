@@ -438,30 +438,19 @@ public class NowPerformanceTests
         });
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     static void AssertNoAllocAfterWarmup(Action draw, string message)
     {
         draw();
         draw();
         draw();
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
         draw();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
 
-        Assert.AreEqual(0, allocated, message);
+        allocations.AssertZero(allocated, message);
     }
 
     static void DrawDeferredOverlay(int state)
@@ -1057,13 +1046,16 @@ public class NowPerformanceTests
     {
         var drawList = new NowDrawList();
         NowResolvedId overlayId = NowResolvedId.CreateOwnerRoot(0x504552464F564552UL).Child(42);
+        // C# 9 creates a delegate for a method-group conversion. Cache the
+        // caller-owned callback so this gate measures the overlay queue itself.
+        NowOverlay.DrawCallback callback = DrawDeferredOverlay;
 
         try
         {
             void DrawFrame()
             {
                 using (drawList.Begin(new Vector2(128, 64)))
-                    NowOverlay.Defer(new NowRect(8, 8, 24, 24), overlayId, 42, DrawDeferredOverlay);
+                    NowOverlay.Defer(new NowRect(8, 8, 24, 24), overlayId, 42, callback);
             }
 
             AssertNoAllocAfterWarmup(DrawFrame, "steady-state integer overlay defer must not allocate");

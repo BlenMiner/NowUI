@@ -86,3 +86,7 @@ crashlytics-build.properties
 /Native/freetype/
 /Native/harfbuzz/
 /Native/build-msdf-webgl/
+
+# Python benchmark-report tooling
+__pycache__/
+*.py[cod]

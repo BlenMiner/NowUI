@@ -1152,19 +1152,6 @@ public class NowValueControlsTests
         Assert.AreEqual(RenderFlags.Bloom | RenderFlags.Vsync, flags);
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     static Gradient BlackToWhiteGradient()
     {
         var gradient = new Gradient();
@@ -1190,11 +1177,13 @@ public class NowValueControlsTests
         for (int i = 0; i < 3; ++i)
             DrawGradientFieldFrame(ref gradient);
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
         DrawGradientFieldFrame(ref gradient);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
 
-        Assert.AreEqual(0, allocated, "steady-state gradient field draw must not allocate");
+        allocations.AssertZero(allocated, "steady-state gradient field draw must not allocate");
     }
 
     [Test]
@@ -1205,11 +1194,13 @@ public class NowValueControlsTests
         for (int i = 0; i < 3; ++i)
             DrawAnimationCurveFrame(ref curve);
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
         DrawAnimationCurveFrame(ref curve);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
 
-        Assert.AreEqual(0, allocated, "steady-state animation curve field draw must not allocate");
+        allocations.AssertZero(allocated, "steady-state animation curve field draw must not allocate");
     }
 
     [Test]

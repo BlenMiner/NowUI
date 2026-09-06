@@ -799,16 +799,9 @@ public class NowSdfTests
                 .PopRotation();
         }
 
-        long before;
-        try
-        {
-            before = System.GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (System.MissingMethodException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
 
         for (int i = 0; i < 128; ++i)
         {
@@ -821,8 +814,8 @@ public class NowSdfTests
                 .PopRotation();
         }
 
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.AreEqual(0, allocated,
+        long allocated = allocations.End();
+        allocations.AssertZero(allocated,
             "A warmed SDF rotation stack must not allocate managed memory.");
 
         var sceneId = new NowId(0x5DF20);
@@ -839,7 +832,7 @@ public class NowSdfTests
                 .Measure();
         }
 
-        before = System.GC.GetAllocatedBytesForCurrentThread();
+        allocations.Begin();
         for (int i = 0; i < 128; ++i)
         {
             measured = NowSdf.Scene(sceneId)
@@ -852,9 +845,9 @@ public class NowSdfTests
                 .Measure();
         }
 
-        allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated = allocations.End();
         Assert.Greater(measured.x, 0f);
-        Assert.AreEqual(0, allocated,
+        allocations.AssertZero(allocated,
             "A warmed cached-scene rotation stack must not allocate managed memory.");
     }
 
@@ -879,16 +872,9 @@ public class NowSdfTests
             measured = graph.measureSize;
         }
 
-        long before;
-        try
-        {
-            before = System.GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (System.MissingMethodException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
 
         for (int i = 0; i < 128; ++i)
         {
@@ -900,10 +886,10 @@ public class NowSdfTests
             measured = graph.measureSize;
         }
 
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
         Assert.Greater(measured.x, 0f);
         Assert.Greater(measured.y, 0f);
-        Assert.AreEqual(0, allocated,
+        allocations.AssertZero(allocated,
             "Rebuilding a warmed rotated text graph must not allocate managed memory.");
 
         var sceneId = new NowId(0x5DF21);
@@ -917,7 +903,7 @@ public class NowSdfTests
                 .Measure();
         }
 
-        before = System.GC.GetAllocatedBytesForCurrentThread();
+        allocations.Begin();
         for (int i = 0; i < 128; ++i)
         {
             measured = NowSdf.Scene(sceneId)
@@ -928,10 +914,10 @@ public class NowSdfTests
                 .Measure();
         }
 
-        allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        allocated = allocations.End();
         Assert.Greater(measured.x, 0f);
         Assert.Greater(measured.y, 0f);
-        Assert.AreEqual(0, allocated,
+        allocations.AssertZero(allocated,
             "Rebuilding a warmed cached scene with rotated text must not allocate managed memory.");
     }
 

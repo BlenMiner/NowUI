@@ -28,6 +28,17 @@ provide the licensed editor and platform modules required by these tests. The
 externally provisioned automation. Do not pass `-quit` to Unity test runs; the
 Unity Test Framework exits batchmode after writing results.
 
+## Feature Benchmarks
+
+Run `pwsh -File Tools/NowUI-Harness.ps1 -Mode Benchmark -BenchmarkRuns 3`
+to measure all performance-category EditMode and PlayMode cases and generate
+`overview.md`, `overview.json`, and `environment.json` under the artifacts path.
+Use `-Category NowUI.Overview` for the expanded feature matrix alone.
+This requires Python 3 (standard library only) and a graphics device.
+The [benchmark guide](Benchmarks.md) covers workload units, CPU/GPU boundaries,
+cache pressure, physical project paths, and interpretation. The older `-Mode Perf`
+smoke timer includes capture/PNG/disk costs and is not an isolated render benchmark.
+
 ## Visual Validation
 
 Run the editor visual harness locally as a separate rendering gate:
@@ -106,7 +117,23 @@ Provision all listed Unity `6000.4.0f1` modules before relying on the result.
 
 ## Allocation Bar
 
-Normal frame paths must allocate no managed memory after explicit warmup:
+Normal frame paths must allocate no managed memory after explicit warmup.
+
+Allocation gates must first verify their counter against a deliberately retained
+allocation. Some Unity Mono builds return zero from the byte API even when code
+allocates. Repository tests use `NowBenchmarkAllocations`: zero-allocation gates
+can fall back to verified current-thread profiler allocation calls; byte budgets
+require verified bytes and are explicitly skipped when unavailable. Unsupported
+instrumentation must never turn into a passing zero. Performance output labels
+fallback events `GC.Alloc.Calls`, separate from `GC.Alloc` bytes.
+
+The capture-based performance smoke runner independently probes its byte counter
+without a test-assembly dependency. Its JSON includes `allocationBytesAvailable`
+and writes `allocatedBytes: null` when the counter is unavailable. Its timings
+still include capture, encoding, and temporary-file work; they are not isolated
+frame-render timings.
+
+Prepare representative state before sampling:
 
 - Use `NowDrawList.Warmup(...)` or `NowRenderer.Warmup(...)` with a
   representative frame before measuring steady state.

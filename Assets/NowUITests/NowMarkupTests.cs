@@ -299,21 +299,13 @@ public class NowMarkupTests
         DrawFrame();
         DrawFrame();
 
-        long before;
-
-        try
-        {
-            before = System.GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (System.NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
 
         DrawFrame();
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
 
-        Assert.AreEqual(0, allocated, "steady-state markup draw must not allocate");
+        allocations.AssertZero(allocated, "steady-state markup draw must not allocate");
     }
 }

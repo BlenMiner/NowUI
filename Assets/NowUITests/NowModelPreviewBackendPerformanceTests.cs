@@ -194,27 +194,8 @@ public class NowModelPreviewBackendPerformanceTests
     [Test, Performance]
     public void ManagedAllocationFootprint()
     {
-        long probeBefore;
-        long probeAfter;
-
-        try
-        {
-            probeBefore = System.GC.GetAllocatedBytesForCurrentThread();
-            var probeAllocation = new byte[256];
-            probeAfter = System.GC.GetAllocatedBytesForCurrentThread();
-            System.GC.KeepAlive(probeAllocation);
-        }
-        catch (System.NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking is unavailable on this runtime.");
-            return;
-        }
-
-        if (probeAfter <= probeBefore)
-        {
-            Assert.Ignore("This Mono runtime exposes the allocation API but does not report bytes.");
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations();
+        allocations.RequireAvailable(bytesOnly: true);
 
         using var anchor = new NowModelPreview();
 
@@ -241,8 +222,8 @@ public class NowModelPreviewBackendPerformanceTests
 
         for (int i = 0; i < 12; ++i)
         {
-            MeasureInitializationAllocation(NowModelPreviewBackend.RendererClone, cloneInitialization);
-            MeasureInitializationAllocation(NowModelPreviewBackend.RenderMesh, rawInitialization);
+            MeasureInitializationAllocation(NowModelPreviewBackend.RendererClone, cloneInitialization, allocations);
+            MeasureInitializationAllocation(NowModelPreviewBackend.RenderMesh, rawInitialization, allocations);
         }
 
         using var clone = CreatePreview(_staticSource, NowModelPreviewBackend.RendererClone);
@@ -252,8 +233,8 @@ public class NowModelPreviewBackendPerformanceTests
 
         for (int i = 0; i < 12; ++i)
         {
-            MeasureRefreshAllocation(clone, cloneRefresh);
-            MeasureRefreshAllocation(raw, rawRefresh);
+            MeasureRefreshAllocation(clone, cloneRefresh, allocations);
+            MeasureRefreshAllocation(raw, rawRefresh, allocations);
         }
 
     }
@@ -499,20 +480,21 @@ public class NowModelPreviewBackendPerformanceTests
 
     void MeasureInitializationAllocation(
         NowModelPreviewBackend backend,
-        SampleGroup sampleGroup)
+        SampleGroup sampleGroup,
+        NowBenchmarkAllocations allocations)
     {
-        long before = System.GC.GetAllocatedBytesForCurrentThread();
+        allocations.Begin();
         var preview = CreatePreview(_staticSource, backend);
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
         preview.Dispose();
         Measure.Custom(sampleGroup, allocated);
     }
 
-    static void MeasureRefreshAllocation(NowModelPreview preview, SampleGroup sampleGroup)
+    static void MeasureRefreshAllocation(NowModelPreview preview, SampleGroup sampleGroup, NowBenchmarkAllocations allocations)
     {
-        long before = System.GC.GetAllocatedBytesForCurrentThread();
+        allocations.Begin();
         preview.RenderNow();
-        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = allocations.End();
         Measure.Custom(sampleGroup, allocated);
     }
 

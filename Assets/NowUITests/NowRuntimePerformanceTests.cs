@@ -15,8 +15,8 @@ using NowUI;
 /// pipeline stress, id hashing, scroll views, theme scope resolution, an open
 /// dropdown popup, batch-heavy mesh uploads and glass replay scaling. Timings
 /// exist for before/after comparison, never as absolute assertions, and
-/// allocation numbers are recorded via a GC.Alloc sample group instead of
-/// asserted, so they give visibility without failing CI.
+/// allocations are recorded as verified GC.Alloc bytes or GC.Alloc.Calls event
+/// counts instead of asserted, so they give visibility without failing CI.
 /// </summary>
 public class NowRuntimePerformanceTests
 {
@@ -205,23 +205,10 @@ public class NowRuntimePerformanceTests
         return font;
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     /// <summary>
-    /// Records the average bytes allocated per steady-state frame as a
-    /// "GC.Alloc" sample group. Purely informational: regressions show up in
-    /// the Performance Test Report without ever failing CI.
+    /// Records verified managed bytes (GC.Alloc), or allocation calls
+    /// (GC.Alloc.Calls) when bytes are unavailable, per steady-state frame.
+    /// Regressions show up in the Performance Test Report without failing CI.
     /// </summary>
     static void RecordSteadyStateAllocations(Action drawFrame, int iterations)
     {
@@ -229,13 +216,14 @@ public class NowRuntimePerformanceTests
         drawFrame();
         drawFrame();
 
-        long before = AllocatedBytesOrIgnore();
+        using var allocations = new NowBenchmarkAllocations();
+        allocations.Begin();
 
         for (int i = 0; i < iterations; ++i)
             drawFrame();
 
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Measure.Custom(new SampleGroup("GC.Alloc", SampleUnit.Byte, false), allocated / (double)iterations);
+        long allocated = allocations.End();
+        allocations.Report(allocated / (double)iterations);
     }
 
     /// <summary>
@@ -399,7 +387,7 @@ public class NowRuntimePerformanceTests
     /// out through <see cref="NowTextWrap.Layout"/> and rendered through
     /// <see cref="NowTextWrap.Draw"/> every frame. Layout clears the run list
     /// each pass, so Draw re-materializes run substrings every frame — exactly
-    /// the relayout-per-frame cost this guards. GC.Alloc is recorded, not
+    /// the relayout-per-frame cost this guards. Allocations are recorded, not
     /// asserted.
     /// </summary>
     [Test, Performance]
@@ -442,7 +430,7 @@ public class NowRuntimePerformanceTests
     /// drawn unfocused at an explicit rect every rebuild. The control re-wraps
     /// every visual line on each draw, which is the cost this guards.
     /// Simplification: no focus or keyboard input is simulated — the wrap and
-    /// visible-line rendering path dominates either way. GC.Alloc is recorded,
+    /// visible-line rendering path dominates either way. Allocations are recorded,
     /// not asserted.
     /// </summary>
     [Test, Performance]
@@ -485,7 +473,7 @@ public class NowRuntimePerformanceTests
     /// Control pipeline stress: 500 buttons, 250 checkboxes and 250 sliders
     /// with explicit string ids inside one scroll view, all rebuilt per frame.
     /// Guards the per-control cost of id resolution, interaction, theming and
-    /// layout reservation at realistic UI scale. GC.Alloc is recorded, not
+    /// layout reservation at realistic UI scale. Allocations are recorded, not
     /// asserted.
     /// </summary>
     [Test, Performance]
@@ -936,7 +924,7 @@ public class NowRuntimePerformanceTests
     /// <summary>
     /// Steady-state allocation recording for the headline rectangle build
     /// (1000 rects per frame, mirroring <c>RectangleFrameBuild</c>). Reported
-    /// as a GC.Alloc sample group only — before/after visibility with no CI
+    /// as verified allocation bytes or calls — before/after visibility with no CI
     /// failure mode.
     /// </summary>
     [Test, Performance]
@@ -972,7 +960,7 @@ public class NowRuntimePerformanceTests
     /// <summary>
     /// Steady-state allocation recording for the headline text build
     /// (100 labels per frame, mirroring <c>TextFrameBuild</c>). Reported as a
-    /// GC.Alloc sample group only — before/after visibility with no CI
+    /// verified allocation bytes or calls — before/after visibility with no CI
     /// failure mode.
     /// </summary>
     [Test, Performance]

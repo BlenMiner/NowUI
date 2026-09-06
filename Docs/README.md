@@ -8,6 +8,12 @@ shipped public API:
 
 - [Production gates](Production.md): source-checkout validation, CI, visual
   baselines, allocation gates, and release preparation.
+- [Benchmark guide](Benchmarks.md): feature coverage, repeatable CPU/render runs,
+  allocations, cache pressure, timing tails, and known measurement gaps.
+- [Expanded feature overview](BenchmarkOverview-2026-09-06.md): three-run results,
+  SDF GPU scaling, document/graph hot spots, and corrected allocation instrumentation.
+- [Benchmark follow-up](BenchmarkFollowup-2026-09-06.md): indexed graph evaluation,
+  clipped rich-text comparisons, verified allocation gates, and resolved test failures.
 - [September optimization pass](PerformanceReport-2026-09-06.md): measured
   CPU reductions, allocation checks, visual equivalence, and validation limits.
 - [September baseline](PerformanceReport-2026-09-01.md): earlier optimization

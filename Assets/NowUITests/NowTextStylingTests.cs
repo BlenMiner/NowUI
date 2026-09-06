@@ -785,21 +785,13 @@ public class NowTextStylingTests
         DrawFrame();
         DrawFrame();
 
-        long before;
-
-        try
-        {
-            before = GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return;
-        }
+        using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+        allocations.RequireAvailable();
+        allocations.Begin();
 
         DrawFrame();
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.AreEqual(0, allocated, "warmed gradient animation must not allocate per frame");
+        long allocated = allocations.End();
+        allocations.AssertZero(allocated, "warmed gradient animation must not allocate per frame");
     }
 
     [Test]

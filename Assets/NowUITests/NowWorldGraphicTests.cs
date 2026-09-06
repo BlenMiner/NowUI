@@ -284,19 +284,6 @@ public class NowWorldGraphicTests
         }
     }
 
-    static long AllocatedBytesOrIgnore()
-    {
-        try
-        {
-            return GC.GetAllocatedBytesForCurrentThread();
-        }
-        catch (NotImplementedException)
-        {
-            Assert.Ignore("Per-thread allocation tracking unavailable on this runtime.");
-            return 0;
-        }
-    }
-
     [TearDown]
     public void TearDown()
     {
@@ -699,11 +686,13 @@ public class NowWorldGraphicTests
             graphic.RebuildNowUI();
             graphic.RebuildNowUI();
 
-            long before = AllocatedBytesOrIgnore();
+            using var allocations = new NowBenchmarkAllocations(reportAvailability: false);
+            allocations.RequireAvailable();
+            allocations.Begin();
             graphic.RebuildNowUI();
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            long allocated = allocations.End();
 
-            Assert.AreEqual(0, allocated, "steady-state world graphic rebuild must not allocate");
+            allocations.AssertZero(allocated, "steady-state world graphic rebuild must not allocate");
         }
         finally
         {
