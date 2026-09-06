@@ -1,3 +1,10 @@
+## [1.11.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.3...nowui-v1.11.4) (2026-09-06)
+
+
+### Performance Improvements
+
+* peformance pass ([76629a4](https://github.com/BlenMiner/NowUI/commit/76629a4eca49b6226ac9777ff767418f3a25936a))
+
 ## [1.11.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.2...nowui-v1.11.3) (2026-09-03)
 
 
