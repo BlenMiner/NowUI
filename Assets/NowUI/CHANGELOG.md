@@ -1,3 +1,10 @@
+## [1.11.7](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.6...nowui-v1.11.7) (2026-09-06)
+
+
+### Bug Fixes
+
+* unity 6.6 compatibility ([b419804](https://github.com/BlenMiner/NowUI/commit/b419804e1371e6b2c0486511861f57b3e5c9722a))
+
 ## [1.11.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.5...nowui-v1.11.6) (2026-09-06)
 
 
