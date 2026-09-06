@@ -1,6 +1,6 @@
 {
   "name": "com.blenminer.nowui",
-  "version": "1.11.4",
+  "version": "1.11.5",
   "displayName": "NowUI",
   "description": "Immediate-mode Unity UI with responsive layout, controls, gradient and animated MSDF text, themes, effects, Lottie, Markdown/markup, and editor tooling. Renders through UGUI, UI Toolkit, Built-in, URP/HDRP, RenderTextures, IMGUI, and world-space meshes.",
   "license": "MIT",

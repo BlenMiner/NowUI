@@ -1,3 +1,10 @@
+## [1.11.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.4...nowui-v1.11.5) (2026-09-06)
+
+
+### Performance Improvements
+
+* graph evaluation improvements; improved GC regression tests ([9c1e48b](https://github.com/BlenMiner/NowUI/commit/9c1e48b12833a2b8f289e94fba7ac2e3471f445f))
+
 ## [1.11.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.3...nowui-v1.11.4) (2026-09-06)
 
 
