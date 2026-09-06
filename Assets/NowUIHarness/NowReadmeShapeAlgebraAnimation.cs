@@ -33,6 +33,8 @@ namespace NowUI.Editor
         static readonly Color ShapesMethod = new Color(0.86f, 0.86f, 0.67f, 1f);
         static readonly Color ShapesNumber = new Color(0.71f, 0.81f, 0.66f, 1f);
         static readonly Color ShapesPunctuation = new Color(0.80f, 0.80f, 0.82f, 1f);
+        static readonly Color ShapesKeyword = new Color(0.34f, 0.61f, 0.84f, 1f);
+        static readonly Color ShapesComment = new Color(0.42f, 0.60f, 0.36f, 1f);
 
         static readonly NowSdfGraph ShapesGraphA = NowSdf.Graph();
         static readonly NowSdfGraph ShapesGraphB = NowSdf.Graph();
@@ -42,39 +44,48 @@ namespace NowUI.Editor
 
         static NowFontAsset _shapesMonoFont;
 
-        /// <summary>One step of the walkthrough: its caption and how long it holds after its transition.</summary>
+        /// <summary>
+        /// One step of the walkthrough: the NowUI builder call that produces
+        /// the field, an optional setup line introducing any new name, and how
+        /// long it holds after its transition.
+        /// </summary>
         readonly struct ShapesStep
         {
             public readonly string caption;
+            public readonly string setup;
             public readonly int extraHold;
 
-            public ShapesStep(string caption, int extraHold = 0)
+            public ShapesStep(string caption, string setup = null, int extraHold = 0)
             {
                 this.caption = caption;
+                this.setup = setup ?? string.Empty;
                 this.extraHold = extraHold;
             }
 
             public int Frames => ShapesTransitionFrames + ShapesHoldFrames + extraHold;
         }
 
+        // Captions are the real NowUI calls behind each field. Every step is a
+        // chain on one NowSdf.Scene builder; the setup line defines the names
+        // the chain uses (c is the scene center, a and b the circle centers).
         static readonly ShapesStep[] ShapesSteps =
         {
-            new ShapesStep("a = SdShape.Circle(100)"),
-            new ShapesStep("a = SdShape.Circle(100).MoveX(-60)"),
-            new ShapesStep("b = SdShape.Circle(100).MoveX(+60)"),
-            new ShapesStep("a + b"),
-            new ShapesStep("a * b"),
-            new ShapesStep("(a + b).Onion(10)"),
-            new ShapesStep("(a + b) - (a * b)"),
-            new ShapesStep("a.MoveX(-85).Union(b.MoveX(85), 100)", 4),
-            new ShapesStep("a.Union(b, 100)"),
-            new ShapesStep("a.Union(b, 100) - (a - 20)"),
-            new ShapesStep("a.Union(b, 100) - (b - 20)"),
-            new ShapesStep("tri = SdShape.Triangle(-100, 0, 100, 0, 0, 200)", 4),
-            new ShapesStep("tri + a + b"),
-            new ShapesStep("heart = tri.Union(a + b, 100)"),
-            new ShapesStep("heart.Scale(1 + Sin(t * PI) * 0.2f)", 26),
-            new ShapesStep("heart.Mix(b.Rotate(gui.Time.Elapsed * 4), 0.1f)", 70)
+            new ShapesStep(".Circle(c, 100)", "Vector2 c = rect.center;"),
+            new ShapesStep(".Circle(a, 100)", "Vector2 a = c + new Vector2(-60, 0);"),
+            new ShapesStep(".Circle(b, 100)", "Vector2 b = c + new Vector2(60, 0);"),
+            new ShapesStep(".Circle(a, 100).Union().Circle(b, 100)"),
+            new ShapesStep(".Circle(a, 100).Intersect().Circle(b, 100)"),
+            new ShapesStep(".Circle(a, 110).Circle(b, 110).Subtract().Circle(a, 90).Subtract().Circle(b, 90)", "// a 10-unit shell: the union grown by 10, minus the union shrunk by 10"),
+            new ShapesStep(".Graph(union).Subtract().Graph(lens)", "var union = NowSdf.Graph().Circle(a, 100).Circle(b, 100);\nvar lens = NowSdf.Graph().Circle(a, 100).Intersect().Circle(b, 100);"),
+            new ShapesStep(".Circle(a2, 100).SmoothUnion(100).Circle(b2, 100)", "Vector2 a2 = a + new Vector2(-85, 0);  Vector2 b2 = b + new Vector2(85, 0);", 4),
+            new ShapesStep(".Circle(a, 100).SmoothUnion(100).Circle(b, 100)"),
+            new ShapesStep(".Circle(a, 100).SmoothUnion(100).Circle(b, 100).Subtract().Circle(a, 80)"),
+            new ShapesStep(".Circle(a, 100).SmoothUnion(100).Circle(b, 100).Subtract().Circle(b, 80)"),
+            new ShapesStep(".Triangle(t0, t1, t2)", "Vector2 t0 = c + new Vector2(-100, 0);  t1 = c + new Vector2(100, 0);  t2 = c + new Vector2(0, 200);", 4),
+            new ShapesStep(".Triangle(t0, t1, t2).Circle(a, 100).Circle(b, 100)"),
+            new ShapesStep(".Circle(a, 100).Circle(b, 100).SmoothUnion(100).Triangle(t0, t1, t2)", "var heart = NowSdf.Graph()  // the same chain, kept as a reusable graph"),
+            new ShapesStep(".Graph(heart)", "using (Now.TransformAround(Vector2.one * (1 + Mathf.Sin(t * Mathf.PI) * 0.2f), c))", 26),
+            new ShapesStep(".Morph(heart, orbit, 0.1f)", "var orbit = NowSdf.Graph().Circle(c + new Vector2(Mathf.Cos(time * 4), Mathf.Sin(time * 4)) * 60, 100);", 70)
         };
 
         static int ShapesTotalFrames()
@@ -90,8 +101,11 @@ namespace NowUI.Editor
             int f = frame.index;
             ResolveShapesStep(f, out int step, out int local);
             int previous = (step + ShapesSteps.Length - 1) % ShapesSteps.Length;
-            // t runs 0..1 through the transition into this step, then stays 1.
-            float t = Smooth(Mathf.InverseLerp(0f, ShapesTransitionFrames, local));
+            // The field settles like a damped lerp: most of the change lands in
+            // the first few frames, then it eases in over the rest. A cubic
+            // ease-out reaches exactly 1 at frame 16 so the hold frames are
+            // bit-identical and the WebP encoder can merge them.
+            float t = 1f - Mathf.Pow(1f - Mathf.Clamp01(local / 16f), 3f);
             float holdSeconds = Mathf.Max(0f, local - ShapesTransitionFrames) / ShapesFps;
 
             Now.Rectangle(rect).SetColor(new Color(0.067f, 0.067f, 0.071f, 1f)).Draw();
@@ -199,8 +213,8 @@ namespace NowUI.Editor
                 .SetFeather(1f)
                 .SetShadow(new Vector2(0f, 10f), 18f, new Color(0f, 0f, 0f, 0.55f), 1f)
                 .SetOutline(1.6f, new Color(0.02f, 0.02f, 0.04f, 0.92f), 0.6f)
-                .SetInnerShadow(light * 24f, 72f, new Color(0f, 0f, 0.04f, 0.80f), 6f)
-                .SetEmboss(-light, 0.18f + hover * 0.14f, 12f)
+                .SetInnerShadow(light * 18f, 56f, new Color(0f, 0f, 0.04f, 0.62f), 4f)
+                .SetEmboss(-light, 0.16f + hover * 0.12f, 12f)
                 .SetColor(fill)
                 .UseColor();
             if (hover > 0f)
@@ -217,59 +231,54 @@ namespace NowUI.Editor
                 hover = 1f - Smooth(Mathf.InverseLerp(70f, 150f, distance));
             }
 
-            NowSdfBuilder scene = ShapesSceneBuilder(fill, cursor, hover);
+            ComposeShapesField(ShapesSceneBuilder(fill, cursor, hover), step, previous, t, holdSeconds, fill).Draw();
 
+            // Glossy sphere shading: the same composed field, rasterized as a
+            // mask, clips a top-left highlight and a bottom-right shade so the
+            // lighting hugs whatever shape the morph currently produces.
+            using (ComposeShapesField(NowSdf.Scene(ShapesScene, "readme-shapes-mask"), step, previous, t, holdSeconds, fill).BeginMask())
+            {
+                Vector2 highlight = ShapesOrigin + new Vector2(-34f, -52f) * ShapesUnit;
+                Vector2 shade = ShapesOrigin + new Vector2(52f, 74f) * ShapesUnit;
+                Now.Gradient(ShapesScene, new Color(1f, 1f, 1f, 0.30f + hover * 0.12f), new Color(1f, 1f, 1f, 0f))
+                    .SetRadial(new Vector2((highlight.x - ShapesScene.x) / ShapesScene.width, (highlight.y - ShapesScene.y) / ShapesScene.height), 0.30f)
+                    .Draw();
+                Now.Gradient(ShapesScene, new Color(0f, 0f, 0.03f, 0.42f), new Color(0f, 0f, 0.03f, 0f))
+                    .SetRadial(new Vector2((shade.x - ShapesScene.x) / ShapesScene.width, (shade.y - ShapesScene.y) / ShapesScene.height), 0.40f)
+                    .Draw();
+            }
+        }
+
+        /// <summary>
+        /// Applies this frame's field to a scene builder. Every step change is
+        /// a distance-field morph from the previous step's finished field, so
+        /// even a MoveX squashes the circle across rather than sliding it.
+        /// </summary>
+        static NowSdfBuilder ComposeShapesField(NowSdfBuilder scene, int step, int previous, float t, float holdSeconds, Color fill)
+        {
             switch (step)
             {
-                case 0:
-                    // Wrap-around: the heart morphs back into the opening circle.
-                    BuildShapesHeart(ShapesGraphA, fill, 1f);
-                    BuildShapesCircle(ShapesGraphB, fill, 0f, 100f);
-                    scene.Morph(ShapesGraphA, ShapesGraphB, t).Draw();
-                    return;
-                case 1:
-                    BuildShapesCircle(ShapesGraphA, fill, Mathf.Lerp(0f, -60f, t), 100f);
-                    scene.Graph(ShapesGraphA).Draw();
-                    return;
-                case 2:
-                    BuildShapesCircle(ShapesGraphA, fill, Mathf.Lerp(-60f, 60f, t), 100f);
-                    scene.Graph(ShapesGraphA).Draw();
-                    return;
                 case 6:
-                {
                     // (a + b) - (a * b) needs the lens as its own operand, so the
                     // scene composes it: the union morphs in from the shell while
                     // the lens hole grows from nothing.
                     BuildShapesOnion(ShapesGraphA, fill);
                     BuildShapesUnion(ShapesGraphB, fill);
                     BuildShapesLens(ShapesGraphLens, fill, Mathf.Lerp(60f, 100f, t));
-                    scene.Morph(ShapesGraphA, ShapesGraphB, t).Subtract().Graph(ShapesGraphLens).Draw();
-                    return;
-                }
+                    return scene.Morph(ShapesGraphA, ShapesGraphB, t).Subtract().Graph(ShapesGraphLens);
                 case 7:
-                {
                     BuildShapesUnion(ShapesGraphA, fill);
                     BuildShapesSmoothPair(ShapesGraphB, fill, 85f);
                     BuildShapesLens(ShapesGraphLens, fill, Mathf.Lerp(100f, 60f, t));
-                    scene.Morph(ShapesGraphA, ShapesGraphB, t).Subtract().Graph(ShapesGraphLens).Draw();
-                    return;
-                }
-                case 8:
-                    BuildShapesSmoothPair(ShapesGraphA, fill, Mathf.Lerp(85f, 0f, t));
-                    scene.Graph(ShapesGraphA).Draw();
-                    return;
-                case 10:
-                    BuildShapesSmoothPairMinus(ShapesGraphA, fill, Mathf.Lerp(-60f, 60f, t));
-                    scene.Graph(ShapesGraphA).Draw();
-                    return;
+                    return scene.Morph(ShapesGraphA, ShapesGraphB, t).Subtract().Graph(ShapesGraphLens);
                 case 14:
                 {
                     // heart.Scale(1 + Sin(t * PI) * 0.2f): the pulse starts once the
                     // transition has settled and the color has turned red.
                     float scale = 1f + Mathf.Sin(holdSeconds * Mathf.PI) * 0.2f * Smooth(Mathf.InverseLerp(0f, 0.25f, holdSeconds));
-                    BuildShapesHeart(ShapesGraphA, fill, scale);
-                    scene.Graph(ShapesGraphA).Draw();
-                    return;
+                    BuildShapesHeart(ShapesGraphA, fill, 1f);
+                    BuildShapesHeart(ShapesGraphB, fill, scale);
+                    return scene.Morph(ShapesGraphA, ShapesGraphB, t);
                 }
                 case 15:
                 {
@@ -283,16 +292,13 @@ namespace NowUI.Editor
                     float angle = holdSeconds * 4f;
                     BuildShapesHeart(ShapesGraphA, fill, 1f);
                     BuildShapesCircleAt(ShapesGraphOrbit, fill, new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 60f, 100f);
-                    scene.Morph(ShapesGraphA, ShapesGraphOrbit, mix).Draw();
-                    return;
+                    return scene.Morph(ShapesGraphA, ShapesGraphOrbit, mix);
                 }
             }
 
-            // Every remaining step is a distance-field morph from the previous
-            // step's finished field into this one.
             BuildShapesStepGraph(ShapesGraphA, previous, fill);
             BuildShapesStepGraph(ShapesGraphB, step, fill);
-            scene.Morph(ShapesGraphA, ShapesGraphB, t).Draw();
+            return scene.Morph(ShapesGraphA, ShapesGraphB, t);
         }
 
         /// <summary>The finished field of a step, used as a morph endpoint.</summary>
@@ -444,16 +450,15 @@ namespace NowUI.Editor
         /// </summary>
         static void DrawShapesCaption(int step, int previous, int local)
         {
-            const float size = 21f;
-            const float y = 448f;
+            const float y = 452f;
             string current = ShapesSteps[step].caption;
             string old = ShapesSteps[previous].caption;
             int shared = 0;
             while (shared < current.Length && shared < old.Length && current[shared] == old[shared])
                 ++shared;
 
-            NowFontAsset mono = GetShapesMonoFont();
-            float advance = Now.Text(new NowRect(0f, 0f, 100f, 40f)).SetFont(mono).SetFontSize(size).Measure("M").x;
+            float size = ShapesCodeSize(current, 21f, 880f);
+            float advance = ShapesCodeAdvance(size);
             float slide = Smooth(Mathf.InverseLerp(0f, ShapesTransitionFrames, local));
             float left = Mathf.Lerp(480f - old.Length * advance * 0.5f, 480f - current.Length * advance * 0.5f, slide);
             float leave = 1f - Smooth(Mathf.InverseLerp(0f, 5f, local));
@@ -463,6 +468,50 @@ namespace NowUI.Editor
                 DrawShapesCode(old, shared, old.Length, left, y + (1f - leave) * 12f, advance, size, leave, -1f);
             if (shared < current.Length)
                 DrawShapesCode(current, shared, current.Length, left, y, advance, size, 1f, local / ShapesFps);
+
+            // Setup lines: the old one fades out, the new one fades in above
+            // the chain. Steps that share a setup keep it steady.
+            string setup = ShapesSteps[step].setup;
+            string oldSetup = ShapesSteps[previous].setup;
+            if (setup == oldSetup)
+            {
+                DrawShapesSetup(setup, 1f);
+            }
+            else
+            {
+                DrawShapesSetup(oldSetup, 1f - Smooth(Mathf.InverseLerp(0f, 4f, local)));
+                DrawShapesSetup(setup, Smooth(Mathf.InverseLerp(4f, 12f, local)));
+            }
+        }
+
+        static void DrawShapesSetup(string setup, float alpha)
+        {
+            if (alpha <= 0f || setup.Length == 0)
+                return;
+
+            string[] lines = setup.Split('\n');
+            float size = 14f;
+            for (int i = 0; i < lines.Length; ++i)
+                size = Mathf.Min(size, ShapesCodeSize(lines[i], 14f, 880f));
+            float advance = ShapesCodeAdvance(size);
+            float top = 418f - (lines.Length - 1) * 18f;
+            for (int i = 0; i < lines.Length; ++i)
+            {
+                string line = lines[i];
+                DrawShapesCode(line, 0, line.Length, 480f - line.Length * advance * 0.5f, top + i * 18f, advance, size, alpha * 0.72f, -1f);
+            }
+        }
+
+        /// <summary>Largest size up to <paramref name="preferred"/> at which the line fits in <paramref name="maxWidth"/>.</summary>
+        static float ShapesCodeSize(string code, float preferred, float maxWidth)
+        {
+            float ratio = ShapesCodeAdvance(preferred) / preferred;
+            return Mathf.Min(preferred, maxWidth / Mathf.Max(1f, code.Length * ratio));
+        }
+
+        static float ShapesCodeAdvance(float size)
+        {
+            return Now.Text(new NowRect(0f, 0f, 100f, 40f)).SetFont(GetShapesMonoFont()).SetFontSize(size).Measure("M").x;
         }
 
         /// <summary>
@@ -508,13 +557,21 @@ namespace NowUI.Editor
             {
                 char c = code[i];
                 int start = i;
+                if (c == '/' && i + 1 < code.Length && code[i + 1] == '/')
+                {
+                    tokens.Add((code.Substring(start), ShapesComment));
+                    return;
+                }
                 if (char.IsLetter(c) || c == '_')
                 {
                     while (i < code.Length && (char.IsLetterOrDigit(code[i]) || code[i] == '_'))
                         ++i;
                     string word = code.Substring(start, i - start);
                     bool member = start > 0 && code[start - 1] == '.';
-                    Color color = member ? ShapesMethod : word == "SdShape" ? ShapesType : word == "PI" ? ShapesNumber : ShapesIdentifier;
+                    Color color = member ? ShapesMethod
+                        : IsShapesKeyword(word) ? ShapesKeyword
+                        : IsShapesType(word) ? ShapesType
+                        : ShapesIdentifier;
                     tokens.Add((word, color));
                 }
                 else if (char.IsDigit(c) || ((c == '-' || c == '+') && i + 1 < code.Length && char.IsDigit(code[i + 1]) && (start == 0 || code[start - 1] == '(' || code[start - 1] == ' ')))
@@ -538,6 +595,16 @@ namespace NowUI.Editor
             }
         }
 
+        static bool IsShapesKeyword(string word)
+        {
+            return word == "var" || word == "new" || word == "using" || word == "float";
+        }
+
+        static bool IsShapesType(string word)
+        {
+            return word == "NowSdf" || word == "Vector2" || word == "Now" || word == "Mathf" || word == "NowRect";
+        }
+
         static void DrawShapesCenteredText(Vector2 center, string value, float size, Color color, bool bold)
         {
             var probe = Now.Text(new NowRect(0f, 0f, 960f, size * 1.5f)).SetFontSize(size);
@@ -546,7 +613,6 @@ namespace NowUI.Editor
             Vector2 measured = probe.Measure(value);
             DrawText(new NowRect(center.x - measured.x * 0.5f, center.y - measured.y * 0.5f, measured.x + 4f, measured.y + 4f), value, size, color, bold);
         }
-
 
         static NowFontAsset GetShapesMonoFont()
         {

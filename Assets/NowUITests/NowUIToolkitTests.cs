@@ -1,6 +1,9 @@
 using NowUI;
 using NUnit.Framework;
 using UnityEngine;
+#if NOWUI_UITOOLKIT
+using UnityEngine.UIElements;
+#endif
 
 public class NowUIToolkitTests
 {
@@ -184,6 +187,73 @@ public class NowUIToolkitTests
         finally
         {
             layoutElement.Dispose();
+            element.Dispose();
+        }
+    }
+
+    [Test]
+    public void LayoutVisualElementReportsContentSizeToUIToolkit()
+    {
+        var element = new NowLayoutVisualElement();
+
+        try
+        {
+            element.rebuildNowUI += (_, view) =>
+            {
+                using (NowLayout.Column(view).Begin())
+                using (NowLayout.Column().Width(120f).Height(40f).Begin())
+                    NowLayout.Space(1f);
+            };
+
+            Assert.IsTrue(element.reportsContentSize,
+                "UI Toolkit must be asked to call DoMeasure on the layout host, or auto-sized elements collapse to zero.");
+
+            Vector2 auto = element.MeasureContentSize(float.NaN, VisualElement.MeasureMode.Undefined, float.NaN, VisualElement.MeasureMode.Undefined);
+            Assert.AreEqual(120f, auto.x, 0.01f, "An auto width must shrink-wrap the layout content.");
+            Assert.AreEqual(40f, auto.y, 0.01f, "An auto height must shrink-wrap the layout content.");
+
+            Vector2 stretched = element.MeasureContentSize(300f, VisualElement.MeasureMode.Exactly, float.NaN, VisualElement.MeasureMode.Undefined);
+            Assert.AreEqual(300f, stretched.x, 0.01f, "An exact width is UI Toolkit's decision.");
+            Assert.AreEqual(40f, stretched.y, 0.01f, "Height still comes from the content when only the width is fixed.");
+
+            Vector2 capped = element.MeasureContentSize(80f, VisualElement.MeasureMode.AtMost, 500f, VisualElement.MeasureMode.AtMost);
+            Assert.AreEqual(80f, capped.x, 0.01f, "AtMost caps the measured width.");
+            Assert.AreEqual(40f, capped.y, 0.01f, "AtMost leaves smaller content alone.");
+        }
+        finally
+        {
+            element.Dispose();
+        }
+    }
+
+    [Test]
+    public void LayoutVisualElementIgnoresFillChildrenOnAutoAxes()
+    {
+        var element = new NowLayoutVisualElement();
+
+        try
+        {
+            element.rebuildNowUI += (_, view) =>
+            {
+                using (NowLayout.Column(view).Begin())
+                {
+                    using (NowLayout.Column().Width(64f).Height(24f).Begin())
+                        NowLayout.Space(1f);
+                    using (NowLayout.Row().FillWidth().Height(16f).Begin())
+                        NowLayout.Space(1f);
+                }
+            };
+
+            Vector2 auto = element.MeasureContentSize(float.NaN, VisualElement.MeasureMode.Undefined, float.NaN, VisualElement.MeasureMode.Undefined);
+            Assert.AreEqual(64f, auto.x, 0.01f, "A fill-width child has no preferred width of its own on an auto axis.");
+            Assert.AreEqual(40f, auto.y, 0.01f, "Both children stack on the measured height.");
+
+            Vector2 fixedWidth = element.MeasureContentSize(200f, VisualElement.MeasureMode.Exactly, float.NaN, VisualElement.MeasureMode.Undefined);
+            Assert.AreEqual(200f, fixedWidth.x, 0.01f);
+            Assert.AreEqual(40f, fixedWidth.y, 0.01f, "A fixed width must not change the stacked height.");
+        }
+        finally
+        {
             element.Dispose();
         }
     }

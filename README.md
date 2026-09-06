@@ -57,11 +57,13 @@ slides over on every month boundary.
 *Shape algebra, after the PanGui "Shapes" demo. Two circles and a triangle
 are combined one operation at a time (union, intersection, a 10-unit shell,
 symmetric difference, smooth union, subtraction) until they form a heart.
-Every step change is a real distance-field morph or a parameter slide, never
-a crossfade, and the sphere shading, outline, and drop shadow follow whatever
-field results. The captions keep their shared prefix and animate only the
+Each caption is the NowUI builder chain that produces that field. Every step
+change is a distance-field morph with a damped ease, never a crossfade or a
+slide, and the glossy shading, outline, and drop shadow follow whatever field
+results: the highlight and shade are ordinary gradients clipped by the scene
+used as a mask. The captions keep their shared prefix and animate only the
 new suffix with the built-in FadeUp text animation.
-[SDF Shapes](Assets/NowUI/Documentation~/SDF.md#morphs), [Text Animations](Assets/NowUI/Documentation~/TextStyling.md#built-in-text-animations).*
+[SDF Shapes](Assets/NowUI/Documentation~/SDF.md#morphs), [Masks](Assets/NowUI/Documentation~/Masks.md), [Text Animations](Assets/NowUI/Documentation~/TextStyling.md#built-in-text-animations).*
 
 ![Animated SDF metamorphosis cycling between organic, ticket, and prism forms with contours and lighting](Docs/media/readme/sdf-metamorphosis.webp)
 

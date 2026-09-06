@@ -1,5 +1,6 @@
 #if NOWUI_UITOOLKIT
 using System;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
@@ -217,7 +218,7 @@ namespace NowUI
 
         public Vector2 measuredContentSize => _measuredContentSize;
 
-        public void MarkDirty()
+        public virtual void MarkDirty()
         {
             MarkDirtyRepaint();
         }
@@ -343,6 +344,36 @@ namespace NowUI
 
             RebuildTarget(rect, target, pixelsPerPoint);
             DrawTarget(context, rect, target);
+        }
+
+        /// <summary>
+        /// Runs the content once as a measure-only pass inside
+        /// <paramref name="availableSize"/> and returns the extents NowLayout
+        /// tracked. Nothing is drawn and input stays passive.
+        /// </summary>
+        internal Vector2 MeasureLayoutContent(Vector2 availableSize)
+        {
+            var size = new Vector2(Mathf.Max(0f, availableSize.x), Mathf.Max(0f, availableSize.y));
+            var frame = NowFrame.Begin(GetEffectiveUIScale(GetPixelsPerPoint()));
+
+            try
+            {
+                using (NowInput.BeginMeasurement(_inputProvider, new NowInputSurface(size)))
+                using (NowControls.RestoreIdScope(_scopeId))
+                {
+                    var content = new FrameContent(this);
+                    return NowFrame.MeasureContent(ref content, new NowRect(0f, 0f, size.x, size.y));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                return default;
+            }
+            finally
+            {
+                frame.Dispose();
+            }
         }
 
         void RebuildTarget(Rect rect, RenderTexture target, float pixelsPerPoint)
@@ -650,11 +681,152 @@ namespace NowUI
         }
     }
 
-    /// <summary>UI Toolkit host with exact same-rebuild NowLayout measurement enabled.</summary>
+    /// <summary>
+    /// UI Toolkit host with exact same-rebuild NowLayout measurement enabled.
+    /// It also reports its layout content size to UI Toolkit, so an element
+    /// whose width or height is <c>auto</c> shrink-wraps its NowLayout content
+    /// the way a <see cref="Label"/> wraps its text. Call <see cref="MarkDirty"/>
+    /// when retained data changes so UI Toolkit measures the new content.
+    /// </summary>
     [UxmlElement]
     public partial class NowLayoutVisualElement : NowVisualElement
     {
+        public NowLayoutVisualElement()
+        {
+            NowUIToolkitMeasureBridge.EnableMeasureFunction(this);
+        }
+
         internal sealed override bool useLayoutMeasurePass => true;
+
+        /// <summary>
+        /// True when UI Toolkit asks this element for its content size. It is
+        /// false only if this Unity version hides the hook, in which case the
+        /// element needs an explicit size or flex settings like any other
+        /// <see cref="VisualElement"/>.
+        /// </summary>
+        public bool reportsContentSize => NowUIToolkitMeasureBridge.available;
+
+        public override void MarkDirty()
+        {
+            base.MarkDirty();
+            NowUIToolkitMeasureBridge.InvalidateLayout(this);
+        }
+
+        protected override Vector2 DoMeasure(
+            float desiredWidth,
+            MeasureMode widthMode,
+            float desiredHeight,
+            MeasureMode heightMode)
+        {
+            return MeasureContentSize(desiredWidth, widthMode, desiredHeight, heightMode);
+        }
+
+        /// <summary>
+        /// Measures the NowLayout content for UI Toolkit. A constrained axis is
+        /// measured inside the offered size; an unconstrained (<c>auto</c>)
+        /// axis is measured at zero so fill and grow children contribute
+        /// nothing and the result is the content's own preferred extent.
+        /// </summary>
+        internal Vector2 MeasureContentSize(
+            float desiredWidth,
+            MeasureMode widthMode,
+            float desiredHeight,
+            MeasureMode heightMode)
+        {
+            var available = new Vector2(
+                widthMode == MeasureMode.Undefined ? 0f : Sanitize(desiredWidth),
+                heightMode == MeasureMode.Undefined ? 0f : Sanitize(desiredHeight));
+            Vector2 measured = MeasureLayoutContent(available);
+
+            return new Vector2(
+                Resolve(measured.x, desiredWidth, widthMode),
+                Resolve(measured.y, desiredHeight, heightMode));
+        }
+
+        static float Resolve(float measured, float desired, MeasureMode mode)
+        {
+            measured = Sanitize(measured);
+            switch (mode)
+            {
+                case MeasureMode.Exactly:
+                    return Sanitize(desired);
+                case MeasureMode.AtMost:
+                    return Mathf.Min(measured, Sanitize(desired));
+                default:
+                    return measured;
+            }
+        }
+
+        static float Sanitize(float value)
+        {
+            return float.IsNaN(value) || float.IsInfinity(value) ? 0f : Mathf.Max(0f, value);
+        }
+    }
+
+    /// <summary>
+    /// UI Toolkit only calls <c>DoMeasure</c> for elements that opted in through
+    /// an internal flag, and only re-measures after an internal layout version
+    /// bump; its own Label and Image use the same two members. This bridge
+    /// reaches them by reflection and degrades to a one-time warning if a
+    /// Unity release renames them.
+    /// </summary>
+    static class NowUIToolkitMeasureBridge
+    {
+        const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+        static readonly PropertyInfo _requireMeasureFunction;
+        static readonly MethodInfo _incrementVersion;
+        static readonly object[] _layoutChangeArgs;
+        static bool _warned;
+
+        static NowUIToolkitMeasureBridge()
+        {
+            _requireMeasureFunction = typeof(VisualElement).GetProperty("requireMeasureFunction", Flags);
+            _incrementVersion = ResolveIncrementVersion(out object layoutChange);
+            _layoutChangeArgs = layoutChange != null ? new[] { layoutChange } : null;
+        }
+
+        internal static bool available => _requireMeasureFunction != null && _requireMeasureFunction.CanWrite;
+
+        internal static void EnableMeasureFunction(VisualElement element)
+        {
+            if (available)
+            {
+                _requireMeasureFunction.SetValue(element, true);
+                return;
+            }
+
+            if (_warned)
+                return;
+
+            _warned = true;
+            Debug.LogWarning(
+                "NowLayoutVisualElement cannot report its content size to UI Toolkit in this Unity version. " +
+                "Give the element an explicit width and height, or flex-grow inside a sized parent.");
+        }
+
+        internal static void InvalidateLayout(VisualElement element)
+        {
+            if (_incrementVersion == null || _layoutChangeArgs == null || element.panel == null)
+                return;
+
+            _incrementVersion.Invoke(element, _layoutChangeArgs);
+        }
+
+        static MethodInfo ResolveIncrementVersion(out object layoutChange)
+        {
+            layoutChange = null;
+            Type changeType = typeof(VisualElement).Assembly.GetType("UnityEngine.UIElements.VersionChangeType");
+            if (changeType == null || !changeType.IsEnum || !Enum.IsDefined(changeType, "Layout"))
+                return null;
+
+            MethodInfo method = typeof(VisualElement).GetMethod("IncrementVersion", Flags, null, new[] { changeType }, null);
+            if (method == null)
+                return null;
+
+            layoutChange = Enum.Parse(changeType, "Layout");
+            return method;
+        }
     }
 }
 #endif

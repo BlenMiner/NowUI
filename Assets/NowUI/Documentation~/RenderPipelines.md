@@ -171,6 +171,25 @@ public partial class NowStatusBadge : NowVisualElement
 }
 ```
 
+### Sizing
+
+Both hosts draw inside whatever content rect UI Toolkit resolves for them, and
+nothing is drawn while that rect is empty. `NowVisualElement` never reports a
+size of its own: its explicit-rect code has no content size to report, so give
+it a `width` and `height`, or `flex-grow: 1` inside a sized parent. A
+percentage only resolves when every ancestor up to the panel root is sized.
+
+`NowLayoutVisualElement` reports its measured NowLayout content to UI Toolkit,
+so `width: auto` and `height: auto` shrink-wrap the content like a `Label`. A
+constrained axis (an explicit size, a stretched cross axis, or `max-width`) is
+measured inside the offered size; an unconstrained axis is measured at zero, so
+`FillWidth`, `FillHeight`, and `Grow` children contribute nothing on that axis
+and the result is the content's own preferred extent. UI Toolkit caches the
+measurement, so call `MarkDirty()` when retained data changes; the layout host
+invalidates its layout as well as its repaint. Check `reportsContentSize` if a
+Unity release ever hides the hook the host relies on; the element then needs an
+explicit size like any other `VisualElement`.
+
 The generic `NowVisualElement` and `NowLayoutVisualElement` can be authored in
 UXML, but UXML does not contain immediate NowUI draw commands. Put draw code in
 a callback or subclass. Use the layout type when that draw code calls
