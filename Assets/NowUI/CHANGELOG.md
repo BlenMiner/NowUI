@@ -1,3 +1,10 @@
+## [1.11.6](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.5...nowui-v1.11.6) (2026-09-06)
+
+
+### Bug Fixes
+
+* simplify AI guidance and prevent ambiguous skill installs ([09323d9](https://github.com/BlenMiner/NowUI/commit/09323d97640ee968efee3cd61be7b0f0b20bbae4))
+
 ## [1.11.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.11.4...nowui-v1.11.5) (2026-09-06)
 
 
