@@ -1,3 +1,10 @@
+# [1.20.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.5...nowui-v1.20.0) (2026-09-25)
+
+
+### Features
+
+* drop shadows, color helpers, wrapping rows, labelled sliders, keyframes, auto deformer subdivision ([ebaf158](https://github.com/BlenMiner/NowUI/commit/ebaf158c1bd8fd1cc077115c3ff07a912491936e))
+
 ## [1.19.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.4...nowui-v1.19.5) (2026-09-25)
 
 
