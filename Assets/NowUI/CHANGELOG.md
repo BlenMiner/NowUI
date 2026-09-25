@@ -1,3 +1,10 @@
+# [1.21.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.20.0...nowui-v1.21.0) (2026-09-25)
+
+
+### Features
+
+* outline-only rects, radio groups, badge colors, grid lines, gradients placed in pixels ([e35be63](https://github.com/BlenMiner/NowUI/commit/e35be6394471cb6aed654a7fc8b6351264feddca))
+
 # [1.20.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.5...nowui-v1.20.0) (2026-09-25)
 
 
