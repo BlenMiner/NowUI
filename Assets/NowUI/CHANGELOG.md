@@ -1,3 +1,10 @@
+# [1.22.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.21.0...nowui-v1.22.0) (2026-09-25)
+
+
+### Features
+
+* control Measure(), rect splits, rich-text alignment, text value transitions ([891d5ab](https://github.com/BlenMiner/NowUI/commit/891d5ab9063e90b08c1b1839614bf6d9b6ee3466))
+
 # [1.21.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.20.0...nowui-v1.21.0) (2026-09-25)
 
 
