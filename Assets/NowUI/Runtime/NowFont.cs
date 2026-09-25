@@ -1469,6 +1469,9 @@ namespace NowUI
         {
             public NowFontCompiler.DynamicSession session;
             public DynamicAtlasPage page;
+            // A session that bakes straight into its page's CPU copy needs the page
+            // before its first glyph; it stays unpublished until that first commit.
+            public DynamicAtlasPage pendingPage;
             public bool failed;
             public int minimumPageSide;
             public long reservedPageBytes;
@@ -1809,7 +1812,9 @@ namespace NowUI
             {
                 foreach (var state in _dynamicSessions.Values)
                 {
-                    if (state?.session != null)
+                    // Sessions that bake straight into their page hold no atlas of
+                    // their own; the page itself is counted above or reserved below.
+                    if (state?.session != null && !state.session.writesAtlasDirectly)
                     {
                         long payload = GetRgbaTexturePayloadBytes(
                             state.session.AtlasSide,
@@ -2763,9 +2768,9 @@ namespace NowUI
         /// Default largest glyph cell a resolution tier may use (see
         /// <see cref="dynamicMaxGlyphSize"/>). Large display text bakes up to this
         /// cell; beyond it the field is magnified. 64 keeps a new screen's text
-        /// cheap to prepare (all of printable ASCII bakes in about 10 ms with Burst);
+        /// cheap to prepare (all of printable ASCII bakes in about 4 ms with Burst);
         /// a font can raise it to 128 or 256 for hero text, whose glyphs then cost
-        /// about 0.7 or 2.6 ms each to bake.
+        /// about 0.15 or 0.3 ms each to bake.
         /// </summary>
         public const int MAX_DYNAMIC_TIER_GLYPH_SIZE = 64;
 
@@ -3937,6 +3942,13 @@ namespace NowUI
             state.session = null;
             state.page = null;
             state.reservedPageBytes = 0;
+
+            if (state.pendingPage != null)
+            {
+                DestroyDynamicFont(state.pendingPage.font);
+                state.pendingPage.font = null;
+                state.pendingPage = null;
+            }
         }
 
         bool TryGrowEmptyDynamicSession(DynamicSessionState state)
@@ -4064,13 +4076,21 @@ namespace NowUI
                 return null;
             }
 
-            var texture = new Texture2D(side, side, TextureFormat.RGBA32, false, true)
+            // Created uninitialized: filling and uploading a whole blank page up front
+            // costs more than baking a screen of glyphs. Sessions that bake into the
+            // page clear its CPU copy once (cheap) and then upload only the rows they
+            // write; rows never written are never sampled. Native sessions copy their
+            // complete atlas over it before the first upload.
+            var texture = new Texture2D(side, side, TextureFormat.RGBA32, 1, true, true)
             {
                 name = $"Now Font Page {_dynamicPages?.Count ?? 0}",
                 filterMode = FilterMode.Bilinear,
                 wrapMode = TextureWrapMode.Clamp,
                 hideFlags = HideFlags.HideAndDontSave
             };
+
+            if (session.writesAtlasDirectly)
+                NowTextureUpload.Clear(texture);
 
             var pageFont = CreateDynamicPageFont(
                 texture,
@@ -4151,6 +4171,56 @@ namespace NowUI
             return pageFont;
         }
 
+        /// <summary>
+        /// The CPU copy of the page a direct-write session bakes into, creating that
+        /// page (unpublished until the first commit) when the session has none yet.
+        /// Native sessions bake into their own atlas and get a default array.
+        /// </summary>
+        bool TryGetSessionAtlas(
+            DynamicSessionState state,
+            int atlasSize,
+            int pixelRange,
+            out NativeArray<byte> atlas,
+            out bool budgetExceeded)
+        {
+            atlas = default;
+            budgetExceeded = false;
+            var session = state.session;
+
+            if (session == null || !session.writesAtlasDirectly)
+                return session != null;
+
+            var page = state.page ?? state.pendingPage;
+
+            if (page == null)
+            {
+                page = CreateDynamicSessionPage(
+                    state,
+                    session.AtlasSide,
+                    atlasSize,
+                    pixelRange,
+                    out budgetExceeded);
+
+                if (page == null)
+                    return false;
+
+                state.pendingPage = page;
+            }
+
+            var texture = page.font != null ? page.font.atlas : null;
+
+            if (texture == null ||
+                texture.width != session.AtlasSide ||
+                texture.height != session.AtlasSide ||
+                !texture.isReadable)
+            {
+                return false;
+            }
+
+            atlas = texture.GetRawTextureData<byte>();
+            return true;
+        }
+
         bool TryCommitSessionGlyphs(
             DynamicSessionState state,
             List<NowFontAtlasInfo.Glyph> glyphs,
@@ -4175,12 +4245,13 @@ namespace NowUI
 
             if (createdPage)
             {
-                page = CreateDynamicSessionPage(
+                page = state.pendingPage ?? CreateDynamicSessionPage(
                     state,
                     side,
                     atlasSize,
                     pixelRange,
                     out budgetExceeded);
+                state.pendingPage = null;
 
                 if (page == null)
                     return false;
@@ -4202,20 +4273,30 @@ namespace NowUI
                 return false;
             }
 
-            NativeArray<byte> textureData = texture.GetRawTextureData<byte>();
-
-            if (!session.TryCopyAtlas(textureData, out _))
+            if (session.writesAtlasDirectly)
             {
-                if (createdPage)
+                // The session baked straight into this page's CPU copy; send the GPU
+                // just the rows it wrote.
+                if (session.TryTakeDirtyRows(out int dirtyY, out int dirtyHeight))
+                    NowTextureUpload.UploadRows(texture, dirtyY, dirtyHeight);
+            }
+            else
+            {
+                NativeArray<byte> textureData = texture.GetRawTextureData<byte>();
+
+                if (!session.TryCopyAtlas(textureData, out _))
                 {
-                    DestroyDynamicFont(page.font);
-                    page.font = null;
+                    if (createdPage)
+                    {
+                        DestroyDynamicFont(page.font);
+                        page.font = null;
+                    }
+
+                    return false;
                 }
 
-                return false;
+                texture.Apply(false, false);
             }
-
-            texture.Apply(false, false);
 
             if (createdPage)
             {
@@ -4374,11 +4455,28 @@ namespace NowUI
                     return false;
                 }
 
+                if (!TryGetSessionAtlas(state, atlasSize, pixelRange, out var sessionAtlas, out bool atlasBudgetExceeded))
+                {
+                    if (results.Count > 0)
+                    {
+                        TryCommitSessionGlyphs(
+                            state,
+                            results,
+                            atlasSize,
+                            pixelRange,
+                            out bool commitBudgetExceeded);
+                        budgetExceeded |= commitBudgetExceeded;
+                    }
+
+                    budgetExceeded |= atlasBudgetExceeded;
+                    return false;
+                }
+
                 int chunk = Mathf.Min(chunkLimit, codepointCount - offset);
                 Array.Copy(codepoints, offset, chunkCodepoints, 0, chunk);
 
                 int resultsBefore = results.Count;
-                var status = state.session.TryAddGlyphs(chunkCodepoints, chunk, results, out _);
+                var status = state.session.TryAddGlyphs(chunkCodepoints, chunk, results, sessionAtlas, out _);
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
                 {
@@ -6013,10 +6111,13 @@ namespace NowUI
                 if (!state.session.supportsGlyphIndexBaking)
                     return false;
 
+                if (!TryGetSessionAtlas(state, atlasSize, pixelRange, out var sessionAtlas, out budgetExceeded))
+                    return false;
+
                 int chunk = Mathf.Min(chunkLimit, indexCount - offset);
                 Array.Copy(indices, offset, chunkIndices, 0, chunk);
                 int resultsBefore = results.Count;
-                var status = state.session.TryAddGlyphsByIndex(chunkIndices, chunk, results, out _);
+                var status = state.session.TryAddGlyphsByIndex(chunkIndices, chunk, results, sessionAtlas, out _);
 
                 if (status == NowFontCompiler.DynamicSession.AddResult.Ok)
                 {

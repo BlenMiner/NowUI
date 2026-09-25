@@ -704,21 +704,22 @@ render scale, because a scene binds one glyph atlas.
 
 Baking cost grows with the cell's area. Baking all 95 printable ASCII
 characters into a font that has none of them yet (NotoSans Regular, managed
-compiler, median of five runs, including the new atlas page) takes:
+compiler, median of seven runs, including the new atlas page) takes:
 
 | Cell | Text size | Unity Editor, Burst | Native preview (.NET, no Burst) |
 | ---: | --- | ---: | ---: |
-| 32 | up to 48 px | 6 ms | 20 ms |
-| 64 | 49–96 px | 10 ms | 57 ms |
-| 128 | 97–192 px | 64 ms | 232 ms |
-| 256 | above 192 px | 238 ms | 1150 ms |
+| 32 | up to 48 px | 2.0 ms | 14 ms |
+| 64 | 49–96 px | 3.6 ms | 21 ms |
+| 128 | 97–192 px | 13 ms | 46 ms |
+| 256 | above 192 px | 28 ms | 133 ms |
 
-Creating a tier's page costs 2–6 ms of that; each further glyph costs about
-0.05, 0.1, 0.7 and 2.6 ms at those cells with Burst. A hitch is therefore
-proportional to the new glyphs on screen: the default 64 cap bounds a whole
-fresh ASCII set to about 10 ms, while a five-letter logo at 256 costs about
-15 ms. Browser builds were not measured and bake at least as slowly as the
-native preview. Because tiers use
+Adding 95 more characters (Latin-1 accented letters) to a page that already
+exists costs about the same, so a hitch is proportional to the new glyphs on
+screen: a fresh ASCII set at the default 64 cap costs a few milliseconds, and a
+five-letter logo at 256 about 2 ms. Bakes write straight into the page's CPU
+copy and upload only the rows they touched, and the distance field only
+evaluates the outline segments near each pixel. Browser builds were not
+measured and bake at least as slowly as the native preview. Because tiers use
 the rendered size, a 2x UI scale moves text above 24 px into the 64 px cell,
 and text that a transform animation enlarges past a tier boundary bakes that
 tier's glyphs once, when it first crosses it. Raise Max Glyph Size to 128 (or

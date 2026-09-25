@@ -888,8 +888,10 @@ public class NowManagedFontCompilerTests
                 "Sparse effect tiers should not eagerly reserve a full default page.");
             Assert.AreEqual(5, readableCount,
                 "Canonical tier sessions remain writable so alternating styles can append without page fragmentation.");
-            Assert.AreEqual(32L * 1024 * 1024, font.GetEstimatedDynamicCacheResidentBytes(),
-                "Five writable tiers count GPU, readable CPU, session atlas, and conservative work storage.");
+            // Managed sessions bake straight into their page's readable CPU copy, so a
+            // writable tier is its GPU texture plus that copy - no separate session atlas.
+            Assert.AreEqual(16L * 1024 * 1024, font.GetEstimatedDynamicCacheResidentBytes(),
+                "Five writable tiers count GPU and readable CPU copies only.");
             Assert.LessOrEqual(
                 font.GetEstimatedDynamicCacheResidentBytes(),
                 NowFont.DEFAULT_DYNAMIC_CACHE_BUDGET_BYTES);
@@ -910,7 +912,7 @@ public class NowManagedFontCompilerTests
 
             Assert.AreEqual(5, font.GetCachedDynamicPageCount());
             Assert.AreEqual(10, font.GetCachedDynamicGlyphCount());
-            Assert.AreEqual(32L * 1024 * 1024, font.GetEstimatedDynamicCacheResidentBytes());
+            Assert.AreEqual(16L * 1024 * 1024, font.GetEstimatedDynamicCacheResidentBytes());
         }
         finally
         {

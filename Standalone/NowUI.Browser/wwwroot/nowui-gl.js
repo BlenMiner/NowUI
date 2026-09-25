@@ -614,12 +614,22 @@ export function uploadTexture(id, info, pixels) {
     const reallocate = entry.width !== width || entry.height !== height;
     const fullRect = dirtyX === 0 && dirtyY === 0 && dirtyW === width && dirtyH === height;
 
-    if (reallocate || fullRect) {
+    const partial = !fullRect && dirtyW > 0 && dirtyH > 0;
+
+    if (reallocate && partial) {
+        // A texture first seen with only a region written (a new font page) is
+        // allocated empty (WebGL zero-fills it) and then gets just that region.
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        entry.width = width;
+        entry.height = height;
+    }
+
+    if (!partial) {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE,
                       bytes.subarray(0, width * height * 4));
         entry.width = width;
         entry.height = height;
-    } else if (dirtyW > 0 && dirtyH > 0) {
+    } else {
         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, width);
         gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, dirtyX);
         gl.pixelStorei(gl.UNPACK_SKIP_ROWS, dirtyY);

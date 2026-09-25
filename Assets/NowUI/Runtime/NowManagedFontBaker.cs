@@ -32,10 +32,21 @@ namespace NowUI.Internal
     /// material reconstructs the full value from RB. The extra precision prevents
     /// large adaptive ranges from turning one stored distance step into multiple
     /// screen pixels.
+    ///
+    /// The field saturates half a range away from the outline, so a pixel only needs
+    /// the segments that can be nearest to it within that reach. The cell is split
+    /// into <see cref="TILE"/>-pixel tiles, each keeping only the segments whose
+    /// distance to the tile center is within two half-diagonals of the nearest one
+    /// (and within the saturation reach). The pixel's true nearest segment always
+    /// survives, so the output is identical to testing every segment, while large
+    /// cells evaluate a handful of segments per pixel instead of the whole outline.
+    /// The sign comes from one +x ray crossing pass per row.
     /// </summary>
     [BurstCompile]
     internal struct NowSdfBakeJob : IJobParallelFor
     {
+        const int TILE = 8;
+
         /// <summary>Line segments (x0, y0, x1, y1) in cell-local pixels, y up.</summary>
         [ReadOnly] public NativeArray<float4> segments;
 
@@ -49,48 +60,114 @@ namespace NowUI.Internal
         /// <summary>Per-cell RGBA32 pixels, rows bottom-up, packed per <see cref="NowSdfGlyphCell.outputOffset"/>.</summary>
         [NativeDisableParallelForRestriction] public NativeArray<byte> output;
 
+        static float SegmentDistanceSq(float2 p, float4 segment)
+        {
+            var a = new float2(segment.x, segment.y);
+            var b = new float2(segment.z, segment.w);
+            float2 e = b - a;
+            float2 w = p - a;
+            float lengthSq = math.dot(e, e);
+            float t = lengthSq > 1e-12f ? math.saturate(math.dot(w, e) / lengthSq) : 0f;
+            float2 d = w - e * t;
+            return math.dot(d, d);
+        }
+
         public void Execute(int index)
         {
             NowSdfGlyphCell cell = cells[index];
             float invRange = 1f / distanceRange;
-            int segmentEnd = cell.segmentStart + cell.segmentCount;
+            int segmentStart = cell.segmentStart;
+            int segmentCount = cell.segmentCount;
+            int segmentEnd = segmentStart + segmentCount;
+            int tilesX = (cell.width + TILE - 1) / TILE;
+            int tilesY = (cell.height + TILE - 1) / TILE;
+            int tileCount = tilesX * tilesY;
+            float halfDiagonal = TILE * 0.70710678f;
+            // A segment farther than this from a tile's center is more than half a
+            // range (plus a pixel of margin) from every pixel in the tile, where the
+            // field is saturated whichever segment is nearest.
+            float saturationReach = distanceRange * 0.5f + 1f + halfDiagonal;
+
+            var tileStart = new NativeArray<int>(tileCount + 1, Allocator.Temp);
+            var centerDistance = new NativeArray<float>(math.max(1, segmentCount), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var tileSegments = new NativeList<int>(math.max(16, segmentCount * 4), Allocator.Temp);
+
+            for (int ty = 0; ty < tilesY; ++ty)
+            {
+                for (int tx = 0; tx < tilesX; ++tx)
+                {
+                    var center = new float2(tx * TILE + TILE * 0.5f, ty * TILE + TILE * 0.5f);
+                    float nearest = float.MaxValue;
+
+                    for (int s = 0; s < segmentCount; ++s)
+                    {
+                        float distance = math.sqrt(SegmentDistanceSq(center, segments[segmentStart + s]));
+                        centerDistance[s] = distance;
+                        nearest = math.min(nearest, distance);
+                    }
+
+                    // For a pixel p in the tile, its nearest segment is at most
+                    // nearest + halfDiagonal away, so that segment is at most
+                    // nearest + 2 * halfDiagonal from the center.
+                    float keep = math.min(nearest + 2f * halfDiagonal, saturationReach);
+                    tileStart[ty * tilesX + tx] = tileSegments.Length;
+
+                    for (int s = 0; s < segmentCount; ++s)
+                    {
+                        if (centerDistance[s] <= keep)
+                            tileSegments.Add(segmentStart + s);
+                    }
+                }
+            }
+
+            tileStart[tileCount] = tileSegments.Length;
+
+            var crossingX = new NativeArray<float>(math.max(1, segmentCount), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+            var crossingDirection = new NativeArray<int>(math.max(1, segmentCount), Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 
             for (int y = 0; y < cell.height; ++y)
             {
                 float py = y + 0.5f;
                 int row = cell.outputOffset + y * cell.width * 4;
+                int crossings = 0;
+
+                // Nonzero winding via a +x ray with half-open spans so shared contour
+                // vertices are never counted twice. Every pixel of the row shares the
+                // ray's crossings; only which of them lie to its right differs.
+                for (int s = segmentStart; s < segmentEnd; ++s)
+                {
+                    float4 segment = segments[s];
+                    var a = new float2(segment.x, segment.y);
+                    var b = new float2(segment.z, segment.w);
+
+                    if (a.y <= py ? b.y > py : b.y <= py)
+                    {
+                        float2 e = b - a;
+                        crossingX[crossings] = a.x + (py - a.y) / (b.y - a.y) * e.x;
+                        crossingDirection[crossings] = b.y > a.y ? 1 : -1;
+                        ++crossings;
+                    }
+                }
+
+                int tileRow = (y / TILE) * tilesX;
 
                 for (int x = 0; x < cell.width; ++x)
                 {
                     float px = x + 0.5f;
                     var p = new float2(px, py);
-
-                    float minDistSq = float.MaxValue;
                     int winding = 0;
 
-                    for (int s = cell.segmentStart; s < segmentEnd; ++s)
+                    for (int c = 0; c < crossings; ++c)
                     {
-                        float4 seg = segments[s];
-                        var a = new float2(seg.x, seg.y);
-                        var b = new float2(seg.z, seg.w);
-                        float2 e = b - a;
-                        float2 w = p - a;
-
-                        float lengthSq = math.dot(e, e);
-                        float t = lengthSq > 1e-12f ? math.saturate(math.dot(w, e) / lengthSq) : 0f;
-                        float2 d = w - e * t;
-                        minDistSq = math.min(minDistSq, math.dot(d, d));
-
-                        // Nonzero winding via a +x ray with half-open spans so shared
-                        // contour vertices are never counted twice.
-                        if (a.y <= py ? b.y > py : b.y <= py)
-                        {
-                            float ix = a.x + (py - a.y) / (b.y - a.y) * e.x;
-
-                            if (ix > px)
-                                winding += b.y > a.y ? 1 : -1;
-                        }
+                        if (crossingX[c] > px)
+                            winding += crossingDirection[c];
                     }
+
+                    int tile = tileRow + x / TILE;
+                    float minDistSq = float.MaxValue;
+
+                    for (int i = tileStart[tile], end = tileStart[tile + 1]; i < end; ++i)
+                        minDistSq = math.min(minDistSq, SegmentDistanceSq(p, segments[tileSegments[i]]));
 
                     float sd = math.sqrt(minDistSq);
 

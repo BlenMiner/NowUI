@@ -82,6 +82,15 @@ namespace UnityEngine
         }
 
         /// <summary>
+        /// Unity's uninitialized-texture overload. The shim's store is always zeroed (a pinned managed array), so
+        /// <paramref name="createUninitialized"/> only mirrors the signature; nothing is uploaded until Apply either way.
+        /// </summary>
+        public Texture2D(int width, int height, TextureFormat format, int mipCount, bool linear, bool createUninitialized)
+            : this(width, height, format, mipCount, linear)
+        {
+        }
+
+        /// <summary>
         /// Texel width. The setter is deliberately inert: Unity refuses to resize a <c>Texture2D</c> through it (it
         /// logs "Setting texture width is not allowed" and keeps the old size), and honouring the write here would
         /// leave <c>width</c> disagreeing with the CPU store, so every subsequent row offset would be wrong.
@@ -448,6 +457,27 @@ namespace UnityEngine
 
             pixels = null;
             SetMemoryFootprint(0);
+        }
+
+        /// <summary>
+        /// Uploads only rows <paramref name="y"/> to <paramref name="y"/> + <paramref name="rowCount"/> of level 0.
+        /// NowUI-specific (NowUI.Internal.NowTextureUpload): the caller wrote those rows through
+        /// <see cref="GetRawTextureData{T}"/>, which can only mark the whole texture dirty, and promises nothing else
+        /// changed since the last upload - so a font page that gains a few glyphs does not re-upload the whole page.
+        /// </summary>
+        internal void ApplyRows(int y, int rowCount)
+        {
+            if (y < 0)
+                y = 0;
+
+            if (rowCount > height - y)
+                rowCount = height - y;
+
+            if (rowCount <= 0)
+                return;
+
+            dirtyRect = new RectInt(0, y, width, rowCount);
+            Apply(false, false);
         }
 
         /// <summary>Resizes, keeping the format and mip setting. Contents are undefined afterwards, as in Unity.</summary>

@@ -618,6 +618,60 @@ namespace NowUI
                 return AddResult.Failed;
             }
 
+            /// <summary>
+            /// True when the session bakes straight into the atlas passed to the add
+            /// calls (the managed compiler). Native sessions keep their own atlas, which
+            /// <see cref="TryCopyAtlas(NativeArray{byte}, out string)"/> copies out.
+            /// </summary>
+            public bool writesAtlasDirectly => _managed != null;
+
+            /// <summary>
+            /// Adds glyphs, baking them straight into <paramref name="atlas"/> (a page's
+            /// CPU copy of <see cref="AtlasSide"/> squared RGBA32 pixels) when
+            /// <see cref="writesAtlasDirectly"/>; native sessions ignore it.
+            /// </summary>
+            public AddResult TryAddGlyphs(
+                int[] codepoints,
+                int codepointCount,
+                List<NowFontAtlasInfo.Glyph> results,
+                NativeArray<byte> atlas,
+                out string error)
+            {
+                if (_managed != null)
+                    return _managed.TryAddGlyphs(codepoints, codepointCount, results, atlas, out error);
+
+                return TryAddGlyphs(codepoints, codepointCount, results, out error);
+            }
+
+            /// <summary>Glyph-index add into a caller-owned atlas; see the codepoint overload.</summary>
+            public AddResult TryAddGlyphsByIndex(
+                int[] glyphIndices,
+                int glyphIndexCount,
+                List<NowFontAtlasInfo.Glyph> results,
+                NativeArray<byte> atlas,
+                out string error)
+            {
+                if (_managed != null)
+                    return _managed.TryAddGlyphsByIndex(glyphIndices, glyphIndexCount, results, atlas, out error);
+
+                return TryAddGlyphsByIndex(glyphIndices, glyphIndexCount, results, out error);
+            }
+
+            /// <summary>
+            /// Rows of the atlas written since the last call, for sessions that
+            /// <see cref="writesAtlasDirectly"/>. Returns false when nothing changed or
+            /// the session cannot tell (native sessions upload whole atlases).
+            /// </summary>
+            public bool TryTakeDirtyRows(out int y, out int height)
+            {
+                if (_managed != null)
+                    return _managed.TryTakeDirtyRows(out y, out height);
+
+                y = 0;
+                height = 0;
+                return false;
+            }
+
             public AddResult TryAddGlyphs(int[] codepoints, int codepointCount, List<NowFontAtlasInfo.Glyph> results, out string error)
             {
                 if (_managed != null)

@@ -15,5 +15,6 @@
     <InternalsVisibleTo Include="NowUI.Hosting" />
     <InternalsVisibleTo Include="NowUI.Desktop" />
     <InternalsVisibleTo Include="NowUI.Browser" />
+    <InternalsVisibleTo Include="NowUI.Runtime" />
   </ItemGroup>
 </Project>

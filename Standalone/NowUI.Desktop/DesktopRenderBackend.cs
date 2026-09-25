@@ -336,10 +336,37 @@ namespace NowUI.Desktop
                 textures.Add(texture.GetInstanceID(), gpu);
             }
             GL.BindTexture(TextureTarget.Texture2D, gpu.handle);
+            bool allocated = gpu.width == texture.width && gpu.height == texture.height;
+            bool fullRect = dirtyRect.x <= 0 && dirtyRect.y <= 0 &&
+                dirtyRect.width >= texture.width && dirtyRect.height >= texture.height;
+            bool partial = !fullRect && dirtyRect.width > 0 && dirtyRect.height > 0;
             // Upload only the base level; GenerateMipmap produces the remaining levels when requested.
             fixed (byte* pointer = pixels)
-                GL.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, texture.width, texture.height,
-                    0, pixelFormat, pixelType, (IntPtr)pointer);
+            {
+                if (!partial)
+                {
+                    GL.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, texture.width, texture.height,
+                        0, pixelFormat, pixelType, (IntPtr)pointer);
+                }
+                else
+                {
+                    // A dirty region (a font page gaining a band of glyphs) sends only
+                    // those texels. A texture seen for the first time is allocated
+                    // without data: texels outside the regions written are never sampled.
+                    if (!allocated)
+                        GL.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, texture.width, texture.height,
+                            0, pixelFormat, pixelType, IntPtr.Zero);
+
+                    GL.PixelStore(PixelStoreParameter.UnpackRowLength, texture.width);
+                    GL.PixelStore(PixelStoreParameter.UnpackSkipPixels, dirtyRect.x);
+                    GL.PixelStore(PixelStoreParameter.UnpackSkipRows, dirtyRect.y);
+                    GL.TexSubImage2D(TextureTarget.Texture2D, 0, dirtyRect.x, dirtyRect.y, dirtyRect.width, dirtyRect.height,
+                        pixelFormat, pixelType, (IntPtr)pointer);
+                    GL.PixelStore(PixelStoreParameter.UnpackRowLength, 0);
+                    GL.PixelStore(PixelStoreParameter.UnpackSkipPixels, 0);
+                    GL.PixelStore(PixelStoreParameter.UnpackSkipRows, 0);
+                }
+            }
             gpu.width = texture.width;
             gpu.height = texture.height;
             gpu.version = texture.version;

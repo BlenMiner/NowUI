@@ -689,6 +689,7 @@ public void Reinitialize(int width, int height);
 public void Reinitialize(int width, int height, TextureFormat format, bool hasMipMap);
 public static Texture2D blackTexture { get; }  whiteTexture  grayTexture  redTexture  normalTexture   // lazy 1x1, named
 internal byte[] pixels;   internal RectInt dirtyRect;   internal bool uploadPending;
+internal void ApplyRows(int y, int rowCount);   // NowTextureUpload: upload only rows written through GetRawTextureData
 internal override void OnDestroyResources();      // backend.ReleaseTexture(this)
 internal override Object CloneForInstantiate();
 ```
@@ -699,6 +700,12 @@ happens on first bind. `makeNoLongerReadable: true` sets `isReadable = false` bu
 `NowRuntime.releaseCpuCopiesOnSeal` is set (§1.2). Row order is Unity's: raw data and `SetPixels32` are bottom-up
 (row 0 = bottom); the shim stores exactly what it is given and the framebuffer convention is the backend's problem, so
 `NowFontCompiler.FlipRgbaRows` and `NowGradient`'s row maths behave identically.
+
+`GetRawTextureData<T>()` can only mark the whole texture dirty. Dynamic font pages are written through it and then
+`ApplyRows` narrows the upload to the band of rows a bake touched (the caller promises nothing else changed). Backends
+upload a partial `dirtyRect` with a sub-image upload; a texture first uploaded partially is allocated without data, since
+texels outside the written rows are never sampled. Unity builds reach the same result through a staging texture and
+`Graphics.CopyTexture` (`NowUI.Internal.NowTextureUpload`).
 
 **`RenderTexture.cs`**
 

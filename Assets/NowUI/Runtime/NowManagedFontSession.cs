@@ -44,7 +44,9 @@ namespace NowUI.Internal
         const int ATLAS_BORDER = 1;
 
         readonly NowTrueType _font;
-        readonly byte[] _atlas;
+        // Only allocated when glyphs are baked without a caller-provided atlas
+        // (the Editor baker and tests); runtime font pages are written directly.
+        byte[] _atlas;
         readonly float _scale;
         readonly bool _packedSdf16;
         readonly Dictionary<int, NowFontAtlasInfo.Glyph> _baked = new Dictionary<int, NowFontAtlasInfo.Glyph>(64);
@@ -53,7 +55,8 @@ namespace NowUI.Internal
         readonly NowGlyphOutline _outlineScratch = new NowGlyphOutline();
         readonly List<Vector4> _segmentScratch = new List<Vector4>(512);
         readonly List<PendingGlyph> _pendingScratch = new List<PendingGlyph>(64);
-        byte[] _bakeScratch;
+        int _dirtyMinY = int.MaxValue;
+        int _dirtyMaxY = int.MinValue;
 
         int _shelfX = ATLAS_BORDER;
         int _shelfY = ATLAS_BORDER;
@@ -77,7 +80,6 @@ namespace NowUI.Internal
         NowManagedFontSession(NowTrueType font, int size, int pixelRange, int atlasSide, bool packedSdf16)
         {
             _font = font;
-            _atlas = new byte[atlasSide * atlasSide * 4];
             _scale = (float)size / font.unitsPerEm;
             _packedSdf16 = packedSdf16;
             AtlasSide = atlasSide;
@@ -137,7 +139,23 @@ namespace NowUI.Internal
             List<NowFontAtlasInfo.Glyph> results,
             out string error)
         {
-            return AddGlyphsCore(codepoints, codepointCount, keysAreGlyphIndices: false, results, out error);
+            return AddGlyphsCore(codepoints, codepointCount, keysAreGlyphIndices: false, results, default, out error);
+        }
+
+        /// <summary>
+        /// Bakes into <paramref name="atlas"/>, the caller's RGBA32 atlas of
+        /// <see cref="AtlasSide"/> squared pixels (a font page's CPU copy), instead of
+        /// a session-owned buffer. Pass the same atlas for the session's lifetime; the
+        /// session writes only its glyph cells, so the caller clears it once.
+        /// </summary>
+        public NowFontCompiler.DynamicSession.AddResult TryAddGlyphs(
+            int[] codepoints,
+            int codepointCount,
+            List<NowFontAtlasInfo.Glyph> results,
+            NativeArray<byte> atlas,
+            out string error)
+        {
+            return AddGlyphsCore(codepoints, codepointCount, keysAreGlyphIndices: false, results, atlas, out error);
         }
 
         /// <summary>
@@ -152,7 +170,39 @@ namespace NowUI.Internal
             List<NowFontAtlasInfo.Glyph> results,
             out string error)
         {
-            return AddGlyphsCore(glyphIndices, glyphIndexCount, keysAreGlyphIndices: true, results, out error);
+            return AddGlyphsCore(glyphIndices, glyphIndexCount, keysAreGlyphIndices: true, results, default, out error);
+        }
+
+        /// <summary>Glyph-index bake into a caller-owned atlas; see the codepoint overload.</summary>
+        public NowFontCompiler.DynamicSession.AddResult TryAddGlyphsByIndex(
+            int[] glyphIndices,
+            int glyphIndexCount,
+            List<NowFontAtlasInfo.Glyph> results,
+            NativeArray<byte> atlas,
+            out string error)
+        {
+            return AddGlyphsCore(glyphIndices, glyphIndexCount, keysAreGlyphIndices: true, results, atlas, out error);
+        }
+
+        /// <summary>
+        /// The atlas rows written since the last call, widened by the one-pixel border
+        /// around each cell that bilinear sampling reaches. Returns false when nothing
+        /// was written. Font pages upload just these rows.
+        /// </summary>
+        public bool TryTakeDirtyRows(out int y, out int height)
+        {
+            if (_dirtyMaxY <= _dirtyMinY)
+            {
+                y = 0;
+                height = 0;
+                return false;
+            }
+
+            y = Mathf.Max(0, _dirtyMinY - ATLAS_BORDER);
+            height = Mathf.Min(AtlasSide, _dirtyMaxY + ATLAS_BORDER) - y;
+            _dirtyMinY = int.MaxValue;
+            _dirtyMaxY = int.MinValue;
+            return height > 0;
         }
 
         /// <summary>All-or-nothing add matching the native session: a plan pass resolves,
@@ -164,12 +214,19 @@ namespace NowUI.Internal
             int keyCount,
             bool keysAreGlyphIndices,
             List<NowFontAtlasInfo.Glyph> results,
+            NativeArray<byte> atlas,
             out string error)
         {
             error = null;
 
             if (keys == null || keyCount <= 0)
                 return NowFontCompiler.DynamicSession.AddResult.Ok;
+
+            if (atlas.IsCreated && atlas.Length != AtlasSide * AtlasSide * 4)
+            {
+                error = "The atlas does not match the session atlas size.";
+                return NowFontCompiler.DynamicSession.AddResult.Failed;
+            }
 
             var codepoints = keys;
             int codepointCount = keyCount;
@@ -252,7 +309,7 @@ namespace NowUI.Internal
             }
 
             if (pending.Count > 0)
-                BakePending(pending, segments);
+                BakePending(pending, segments, atlas);
 
             _shelfX = shelfX;
             _shelfY = shelfY;
@@ -318,7 +375,7 @@ namespace NowUI.Internal
             return true;
         }
 
-        void BakePending(List<PendingGlyph> pending, List<Vector4> segments)
+        void BakePending(List<PendingGlyph> pending, List<Vector4> segments, NativeArray<byte> atlas)
         {
             int cellCount = 0;
             int outputBytes = 0;
@@ -378,13 +435,11 @@ namespace NowUI.Internal
                     output = output
                 }.Schedule(cellCount, 1).Complete();
 
-                if (_bakeScratch == null || _bakeScratch.Length < outputBytes)
-                    _bakeScratch = new byte[Mathf.NextPowerOfTwo(outputBytes)];
+                // Blit each cell's rows into the atlas (bottom-origin rows on both
+                // sides, so this is a straight row copy) straight from the job output.
+                if (!atlas.IsCreated)
+                    _atlas ??= new byte[AtlasSide * AtlasSide * 4];
 
-                NativeArray<byte>.Copy(output, 0, _bakeScratch, 0, outputBytes);
-
-                // Blit each cell's rows into the page atlas (bottom-origin rows on
-                // both sides, so this is a straight row copy).
                 int sourceOffset = 0;
 
                 for (int i = 0; i < pending.Count; ++i)
@@ -399,10 +454,16 @@ namespace NowUI.Internal
                     for (int row = 0; row < glyph.height; ++row)
                     {
                         int destination = ((glyph.atlasY + row) * AtlasSide + glyph.atlasX) * 4;
-                        Buffer.BlockCopy(_bakeScratch, sourceOffset + row * rowBytes, _atlas, destination, rowBytes);
+
+                        if (atlas.IsCreated)
+                            NativeArray<byte>.Copy(output, sourceOffset + row * rowBytes, atlas, destination, rowBytes);
+                        else
+                            NativeArray<byte>.Copy(output, sourceOffset + row * rowBytes, _atlas, destination, rowBytes);
                     }
 
                     sourceOffset += glyph.height * rowBytes;
+                    _dirtyMinY = Mathf.Min(_dirtyMinY, glyph.atlasY);
+                    _dirtyMaxY = Mathf.Max(_dirtyMaxY, glyph.atlasY + glyph.height);
                 }
             }
             finally
@@ -415,6 +476,8 @@ namespace NowUI.Internal
 
         public bool TryCopyAtlas(ref byte[] buffer, out string error)
         {
+            _atlas ??= new byte[AtlasSide * AtlasSide * 4];
+
             if (buffer == null || buffer.Length != _atlas.Length)
                 buffer = new byte[_atlas.Length];
 
@@ -425,6 +488,8 @@ namespace NowUI.Internal
 
         public unsafe bool TryCopyAtlas(NativeArray<byte> destination, out string error)
         {
+            _atlas ??= new byte[AtlasSide * AtlasSide * 4];
+
             if (!destination.IsCreated || destination.Length != _atlas.Length)
             {
                 error = "The atlas destination does not match the session atlas size.";
