@@ -1,3 +1,10 @@
+# [1.23.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.22.0...nowui-v1.23.0) (2026-09-25)
+
+
+### Features
+
+* **sdf:** gradient fills, arc caps, clock sweeps, group transforms, nested graphs, second shadow ([8dcaa6d](https://github.com/BlenMiner/NowUI/commit/8dcaa6d9607526ed3eb447c966f338bb2af6501e))
+
 # [1.22.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.21.0...nowui-v1.22.0) (2026-09-25)
 
 
