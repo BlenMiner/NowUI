@@ -8,6 +8,7 @@
 #include "UnityCG.cginc"
 #include "UnityUI.cginc"
 #include "../../Assets/Shaders/NowUIMask.cginc"
+#include "../../Assets/Shaders/NowUITextGradient.cginc"
 
 #define NOW_SDF_MAX_SHAPES 64
 #define NOW_SDF_MAX_LAYERS 16
@@ -47,6 +48,8 @@ sampler2D _MainTex;
 // _SdfImageUvs holds each image node's texel rect inside the field atlas and
 // _SdfUvs holds its texel rect inside the color atlas. _SdfImageAtlasSize is
 // (field width, field height, color width, color height) in texels.
+// Other nodes reuse _SdfImageUvs for their gradient payload (see
+// NowSdfGradientFillV2).
 sampler2D _SdfImageField;
 sampler2D _SdfImageColor;
 float4 _SdfImageAtlasSize;
@@ -61,6 +64,8 @@ float4 _SdfGlow;
 float4 _SdfGlowColor;
 float4 _SdfShadow;
 float4 _SdfShadowColor;
+float4 _SdfShadow2;
+float4 _SdfShadow2Color;
 float4 _SdfInnerShadow;
 float4 _SdfInnerShadowColor;
 float4 _SdfEmboss;
@@ -226,6 +231,31 @@ float NowSdfArcDistanceV2(float2 p, float2 sc, float ra, float rb)
     return ((sc.y * p.x > sc.x * p.y) ? length(p - sc * ra) : abs(length(p) - ra)) - rb;
 }
 
+// Butt caps end the band flat along the radius at each end; square caps add a
+// half-width box beyond each flat end. cap: 0 round, 1 butt, 2 square.
+float NowSdfCappedArcDistanceV2(float2 p, float2 sc, float ra, float rb, float cap)
+{
+    if (cap < 0.5)
+        return NowSdfArcDistanceV2(p, sc, ra, rb);
+
+    p.x = abs(p.x);
+    // Positive past the end face, negative inside the sweep.
+    float beyond = sc.y * p.x - sc.x * p.y;
+    float d = beyond > 0.0
+        ? length(p - sc * clamp(dot(p, sc), ra - rb, ra + rb))
+        : max(abs(length(p) - ra) - rb, beyond);
+
+    if (cap > 1.5)
+    {
+        float2 tangent = float2(sc.y, -sc.x);
+        float2 local = p - sc * ra;
+        float2 q = abs(float2(dot(local, tangent) - rb * 0.5, dot(local, sc))) - float2(rb * 0.5, rb);
+        d = min(d, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
+    }
+
+    return d;
+}
+
 float NowSdfPieDistanceV2(float2 p, float2 sc, float r)
 {
     p.x = abs(p.x);
@@ -379,7 +409,7 @@ float NowSdfUnrotatedShapeDistanceV2(
         float2 q = NowSdfRotateRadialV2(radial, data2.zw);
 
         if (type < 6.5)
-            return NowSdfArcDistanceV2(q, data2.xy, data1.z, data1.w);
+            return NowSdfCappedArcDistanceV2(q, data2.xy, data1.z, data1.w, floor(_SdfShapeMeta[index].y * 0.5));
 
         return NowSdfPieDistanceV2(q, data2.xy, data1.z);
     }
@@ -464,7 +494,7 @@ float NowSdfRotatedShapeDistanceV2(
         float2 q = NowSdfRotateRadialV2(relativeScenePos, data2.zw);
 
         if (type < 6.5)
-            return NowSdfArcDistanceV2(q, data2.xy, data1.z, data1.w);
+            return NowSdfCappedArcDistanceV2(q, data2.xy, data1.z, data1.w, floor(_SdfShapeMeta[index].y * 0.5));
 
         return NowSdfPieDistanceV2(q, data2.xy, data1.z);
     }
@@ -733,9 +763,45 @@ float2 shapeUv(int index, float type, float4 data1, float4 data2, float2 scenePo
     return float2(uv.x, 1.0 - uv.y);
 }
 
+// Gradient fills. _SdfData0.w packs the ramp atlas row and flags (0 means no
+// gradient) and _SdfImageUvs, which only Image nodes use otherwise, the payload,
+// both resolved by the CPU against the node's unrotated box in scene units. A
+// rotated node samples at its unrotated position, so the gradient turns with it.
+// The ramp stays in the authored color space, like the solid _SdfColors values.
+float4 NowSdfGradientFillV2(int index, float type, float4 data1, float4 data2, float2 scenePos, float encodedRamp)
+{
+    float2 rotation = _SdfShapeMeta[index].zw;
+    float rotationLengthSquared = dot(rotation, rotation);
+
+    if (rotationLengthSquared != 0.0)
+    {
+        float2 pivot = NowSdfNodePivotV2(type, data1, data2);
+        scenePos = pivot + NowSdfInverseRotateRelativeV2(
+            scenePos,
+            pivot,
+            rotation,
+            rotationLengthSquared);
+    }
+
+    float row = floor(encodedRamp);
+    float flags = NowUITextGradientFlags(encodedRamp);
+    float spread = fmod(floor(flags / 4.0), 4.0);
+    float fixedMode = fmod(floor(flags / 32.0), 2.0);
+    float t = NowUITextGradientApplySpread(
+        NowUITextGradientPosition(scenePos, _SdfImageUvs[index], flags),
+        spread);
+    float rampIndex = fixedMode > 0.5 ? floor(t * 255.0 + 0.5) : t * 255.0;
+    float2 rampUv = float2((rampIndex + 0.5) / 256.0, (row + 0.5) / 256.0);
+    return tex2Dlod(_NowGradientRampTexture, float4(rampUv, 0.0, 0.0));
+}
+
 float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scenePos, float4 tint)
 {
     float4 color = _SdfColors[index] * tint;
+    float encodedRamp = _SdfData0[index].w;
+
+    if (encodedRamp >= 1.0)
+        return NowSdfGradientFillV2(index, type, data1, data2, scenePos, encodedRamp) * tint;
 
     // Image nodes sample their own pixels from the scene's color atlas, so
     // they never compete with text or SetTexture fills for _MainTex.
@@ -746,7 +812,7 @@ float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scene
         return tex2Dlod(_SdfImageColor, float4(atlasUv, 0.0, 0.0)) * color;
     }
 
-    if ((type > 4.5 && type < 5.5) || _SdfShapeMeta[index].y < 0.5)
+    if ((type > 4.5 && type < 5.5) || fmod(_SdfShapeMeta[index].y, 2.0) < 0.5)
         return color;
 
     float2 uv = shapeUv(index, type, data1, data2, scenePos);
@@ -973,16 +1039,37 @@ void evalGraphFields(
     if (count <= 0)
         return;
 
+    // Nested groups (types 11-13, one level deep): the accumulator is saved at
+    // a group's begin marker and the group folds from empty; a morph split
+    // saves the first half; the end marker blends a morph, then combines the
+    // group into the saved accumulator with the group's own operation.
+    float outerDist = 100000.0;
+    float outerEffectDist = 100000.0;
+    float4 outerFill = 0.0;
+    float outerCodeStep = 0.0;
+    float outerEffectCodeStep = 0.0;
+    float morphDist = 100000.0;
+    float morphEffectDist = 100000.0;
+    float4 morphFill = 0.0;
+    float morphCodeStep = 0.0;
+    float morphEffectCodeStep = 0.0;
+
     int first = start;
     float4 data0 = _SdfData0[first];
     float4 data1 = _SdfData1[first];
     float4 data2 = _SdfData2[first];
-    float2 firstDistances = shapeDistances(first, data0.x, data1, data2, scenePos);
-    dist = firstDistances.x;
-    effectDist = useDistinctEffectField ? firstDistances.y : firstDistances.x;
-    fill = shapeFill(first, data0.x, data1, data2, scenePos, tint);
-    codeStep = NowSdfTransformedShapeCodeStepV2(first, data0.x, data2);
-    effectCodeStep = codeStep;
+
+    // Only a group's begin marker can come first; the accumulator and the saved
+    // outer state are then both empty already.
+    if (data0.x < 10.5)
+    {
+        float2 firstDistances = shapeDistances(first, data0.x, data1, data2, scenePos);
+        dist = firstDistances.x;
+        effectDist = useDistinctEffectField ? firstDistances.y : firstDistances.x;
+        fill = shapeFill(first, data0.x, data1, data2, scenePos, tint);
+        codeStep = NowSdfTransformedShapeCodeStepV2(first, data0.x, data2);
+        effectCodeStep = codeStep;
+    }
 
     for (int localIndex = 1; localIndex < NOW_SDF_MAX_SHAPES; ++localIndex)
     {
@@ -993,6 +1080,52 @@ void evalGraphFields(
         data0 = _SdfData0[index];
         data1 = _SdfData1[index];
         data2 = _SdfData2[index];
+
+        if (data0.x > 10.5)
+        {
+            if (data0.x < 11.5)
+            {
+                outerDist = dist; outerEffectDist = effectDist; outerFill = fill;
+                outerCodeStep = codeStep; outerEffectCodeStep = effectCodeStep;
+            }
+            else if (data0.x < 12.5)
+            {
+                morphDist = dist; morphEffectDist = effectDist; morphFill = fill;
+                morphCodeStep = codeStep; morphEffectCodeStep = effectCodeStep;
+            }
+            else
+            {
+                if (data1.x >= 0.0)
+                {
+                    dist = lerp(morphDist, dist, data1.x);
+                    effectDist = lerp(morphEffectDist, effectDist, data1.x);
+                    fill = NowSdfBlendFillV2(morphFill, fill, 1.0 - data1.x);
+                    codeStep = lerp(morphCodeStep, codeStep, data1.x);
+                    effectCodeStep = lerp(morphEffectCodeStep, effectCodeStep, data1.x);
+                }
+
+                float groupDist = dist;
+                float groupEffectDist = effectDist;
+                float4 groupFill = fill;
+                float groupCodeStep = codeStep;
+                float groupEffectCodeStep = effectCodeStep;
+                dist = outerDist; effectDist = outerEffectDist; fill = outerFill;
+                codeStep = outerCodeStep; effectCodeStep = outerEffectCodeStep;
+                combine(dist, fill, codeStep, groupDist, groupFill, groupCodeStep, data0.y, data0.z);
+
+                if (useDistinctEffectField)
+                    combineDistance(effectDist, effectCodeStep, groupEffectDist, groupEffectCodeStep, data0.y, data0.z);
+            }
+
+            if (data0.x < 12.5)
+            {
+                dist = 100000.0; effectDist = 100000.0; fill = 0.0;
+                codeStep = 0.0; effectCodeStep = 0.0;
+            }
+
+            continue;
+        }
+
         float2 shapeFieldDistances = shapeDistances(index, data0.x, data1, data2, scenePos);
         float4 nextFill = shapeFill(index, data0.x, data1, data2, scenePos, tint);
         float shapeCodeStep = NowSdfTransformedShapeCodeStepV2(index, data0.x, data2);
@@ -1168,12 +1301,22 @@ void evalGraphDistanceField(
     if (count <= 0)
         return;
 
+    // Nested groups, as in evalGraphFields.
+    float outerDist = 100000.0;
+    float outerCodeStep = 0.0;
+    float morphDist = 100000.0;
+    float morphCodeStep = 0.0;
+
     int first = start;
     float4 data0 = _SdfData0[first];
-    float4 firstData2 = _SdfData2[first];
-    float2 firstDistances = shapeDistances(first, data0.x, _SdfData1[first], firstData2, scenePos);
-    dist = lerp(firstDistances.x, firstDistances.y, effectField);
-    codeStep = NowSdfTransformedShapeCodeStepV2(first, data0.x, firstData2);
+
+    if (data0.x < 10.5)
+    {
+        float4 firstData2 = _SdfData2[first];
+        float2 firstDistances = shapeDistances(first, data0.x, _SdfData1[first], firstData2, scenePos);
+        dist = lerp(firstDistances.x, firstDistances.y, effectField);
+        codeStep = NowSdfTransformedShapeCodeStepV2(first, data0.x, firstData2);
+    }
 
     for (int localIndex = 1; localIndex < NOW_SDF_MAX_SHAPES; ++localIndex)
     {
@@ -1182,6 +1325,45 @@ void evalGraphDistanceField(
 
         int index = start + localIndex;
         data0 = _SdfData0[index];
+
+        if (data0.x > 10.5)
+        {
+            if (data0.x < 11.5)
+            {
+                outerDist = dist;
+                outerCodeStep = codeStep;
+            }
+            else if (data0.x < 12.5)
+            {
+                morphDist = dist;
+                morphCodeStep = codeStep;
+            }
+            else
+            {
+                float morphT = _SdfData1[index].x;
+
+                if (morphT >= 0.0)
+                {
+                    dist = lerp(morphDist, dist, morphT);
+                    codeStep = lerp(morphCodeStep, codeStep, morphT);
+                }
+
+                float groupDist = dist;
+                float groupCodeStep = codeStep;
+                dist = outerDist;
+                codeStep = outerCodeStep;
+                combineDistance(dist, codeStep, groupDist, groupCodeStep, data0.y, data0.z);
+            }
+
+            if (data0.x < 12.5)
+            {
+                dist = 100000.0;
+                codeStep = 0.0;
+            }
+
+            continue;
+        }
+
         float4 data2 = _SdfData2[index];
         float2 shapeFieldDistances = shapeDistances(index, data0.x, _SdfData1[index], data2, scenePos);
         float shapeDist = lerp(shapeFieldDistances.x, shapeFieldDistances.y, effectField);
@@ -1533,6 +1715,29 @@ float4 NOW_SDF_CUSTOM_FINAL_SHADE(
     float edge);
 #endif
 
+// One drop shadow: the scene field evaluated again at an offset, softened and
+// spread. Drawn beneath the fill and the other exterior effects.
+float4 NowSdfDropShadowV2(float2 scenePosBase, float4 shadow, float4 shadowColorValue, float coverage, float fillAlpha, float4 tint)
+{
+    float shadowDist;
+    float shadowCodeStep;
+    evalSceneEffectDistanceAndCodeStep(
+        warpScenePos(scenePosBase - shadow.xy),
+        shadowDist,
+        shadowCodeStep);
+    float shadowPixelWidth = max(
+        max(length(float2(ddx(shadowDist), ddy(shadowDist))), shadowCodeStep),
+        0.0001);
+    float shadowEdge = shadowPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
+    float shadowEffectDist = shadowDist - shadow.w;
+    float shadowCoverage = smoothstep(max(shadow.z, shadowPixelWidth) + shadowEdge, -shadowEdge, shadowEffectDist);
+    float shadowAlpha = exclusiveEffectCoverage(shadowCoverage, coverage, fillAlpha);
+    shadowAlpha *= exteriorEffectValidity(shadowDist, shadowCodeStep, shadowEdge);
+    float4 shadowColor = effectColor(shadowColorValue, tint);
+    shadowColor.a *= shadowAlpha;
+    return shadowColor;
+}
+
 fixed4 frag(v2f i) : SV_Target
 {
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
@@ -1559,6 +1764,7 @@ fixed4 frag(v2f i) : SV_Target
         (_SdfOutlineColor.a > 0.0 && _SdfOutline.x > 0.0) ||
         (_SdfGlowColor.a > 0.0 && _SdfGlow.x > 0.0) ||
         _SdfShadowColor.a > 0.0 ||
+        _SdfShadow2Color.a > 0.0 ||
         _SdfInnerShadowColor.a > 0.0 ||
         (_SdfContourColor.a > 0.0 && _SdfContour.x > 0.0 && _SdfContour.y > 0.0);
     bool useDistinctEffectField = hasFiniteTextEffectLimit && hasStockDistanceEffect;
@@ -1599,26 +1805,13 @@ fixed4 frag(v2f i) : SV_Target
         exteriorValidity = exteriorEffectValidity(effectDist, effectCodeStep, effectEdge);
     float4 col = 0.0;
 
+    // The second shadow (AddShadow) sits beneath the first, like a CSS
+    // box-shadow list.
+    if (_SdfShadow2Color.a > 0.0)
+        col = alphaOver(col, NowSdfDropShadowV2(scenePosBase, _SdfShadow2, _SdfShadow2Color, coverage, fill.a, i.tint));
+
     if (_SdfShadowColor.a > 0.0)
-    {
-        float shadowDist;
-        float shadowCodeStep;
-        evalSceneEffectDistanceAndCodeStep(
-            warpScenePos(scenePosBase - _SdfShadow.xy),
-            shadowDist,
-            shadowCodeStep);
-        float shadowPixelWidth = max(
-            max(length(float2(ddx(shadowDist), ddy(shadowDist))), shadowCodeStep),
-            0.0001);
-        float shadowEdge = shadowPixelWidth * max(0.5 + _SdfFeather * 0.5, 0.5);
-        float shadowEffectDist = shadowDist - _SdfShadow.w;
-        float shadowCoverage = smoothstep(max(_SdfShadow.z, shadowPixelWidth) + shadowEdge, -shadowEdge, shadowEffectDist);
-        float shadowAlpha = exclusiveEffectCoverage(shadowCoverage, coverage, fill.a);
-        shadowAlpha *= exteriorEffectValidity(shadowDist, shadowCodeStep, shadowEdge);
-        float4 shadowColor = effectColor(_SdfShadowColor, i.tint);
-        shadowColor.a *= shadowAlpha;
-        col = alphaOver(col, shadowColor);
-    }
+        col = alphaOver(col, NowSdfDropShadowV2(scenePosBase, _SdfShadow, _SdfShadowColor, coverage, fill.a, i.tint));
 
     if (_SdfGlowColor.a > 0.0 && _SdfGlow.x > 0.0)
     {

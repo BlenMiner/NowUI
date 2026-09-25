@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using NowUI.CodeEditor;
 using NowUI.Sdf;
 using UnityEditor;
 using UnityEngine;
@@ -41,6 +42,7 @@ namespace NowUI.Editor
         static readonly NowSdfGraph ShapesGraphLens = NowSdf.Graph();
         static readonly NowSdfGraph ShapesGraphOrbit = NowSdf.Graph();
         static readonly List<(string text, Color color)> ShapesTokens = new List<(string, Color)>(32);
+        static readonly List<NowCodeToken> ShapesLexerTokens = new List<NowCodeToken>(32);
 
         static NowFontAsset _shapesMonoFont;
 
@@ -549,60 +551,43 @@ namespace NowUI.Editor
             }
         }
 
+        /// <summary>
+        /// Splits one line into colored pieces with the code editor's C# lexer,
+        /// mapped onto the PanGui palette; text the lexer leaves unclassified
+        /// (lowercase identifiers, spaces) reads as an identifier.
+        /// </summary>
         static void TokenizeShapesCode(string code, List<(string, Color)> tokens)
         {
             tokens.Clear();
-            int i = 0;
-            while (i < code.Length)
+            ShapesLexerTokens.Clear();
+            NowCSharpLanguage.instance.TokenizeLine(code, 0, code.Length, 0, ShapesLexerTokens);
+
+            int index = 0;
+            for (int i = 0; i < ShapesLexerTokens.Count; ++i)
             {
-                char c = code[i];
-                int start = i;
-                if (c == '/' && i + 1 < code.Length && code[i + 1] == '/')
-                {
-                    tokens.Add((code.Substring(start), ShapesComment));
-                    return;
-                }
-                if (char.IsLetter(c) || c == '_')
-                {
-                    while (i < code.Length && (char.IsLetterOrDigit(code[i]) || code[i] == '_'))
-                        ++i;
-                    string word = code.Substring(start, i - start);
-                    bool member = start > 0 && code[start - 1] == '.';
-                    Color color = member ? ShapesMethod
-                        : IsShapesKeyword(word) ? ShapesKeyword
-                        : IsShapesType(word) ? ShapesType
-                        : ShapesIdentifier;
-                    tokens.Add((word, color));
-                }
-                else if (char.IsDigit(c) || ((c == '-' || c == '+') && i + 1 < code.Length && char.IsDigit(code[i + 1]) && (start == 0 || code[start - 1] == '(' || code[start - 1] == ' ')))
-                {
-                    ++i;
-                    while (i < code.Length && (char.IsDigit(code[i]) || code[i] == '.' || code[i] == 'f'))
-                        ++i;
-                    tokens.Add((code.Substring(start, i - start), ShapesNumber));
-                }
-                else if (c == ' ')
-                {
-                    while (i < code.Length && code[i] == ' ')
-                        ++i;
-                    tokens.Add((code.Substring(start, i - start), ShapesPunctuation));
-                }
-                else
-                {
-                    ++i;
-                    tokens.Add((code.Substring(start, 1), ShapesPunctuation));
-                }
+                NowCodeToken token = ShapesLexerTokens[i];
+                if (token.start > index)
+                    tokens.Add((code.Substring(index, token.start - index), ShapesIdentifier));
+                tokens.Add((code.Substring(token.start, token.length), ShapesTokenColor(token.kind)));
+                index = token.start + token.length;
             }
+
+            if (index < code.Length)
+                tokens.Add((code.Substring(index), ShapesIdentifier));
         }
 
-        static bool IsShapesKeyword(string word)
+        static Color ShapesTokenColor(NowCodeTokenKind kind)
         {
-            return word == "var" || word == "new" || word == "using" || word == "float";
-        }
-
-        static bool IsShapesType(string word)
-        {
-            return word == "NowSdf" || word == "Vector2" || word == "Now" || word == "Mathf" || word == "NowRect";
+            switch (kind)
+            {
+                case NowCodeTokenKind.Keyword: return ShapesKeyword;
+                case NowCodeTokenKind.Number: return ShapesNumber;
+                case NowCodeTokenKind.Comment: return ShapesComment;
+                case NowCodeTokenKind.Punctuation: return ShapesPunctuation;
+                case NowCodeTokenKind.Attribute: return ShapesMethod; // PascalCase call
+                case NowCodeTokenKind.Property: return ShapesType;    // other PascalCase names
+                default: return ShapesIdentifier;
+            }
         }
 
         static void DrawShapesCenteredText(Vector2 center, string value, float size, Color color, bool bold)

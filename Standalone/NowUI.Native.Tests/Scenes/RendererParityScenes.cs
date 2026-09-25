@@ -172,6 +172,96 @@ public sealed class GradientParityScene : INowScene
     }
 }
 
+public sealed class SdfGradientParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+        NowSdf.Scene(new NowRect(0, 0, 128, 96), "native-sdf-gradient")
+            // Left to right across the box: red -> blue.
+            .SetGradient(Color.red, Color.blue).SetGradientLinear(90f)
+            .Box(new NowRect(4, 4, 56, 24))
+            // Green at the circle's centre, blue at its rim.
+            .SetGradient(Color.green, Color.blue).SetGradientRadial(NowGradientShape.Circle)
+            .Circle(new Vector2(96, 16), 14)
+            // A full ring swept clockwise from 12 o'clock: red just after it, green just before.
+            .SetGradient(Color.red, Color.green).SetGradientConic()
+            .Arc(new Vector2(32, 64), 20, 6, 0f, Mathf.PI * 2f)
+            // The same left-to-right ramp on a box turned a quarter: it turns with the box.
+            .SetGradient(Color.red, Color.blue).SetGradientLinear(90f)
+            .RotateNext(90f)
+            .Box(new NowRect(80, 44, 40, 40))
+            // UseColor returns to solid fills.
+            .SetColor(Color.white).UseColor()
+            .Circle(new Vector2(70, 70), 5)
+            .Draw();
+    }
+}
+
+public sealed class SdfShapeFeaturesParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+
+        // Round, butt and square caps on the same quarter arc from 12 o'clock.
+        var arcs = NowSdf.Scene(new NowRect(0, 0, 128, 48), "native-sdf-caps").SetColor(Color.white);
+        arcs.SetArcCap(NowLineCap.Round).Arc(new Vector2(20, 24), 12, 4, NowSweep.Clock(0f, 90f));
+        arcs.SetArcCap(NowLineCap.Butt).Arc(new Vector2(60, 24), 12, 4, NowSweep.Clock(0f, 90f));
+        arcs.SetArcCap(NowLineCap.Square).Arc(new Vector2(100, 24), 12, 4, NowSweep.Clock(0f, 90f));
+        arcs.Draw();
+
+        // A bar pointing right from the local origin, turned a quarter and doubled.
+        NowSdf.Scene(new NowRect(0, 48, 64, 48), "native-sdf-transform").SetColor(Color.white)
+            .PushTransform(new Vector2(16, 8), 2f, 90f)
+            .Box(new NowRect(0f, -2f, 10f, 4f))
+            .PopTransform()
+            .Draw();
+
+        // Shapes placed in the same UI coordinates as the scene rect.
+        NowSdf.Scene(new NowRect(64, 48, 64, 48), "native-sdf-ui-space").SetColor(Color.white)
+            .UseUiCoordinates()
+            .Circle(new Vector2(76, 60), 6)
+            .Draw();
+
+        // Two hard shadows: red to the right, blue beneath.
+        NowSdf.Scene(new NowRect(64, 48, 64, 48), "native-sdf-two-shadows").SetColor(Color.white)
+            .SetShadow(new Vector2(6, 0), 0.01f, Color.red)
+            .AddShadow(new Vector2(0, 6), 0.01f, Color.blue)
+            .Box(new NowRect(40, 8, 16, 16))
+            .Draw();
+
+        // One build draws the circle and clips the green fill to it.
+        using (NowSdf.Scene(new NowRect(128, 0, 32, 48), "native-sdf-draw-mask").SetColor(Color.white)
+                   .Circle(new Vector2(16, 16), 10).DrawAndBeginMask())
+            Now.Rectangle(new NowRect(128, 0, 32, 48)).SetColor(Color.green).Draw();
+    }
+}
+
+public sealed class SdfNestedGraphParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+
+        // Two smooth-unioned dots, authored around their own origin.
+        var dots = NowSdf.Graph().SetColor(Color.white)
+            .Circle(new Vector2(-6f, 0f), 5f).SmoothUnion(3f).Circle(new Vector2(6f, 0f), 5f);
+
+        // A card with the dots cut out, placed and scaled by a transform.
+        var card = NowSdf.Graph().SetColor(Color.white)
+            .RoundedBox(new NowRect(4f, 4f, 56f, 56f), 8f)
+            .Subtract().PushTransform(new Vector2(32f, 32f), 1.5f).Graph(dots).PopTransform();
+
+        // A graph that opens with a morph: a red circle halfway to a blue box.
+        var circle = NowSdf.Graph().SetColor(Color.red).Circle(new Vector2(96f, 32f), 12f);
+        var box = NowSdf.Graph().SetColor(Color.blue).Box(new NowRect(84f, 20f, 24f, 24f));
+        var morph = NowSdf.Graph().Morph(circle, box, 0.5f);
+
+        NowSdf.Scene(new NowRect(0, 0, 128, 64), "native-sdf-nested").Graph(card).Graph(morph).Draw();
+    }
+}
+
 public sealed class TransformScopesParityScene : INowScene
 {
     public void Draw(NowRect view)

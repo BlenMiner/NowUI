@@ -15,6 +15,7 @@
   "dynamicPixelRange": 8,
   "dynamicPageSize": 1024,
   "dynamicMaxAtlasSize": 2048,
+  "dynamicMaxGlyphSize": 64,
   "dynamicMaxAtlasBytes": 16777216,
   "fallbacks": [],
   "fontBytesFile": "NotoSans-Italic.ttf",

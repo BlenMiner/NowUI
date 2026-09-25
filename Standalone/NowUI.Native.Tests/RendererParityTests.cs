@@ -58,6 +58,62 @@ public sealed class RendererParityTests
     }
 
     [TestCase("gamma"), TestCase("linear")]
+    public void SdfNestedGroupsCombineAsOneShapeInsideAGraph(string colorSpace)
+    {
+        var pixels = Render("SdfNestedGraphParityScene", 128, 64, colorSpace);
+        // The card, with the scaled dots subtracted as one smooth shape.
+        AssertPixel(pixels, 128, 64, 10, 10, 255, 255, 255, 255, 2);
+        AssertPixel(pixels, 128, 64, 23, 32, 0, 0, 0, 255, 2);
+        AssertPixel(pixels, 128, 64, 41, 32, 0, 0, 0, 255, 2);
+        AssertPixel(pixels, 128, 64, 52, 32, 255, 255, 255, 255, 2);
+        AssertPixel(pixels, 128, 64, 32, 22, 255, 255, 255, 255, 2);
+        // The morph that opens its graph: filled at the centre, blending both fills.
+        Assert.That(Red(pixels, 128, 64, 96, 32), Is.GreaterThan(80), "The morph keeps some of the circle's red.");
+        Assert.That(pixels[((63 - 32) * 128 + 96) * 4 + 2], Is.GreaterThan(80), "The morph takes some of the box's blue.");
+        AssertPixel(pixels, 128, 64, 72, 32, 0, 0, 0, 255, 2);
+    }
+
+    [TestCase("gamma"), TestCase("linear")]
+    public void SdfCapsTransformsUiCoordinatesTwoShadowsAndDrawMaskRender(string colorSpace)
+    {
+        var pixels = Render("SdfShapeFeaturesParityScene", 160, 96, colorSpace);
+        // Just before 12 o'clock on the ring: only the round and square caps reach it.
+        AssertPixel(pixels, 160, 96, 18, 12, 255, 255, 255, 255, 2);
+        AssertPixel(pixels, 160, 96, 58, 12, 0, 0, 0, 255, 2);
+        AssertPixel(pixels, 160, 96, 98, 12, 255, 255, 255, 255, 2);
+        // A corner only the square cap covers (edge pixels, so compare coverage).
+        Assert.That(Red(pixels, 160, 96, 16, 8), Is.LessThan(100), "The round cap must not reach the square corner.");
+        Assert.That(Red(pixels, 160, 96, 96, 8), Is.GreaterThan(150), "The square cap must cover its corner.");
+        // The transformed bar points down from (16, 8), twice as long.
+        AssertPixel(pixels, 160, 96, 16, 70, 255, 255, 255, 255, 2);
+        AssertPixel(pixels, 160, 96, 30, 56, 0, 0, 0, 255, 2);
+        // UI-space circle.
+        AssertPixel(pixels, 160, 96, 76, 60, 255, 255, 255, 255, 2);
+        // Box at (104..120, 56..72): red shadow to the right, blue beneath.
+        AssertPixel(pixels, 160, 96, 112, 64, 255, 255, 255, 255, 2);
+        AssertPixel(pixels, 160, 96, 123, 62, 255, 0, 0, 255, 2);
+        AssertPixel(pixels, 160, 96, 110, 75, 0, 0, 255, 255, 2);
+        // The green fill appears only inside the masked circle.
+        AssertPixel(pixels, 160, 96, 144, 16, 0, 255, 0, 255, 2);
+        AssertPixel(pixels, 160, 96, 130, 40, 0, 0, 0, 255, 2);
+    }
+
+    [TestCase("gamma"), TestCase("linear")]
+    public void SdfGradientFillsFollowEachShapesBoxAndRotation(string colorSpace)
+    {
+        var pixels = Render("SdfGradientParityScene", 128, 96, colorSpace);
+        AssertDominant(pixels, 128, 96, 7, 16, 0);     // linear start: red
+        AssertDominant(pixels, 128, 96, 57, 16, 2);    // linear end: blue
+        AssertDominant(pixels, 128, 96, 96, 16, 1);    // radial centre: green
+        AssertDominant(pixels, 128, 96, 96, 4, 2);     // radial rim: blue
+        AssertDominant(pixels, 128, 96, 36, 45, 0);    // conic just after 12 o'clock: red
+        AssertDominant(pixels, 128, 96, 28, 45, 1);    // conic just before 12 o'clock: green
+        AssertDominant(pixels, 128, 96, 100, 47, 0);   // rotated box: the ramp starts at the top
+        AssertDominant(pixels, 128, 96, 100, 81, 2);   // and ends at the bottom
+        AssertPixel(pixels, 128, 96, 70, 70, 255, 255, 255, 255, 2);
+    }
+
+    [TestCase("gamma"), TestCase("linear")]
     public void AdvertisedDataFormatsUploadBlitAndSampleWithoutColorDecoding(string colorSpace)
     {
         var pixels = Render("DataTextureParityScene", 224, 64, colorSpace);
@@ -213,6 +269,8 @@ public sealed class RendererParityTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
+
+    static int Red(byte[] pixels, int width, int height, int x, int y) => pixels[((height - 1 - y) * width + x) * 4];
 
     static void AssertDominant(byte[] pixels, int width, int height, int x, int y, int channel)
     {

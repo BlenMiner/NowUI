@@ -51,10 +51,12 @@ namespace NowUI.Editor
             DrawMetricChip(new NowRect(826f, 30f, 94f, 28f), "1 QUAD", amber);
 
             var stage = new NowRect(154f, 116f, 652f, 332f);
-            Now.Rectangle(new NowRect(stage.x - 16f, stage.y + 16f, stage.width + 32f, stage.height + 18f))
-                .SetColor(new Color(0f, 0f, 0f, 0.34f))
-                .SetRadius(32f)
+            Now.Shadow(stage)
+                .SetOffset(0f, 18f)
+                .SetSpread(16f)
+                .SetRadius(16f)
                 .SetBlur(24f)
+                .SetColor(new Color(0f, 0f, 0f, 0.34f))
                 .Draw();
             Now.Rectangle(stage)
                 .SetColor(new Color(0.030f, 0.035f, 0.075f, 0.86f))

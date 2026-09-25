@@ -83,6 +83,17 @@ when enabled. No manual NowUI input define is required.
 - `NowGridLines` (`Now.GridLines(rect, spacing)`): hairline grids with spacing,
   offset, thickness and axis selection. `NowRectangle.SetFill(false)` draws
   outline-only rectangles.
+- `NowSweep`: arc and pie ranges in named conventions, `NowSweep.Clock`
+  (degrees from 12 o'clock) or `NowSweep.Radians`, accepted by SDF `Arc`/`Pie`
+  and `Now.Arc`.
+- SDF scenes and graphs: `SetArcCap`, `PushTransform`/`PushTransformAround`/
+  `PopTransform`, nested `Graph`/`Morph` inside a graph, `AddShadow`, and on the
+  scene builder `UseUiCoordinates` and `DrawAndBeginMask`. See
+  [SDF Shapes](SDF.md#group-transforms-and-ui-coordinates).
+- SDF gradient fills: `SetGradient`, `SetGradientLinear`, `SetGradientRadial`,
+  `SetGradientConic`, `SetGradientSpread`, `SetGradientRepetitions`, and
+  `UseGradient` on `NowSdfGraph` and the scene builder lay a ramp over each
+  shape's box. See [SDF Shapes](SDF.md#gradient-fills).
 - `NowTextTransition` and `NowTextTransitionKind`: fade, slide and odometer
   roll transitions for `NowText.DrawValue` and `NowText.DrawTransition`. See
   [Text Layout, Gradients, And Animation](TextStyling.md#value-transitions).

@@ -822,23 +822,59 @@ namespace NowUI
             if (_transformStack.Count > 0)
                 bounds = ApplyTransformRect(bounds);
 
+            if (!TryResolveGradientPayload(
+                    bounds,
+                    text.gradientKind,
+                    text.gradientShape,
+                    text.gradientSpread,
+                    text.gradientParameters,
+                    text.gradientRepetitions,
+                    out payload,
+                    out int flags))
+            {
+                return false;
+            }
+
+            NowGradientRampHandle ramp = text.gradientRamp != null
+                ? NowGradientRampCache.Get(text.gradientRamp, text.gradientRampRevision)
+                : NowGradientRampCache.Get(text.gradientColorFrom, text.gradientColorTo);
+            encodedRamp = EncodeGradientRamp(ramp, flags);
+            return true;
+        }
+
+        /// <summary>
+        /// Maps normalized gradient geometry (the <c>SetGradient*</c> parameters
+        /// shared by text and SDF fills) onto <paramref name="bounds"/>, producing
+        /// the absolute payload read by <c>NowUITextGradientPosition</c> and the
+        /// kind, spread and shape flag bits. The ramp row is encoded separately.
+        /// </summary>
+        internal static bool TryResolveGradientPayload(
+            NowRect bounds,
+            NowGradientKind kind,
+            NowGradientShape shape,
+            NowGradientSpread spread,
+            Vector4 parameters,
+            float repetitions,
+            out Vector4 payload,
+            out int flags)
+        {
+            payload = default;
+            flags = 0;
+
             float width = Mathf.Abs(bounds.width);
             float height = Mathf.Abs(bounds.height);
 
             if (width < 0.0001f || height < 0.0001f)
                 return false;
 
-            float repetitions = text.gradientRepetitions;
-
             if (!IsFiniteGradientValue(repetitions) || Mathf.Abs(repetitions) < 0.0001f)
                 repetitions = 1f;
 
             repetitions = Mathf.Abs(repetitions);
-            Vector4 parameters = text.gradientParameters;
             float centerX = bounds.x + parameters.x * bounds.width;
             float centerY = bounds.y + parameters.y * bounds.height;
 
-            switch (text.gradientKind)
+            switch (kind)
             {
                 case NowGradientKind.Linear:
                 {
@@ -868,7 +904,7 @@ namespace NowUI
                     float radiusX;
                     float radiusY;
 
-                    if (text.gradientShape == NowGradientShape.Circle)
+                    if (shape == NowGradientShape.Circle)
                     {
                         float radius = Mathf.Max(
                             Mathf.Abs(parameters.z) * Mathf.Min(width, height) / repetitions,
@@ -890,20 +926,21 @@ namespace NowUI
                     break;
             }
 
-            NowGradientRampHandle ramp = text.gradientRamp != null
-                ? NowGradientRampCache.Get(text.gradientRamp, text.gradientRampRevision)
-                : NowGradientRampCache.Get(text.gradientColorFrom, text.gradientColorTo);
-            int flags = ((int)text.gradientKind & GradientKindMask) |
-                ((int)text.gradientSpread << GradientSpreadShift);
+            flags = ((int)kind & GradientKindMask) | ((int)spread << GradientSpreadShift);
 
-            if (text.gradientKind == NowGradientKind.Radial && text.gradientShape == NowGradientShape.Circle)
+            if (kind == NowGradientKind.Radial && shape == NowGradientShape.Circle)
                 flags |= GradientCircleFlag;
 
+            return true;
+        }
+
+        /// <summary>Packs a ramp atlas row and gradient flags into the single float shaders decode.</summary>
+        internal static float EncodeGradientRamp(NowGradientRampHandle ramp, int flags)
+        {
             if (ramp.fixedMode)
                 flags |= GradientFixedFlag;
 
-            encodedRamp = ramp.row + (flags + 0.5f) / 256f;
-            return true;
+            return ramp.row + (flags + 0.5f) / 256f;
         }
 
         internal static void DrawGradient(in NowGradient gradient)

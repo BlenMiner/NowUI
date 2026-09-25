@@ -8,7 +8,8 @@
     "NowUI.Extensions.Markdown",
     "NowUI.Extensions.Docking",
     "NowUI.Extensions.NodeGraph",
-    "NowUI.Extensions.Sdf"
+    "NowUI.Extensions.Sdf",
+    "NowUI.Extensions.CodeEditor"
   ],
   "includePlatforms": [
     "Editor"

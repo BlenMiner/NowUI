@@ -147,7 +147,7 @@ Host lifecycle rules:
 | Lottie vector animation | `Now.Lottie` / `NowLayout.Lottie` | [Lottie](Lottie.md) |
 | Dockable windows and tab splits | `NowUI.Docking` | [Docking](Docking.md) |
 | Visual node graphs | `NowUI.NodeGraph` | [Node Graph](NodeGraph.md) |
-| Composable SDF graphics | `NowUI.Sdf` | [SDF Shapes](SDF.md) |
+| Composable SDF graphics: gradient fills, arc caps, group transforms, nested graphs | `NowUI.Sdf` | [SDF Shapes](SDF.md) |
 | Mobile scale, safe areas, touch | `NowScreen`, `NowInput` | [Mobile](Mobile.md) |
 | World-space panels and input | World graphic hosts | [World Space](WorldSpace.md) |
 | UGUI, UI Toolkit, Built-in, URP, HDRP | Host and pipeline types | [Render Pipelines](RenderPipelines.md) |

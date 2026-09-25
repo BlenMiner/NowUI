@@ -132,7 +132,9 @@ const S = {
     MASK_OUTPUT: 1980,                // float
     CANVAS_LAYOUT: 1981,              // float -- vertex stage; always 0 in this build and still bridged
     TIME: 1982,                       // float -- Unity's _Time.y, read only by the domain warp
-    COUNT: 1983,
+    SHADOW2: 1983,                    // vec4
+    SHADOW2_COLOR: 1987,              // vec4
+    COUNT: 1991,
 };
 const sdfBlock = new Float32Array(S.COUNT);
 let sdfBlockPending = false;
@@ -470,6 +472,8 @@ function finishPass(started) {
         sdfGlowColor: loc('_SdfGlowColor'),
         sdfShadow: loc('_SdfShadow'),
         sdfShadowColor: loc('_SdfShadowColor'),
+        sdfShadow2: loc('_SdfShadow2'),
+        sdfShadow2Color: loc('_SdfShadow2Color'),
         sdfInnerShadow: loc('_SdfInnerShadow'),
         sdfInnerShadowColor: loc('_SdfInnerShadowColor'),
         sdfEmboss: loc('_SdfEmboss'),
@@ -887,6 +891,8 @@ function applySdfUniformBlock(u) {
     vec4(u.sdfGlowColor, S.GLOW_COLOR);
     vec4(u.sdfShadow, S.SHADOW);
     vec4(u.sdfShadowColor, S.SHADOW_COLOR);
+    vec4(u.sdfShadow2, S.SHADOW2);
+    vec4(u.sdfShadow2Color, S.SHADOW2_COLOR);
     vec4(u.sdfInnerShadow, S.INNER_SHADOW);
     vec4(u.sdfInnerShadowColor, S.INNER_SHADOW_COLOR);
     vec4(u.sdfEmboss, S.EMBOSS);

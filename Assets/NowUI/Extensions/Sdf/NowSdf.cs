@@ -27,7 +27,14 @@ namespace NowUI.Sdf
         Pie = 7,
         ChamferedBox = 8,
         Triangle = 9,
-        Image = 10
+        Image = 10,
+        // Markers of a nested group inside one graph (see NowSdfGraph.Graph):
+        // the fold saves its accumulator at GroupBegin, a morph saves its first
+        // half at GroupSplit, and GroupEnd combines the group (data1.x is the
+        // morph weight, or negative for a plain group).
+        GroupBegin = 11,
+        GroupSplit = 12,
+        GroupEnd = 13
     }
 
     enum NowSdfLayerKind
@@ -49,6 +56,13 @@ namespace NowUI.Sdf
         public bool useTexture;
         public NowRect bounds;
         public NowSdfImageField field;
+        // Arc end caps: 0 round, 1 butt, 2 square. Packed into _SdfShapeMeta.y
+        // above the texture flag bit.
+        public byte cap;
+        // One plus the index of this node's entry in its graph's gradient list;
+        // zero is a solid or texture fill. Kept out of line so gradient state does
+        // not grow every node that is copied through the build and upload paths.
+        public int gradient;
     }
 
     struct NowSdfImageSource
@@ -58,6 +72,21 @@ namespace NowUI.Sdf
         public RectInt texelRect;
         public float threshold;
         public NowSdfImageField field;
+    }
+
+    /// <summary>
+    /// A group transform for shapes: scale and clockwise rotation around the
+    /// local origin, then translation. Composed by <c>PushTransform</c>.
+    /// </summary>
+    struct NowSdfTransform
+    {
+        public Vector2 translation;
+        public float scale;
+        public float rotationDegrees;
+
+        public static NowSdfTransform identity => new NowSdfTransform { scale = 1f };
+
+        public bool isIdentity => translation == Vector2.zero && scale == 1f && rotationDegrees == 0f;
     }
 
     struct NowSdfGlyphSource
@@ -122,6 +151,11 @@ namespace NowUI.Sdf
         Texture _texture;
         bool _textureFromGlyph;
         bool _useTexture;
+        NowSdfGradientStyle _gradient;
+        NowLineCap _arcCap = NowLineCap.Round;
+        readonly List<NowSdfTransform> _transformStack = new List<NowSdfTransform>(2);
+        NowSdfTransform _transform = NowSdfTransform.identity;
+        readonly List<NowSdfNodeGradient> _nodeGradients = new List<NowSdfNodeGradient>();
         NowSdfOperation _operation = NowSdfOperation.Union;
         float _smoothing;
         float _nextRotationDegrees;
@@ -142,6 +176,10 @@ namespace NowUI.Sdf
         bool _hasBounds;
 
         internal IReadOnlyList<NowSdfNode> nodes => _nodes;
+
+        internal bool hasIdentityTransform => _transform.isIdentity;
+
+        internal NowSdfNodeGradient GetGradient(in NowSdfNode node) => _nodeGradients[node.gradient - 1];
 
         internal Texture texture => _texture;
 
@@ -178,6 +216,7 @@ namespace NowUI.Sdf
         {
             AdvanceContentRevision();
             _nodes.Clear();
+            _nodeGradients.Clear();
             _glyphSources.Clear();
             _imageSources.Clear();
             _preparedImageBudget = -1f;
@@ -199,6 +238,8 @@ namespace NowUI.Sdf
             _failedTextPixelRange = 0;
             _failedTextFontVersion = -1;
             _rotationStack.Clear();
+            _transformStack.Clear();
+            _transform = NowSdfTransform.identity;
             _requiredMaterialAbi = 1;
             _bounds = default;
             _hasBounds = false;
@@ -213,6 +254,8 @@ namespace NowUI.Sdf
             _texture = null;
             _textureFromGlyph = false;
             _useTexture = false;
+            _gradient = default;
+            _arcCap = NowLineCap.Round;
             return this;
         }
 
@@ -228,9 +271,11 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <summary>Fills the following shapes with the solid color again, after a texture or gradient fill.</summary>
         public NowSdfGraph UseColor()
         {
             _useTexture = false;
+            _gradient.active = false;
             return this;
         }
 
@@ -240,6 +285,7 @@ namespace NowUI.Sdf
             _texture = texture;
             _textureFromGlyph = false;
             _useTexture = texture != null;
+            _gradient.active = false;
             return this;
         }
 
@@ -253,6 +299,143 @@ namespace NowUI.Sdf
         public NowSdfGraph UseTexture()
         {
             _useTexture = _texture != null;
+            _gradient.active = _gradient.active && !_useTexture;
+            return this;
+        }
+
+        /// <summary>
+        /// Fills the following shapes with a two-color gradient laid over each
+        /// shape's own box, top to bottom unless a <c>SetGradientLinear</c>,
+        /// <c>SetGradientRadial</c> or <c>SetGradientConic</c> call says otherwise.
+        /// The gradient replaces the solid color (the scene tint still applies);
+        /// <see cref="UseColor"/> returns to solid fills. Glyphs and images keep
+        /// their own fills.
+        /// </summary>
+        public NowSdfGraph SetGradient(Color from, Color to)
+        {
+            _gradient.SetColors(from, to);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Vector overload of <see cref="SetGradient(Color, Color)"/>.</summary>
+        public NowSdfGraph SetGradient(Vector4 from, Vector4 to)
+        {
+            _gradient.SetColors(from, to);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Fills the following shapes with every color and alpha key of a Unity
+        /// gradient. Increment <paramref name="revision"/> after changing the same
+        /// instance, or call <see cref="Now.InvalidateGradient(Gradient)"/>.
+        /// </summary>
+        public NowSdfGraph SetGradient(Gradient gradient, int revision = 0)
+        {
+            _gradient.SetRamp(gradient, revision);
+            _useTexture = _useTexture && !_gradient.active;
+            return this;
+        }
+
+        /// <summary>Lays the gradient across each shape in a CSS-style direction.</summary>
+        public NowSdfGraph SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom)
+        {
+            _gradient.SetLinear(direction);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Lays the gradient at a CSS-style angle in degrees: 0 points up and 90 right.</summary>
+        public NowSdfGraph SetGradientLinear(float angleDegrees)
+        {
+            _gradient.SetLinear(angleDegrees);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Lays the gradient along a direction in scene space (positive y points down).</summary>
+        public NowSdfGraph SetGradientLinear(Vector2 direction)
+        {
+            _gradient.SetLinear(direction);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Uses an ellipse or circle centered on each shape's box.</summary>
+        public NowSdfGraph SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse)
+        {
+            _gradient.SetRadial(new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), shape);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Uses an ellipse with center and radii normalized to each shape's box.</summary>
+        public NowSdfGraph SetGradientRadial(Vector2 center, Vector2 radius)
+        {
+            _gradient.SetRadial(center, radius, NowGradientShape.Ellipse);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>Uses a circle; <paramref name="radius"/> is relative to the box's smaller side.</summary>
+        public NowSdfGraph SetGradientRadial(Vector2 center, float radius)
+        {
+            _gradient.SetRadial(center, new Vector2(radius, radius), NowGradientShape.Circle);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>
+        /// Uses a clockwise conic sweep around the middle of each shape's box.
+        /// <paramref name="startAngle"/> is in degrees with 0 pointing up, as in
+        /// CSS. Arcs and pies are boxed around their circle's center, so the sweep
+        /// follows an arc around its ring.
+        /// </summary>
+        public NowSdfGraph SetGradientConic(float startAngle = 0f)
+        {
+            return SetGradientConic(new Vector2(0.5f, 0.5f), startAngle);
+        }
+
+        /// <summary>Uses a clockwise conic sweep around a center normalized to each shape's box.</summary>
+        public NowSdfGraph SetGradientConic(Vector2 center, float startAngle = 0f)
+        {
+            _gradient.SetConic(center, startAngle);
+            _useTexture = false;
+            return this;
+        }
+
+        /// <summary>How the gradient continues past its ends: pad (default), repeat or reflect.</summary>
+        public NowSdfGraph SetGradientSpread(NowGradientSpread spread)
+        {
+            _gradient.spread = spread;
+            return this;
+        }
+
+        /// <summary>How many times the ramp runs across each shape; combine with a repeating spread.</summary>
+        public NowSdfGraph SetGradientRepetitions(float repetitions)
+        {
+            _gradient.repetitions = repetitions;
+            return this;
+        }
+
+        /// <summary>
+        /// End caps for the following arcs: <see cref="NowLineCap.Round"/> (the
+        /// default), <see cref="NowLineCap.Butt"/> (flat at the sweep's ends) or
+        /// <see cref="NowLineCap.Square"/> (flat, extended by the half-width).
+        /// Full rings have no ends. Butt and square caps require material ABI v2.
+        /// </summary>
+        public NowSdfGraph SetArcCap(NowLineCap cap)
+        {
+            _arcCap = cap;
+            return this;
+        }
+
+        /// <summary>Fills the following shapes with the last gradient again, after a solid or texture fill.</summary>
+        public NowSdfGraph UseGradient()
+        {
+            _gradient.active = true;
+            _useTexture = false;
             return this;
         }
 
@@ -326,6 +509,301 @@ namespace NowUI.Sdf
         /// text runs. Nested pushes compose, and <see cref="PopRotation"/>
         /// restores the parent rotation.
         /// </summary>
+        /// <summary>
+        /// Adds another graph as one shape of this graph. Its shapes combine among
+        /// themselves first; the result then combines with what came before using the
+        /// pending operation (<c>Subtract()</c>, <c>SmoothUnion(k)</c>, ...), as a
+        /// scene combines its layers but inside a reusable graph. The current
+        /// <see cref="PushTransform"/> applies, so one graph can be placed, scaled and
+        /// turned several times:
+        /// <code>
+        /// var heart = NowSdf.Graph().Circle(new Vector2(-7f, 0f), 9f).SmoothUnion(4f).Circle(new Vector2(7f, 0f), 9f);
+        /// var badge = NowSdf.Graph().RoundedBox(new NowRect(0f, 0f, 64f, 64f), 16f)
+        ///     .Subtract().PushTransform(new Vector2(32f, 34f), 1.4f).Graph(heart).PopTransform();
+        /// </code>
+        /// Nesting is one level deep: the added graph holds analytic shapes only (no
+        /// text, images, or graphs of its own). Its shapes are copied, so later
+        /// changes to it do not affect this graph, and each group uses two of the
+        /// 64 shape slots for its markers (three for a morph).
+        /// </summary>
+        public NowSdfGraph Graph(NowSdfGraph graph)
+        {
+            AddGroup(graph, null, 0f, nameof(graph));
+            return this;
+        }
+
+        /// <summary>
+        /// Adds the morph from <paramref name="from"/> to <paramref name="to"/> at
+        /// <paramref name="t"/> as one shape of this graph; see <see cref="Graph(NowSdfGraph)"/>.
+        /// </summary>
+        public NowSdfGraph Morph(NowSdfGraph from, NowSdfGraph to, float t)
+        {
+            if (to == null)
+                throw new ArgumentNullException(nameof(to));
+
+            ValidateFinite(t, nameof(t));
+            AddGroup(from, to, Mathf.Clamp01(t), nameof(from));
+            return this;
+        }
+
+        internal static bool IsGroupMarker(NowSdfShapeType type)
+        {
+            return type >= NowSdfShapeType.GroupBegin;
+        }
+
+        void AddGroup(NowSdfGraph first, NowSdfGraph second, float morph, string parameterName)
+        {
+            if (first == null)
+                throw new ArgumentNullException(parameterName);
+
+            ValidateNestedGraph(first, parameterName);
+
+            if (second != null)
+                ValidateNestedGraph(second, nameof(second));
+
+            if (!first.hasNodes && (second == null || !second.hasNodes))
+            {
+                SkipPrimitive();
+                return;
+            }
+
+            NowSdfOperation operation = _nodes.Count == 0 ? NowSdfOperation.Union : _operation;
+            float smoothing = _smoothing * _transform.scale;
+
+            // A plain group that opens the graph combines with nothing, so its
+            // shapes can go in without markers.
+            bool markers = second != null || _nodes.Count > 0;
+
+            if (markers)
+                AppendGroupMarker(NowSdfShapeType.GroupBegin, NowSdfOperation.Union, 0f, -1f);
+
+            CopyNestedNodes(first);
+
+            if (second != null)
+            {
+                AppendGroupMarker(NowSdfShapeType.GroupSplit, NowSdfOperation.Union, 0f, -1f);
+                CopyNestedNodes(second);
+            }
+
+            if (markers)
+            {
+                AppendGroupMarker(NowSdfShapeType.GroupEnd, operation, smoothing, second != null ? morph : -1f);
+                _requiredMaterialAbi = 2;
+            }
+
+            _operation = NowSdfOperation.Union;
+            _smoothing = 0f;
+            _nextRotationDegrees = 0f;
+        }
+
+        void ValidateNestedGraph(NowSdfGraph graph, string parameterName)
+        {
+            if (ReferenceEquals(graph, this))
+                throw new ArgumentException("A graph cannot contain itself.", parameterName);
+
+            graph.ThrowIfRotationScopesOpen("Graph");
+
+            for (int i = 0; i < graph._nodes.Count; ++i)
+            {
+                NowSdfShapeType type = graph._nodes[i].type;
+
+                if (IsGroupMarker(type))
+                {
+                    throw new InvalidOperationException(
+                        "Nested SDF graphs are one level deep: the added graph already contains Graph or Morph. " +
+                        "Combine deeper structures as scene layers with NowSdf.Scene(...).Graph(...).");
+                }
+
+                if (type == NowSdfShapeType.Glyph || type == NowSdfShapeType.Image)
+                {
+                    throw new InvalidOperationException(
+                        "Nested SDF graphs hold analytic shapes only. Add text and images to this graph directly, " +
+                        "or combine them as scene layers.");
+                }
+
+                if (graph._nodes[i].useTexture && graph._texture != null && _texture != null && !ReferenceEquals(graph._texture, _texture))
+                {
+                    throw new InvalidOperationException(
+                        "The added graph fills shapes with a different texture than this graph; a scene samples one texture.");
+                }
+            }
+        }
+
+        void AppendGroupMarker(NowSdfShapeType type, NowSdfOperation operation, float smoothing, float morph)
+        {
+            AdvanceContentRevision();
+            _nodes.Add(new NowSdfNode
+            {
+                type = type,
+                operation = operation,
+                smoothing = smoothing,
+                data1 = new Vector4(morph, 0f, 0f, 0f)
+            });
+        }
+
+        void CopyNestedNodes(NowSdfGraph source)
+        {
+            if (source._texture != null && _texture == null && !source._textureFromGlyph)
+                _texture = source._texture;
+
+            bool transformed = !_transform.isIdentity;
+
+            for (int i = 0; i < source._nodes.Count; ++i)
+            {
+                NowSdfNode node = source._nodes[i];
+                Vector2 delta = Vector2.zero;
+                float scale = 1f;
+
+                if (transformed)
+                {
+                    // Unrotated authored bounds, which the rotated-bounds helper expects.
+                    NowRect authored = node.bounds;
+
+                    if (node.rotation != Vector2.zero && NowSdfNodeGradient.TryGetFillBox(node.type, node.data1, node.data2, out NowRect box))
+                        authored = box;
+
+                    if (node.type == NowSdfShapeType.Arc && node.cap == 2)
+                    {
+                        float outer = node.data1.z + node.data1.w;
+                        float reach = Mathf.Sqrt(outer * outer + node.data1.w * node.data1.w);
+                        authored = new NowRect(node.data1.x - reach, node.data1.y - reach, reach * 2f, reach * 2f);
+                    }
+
+                    scale = _transform.scale;
+                    delta = TransformNode(node.type, ref node.data1, ref node.data2, ref authored, ref node.smoothing);
+
+                    if (_transform.rotationDegrees != 0f)
+                        node.rotation = RotationDegrees(RotationVectorDegrees(node.rotation) + _transform.rotationDegrees);
+
+                    node.bounds = node.rotation != Vector2.zero
+                        ? RotatedShapeBounds(node.type, node.data1, node.data2, authored, node.rotation, "graph")
+                        : authored;
+                }
+
+                if (node.gradient != 0)
+                {
+                    NowSdfNodeGradient gradient = source._nodeGradients[node.gradient - 1];
+
+                    if (transformed)
+                        gradient.payload = TransformGradientPayload(gradient, scale, delta);
+
+                    _nodeGradients.Add(gradient);
+                    node.gradient = _nodeGradients.Count;
+                }
+
+                if (_nodes.Count == 0)
+                    node.operation = NowSdfOperation.Union;
+
+                AdvanceContentRevision();
+                _nodes.Add(node);
+                Encapsulate(node.bounds);
+            }
+
+            _requiredMaterialAbi = Math.Max(_requiredMaterialAbi, source._requiredMaterialAbi);
+
+            if (transformed && _transform.rotationDegrees != 0f)
+                _requiredMaterialAbi = 2;
+        }
+
+        static float RotationVectorDegrees(Vector2 rotation)
+        {
+            return rotation == Vector2.zero ? 0f : Mathf.Atan2(rotation.y, rotation.x) * Mathf.Rad2Deg;
+        }
+
+        /// <summary>Moves a resolved gradient with its shape: scaled about the origin, then shifted.</summary>
+        static Vector4 TransformGradientPayload(in NowSdfNodeGradient gradient, float scale, Vector2 delta)
+        {
+            Vector4 payload = gradient.payload;
+
+            switch (gradient.flags & 0x3)
+            {
+                case 0:
+                {
+                    // t = dot(c, p) + z with p = (p' - delta) / scale.
+                    var coefficients = new Vector2(payload.x, payload.y) / scale;
+                    return new Vector4(
+                        coefficients.x,
+                        coefficients.y,
+                        payload.z - Vector2.Dot(coefficients, delta),
+                        payload.w);
+                }
+                case 1:
+                    return new Vector4(
+                        payload.x * scale + delta.x,
+                        payload.y * scale + delta.y,
+                        payload.z * scale,
+                        payload.w * scale);
+                default:
+                    return new Vector4(
+                        payload.x * scale + delta.x,
+                        payload.y * scale + delta.y,
+                        payload.z,
+                        payload.w);
+            }
+        }
+
+        /// <summary>
+        /// Pushes a transform for the following shapes and text: each is scaled by
+        /// <paramref name="scale"/> and rotated clockwise by
+        /// <paramref name="rotationDegrees"/> around the local origin, then moved by
+        /// <paramref name="translation"/>, as one rigid group. Nested pushes compose
+        /// and <see cref="PopTransform"/> restores the parent. Scene effects (outline
+        /// width, blur, shadow offset) are not scaled, and reusable graphs added with
+        /// <c>Graph</c>/<c>Morph</c> keep their own coordinates.
+        /// <code>
+        /// graph.PushTransform(new Vector2(120f, 80f), 2f, 30f).Circle(Vector2.zero, 10f).Box(new NowRect(0f, -2f, 20f, 4f)).PopTransform();
+        /// </code>
+        /// </summary>
+        public NowSdfGraph PushTransform(Vector2 translation, float scale = 1f, float rotationDegrees = 0f)
+        {
+            ValidateFinite(translation, nameof(translation));
+            ValidateFinite(rotationDegrees, nameof(rotationDegrees));
+
+            if (!(scale > 0f) || float.IsInfinity(scale))
+                throw new ArgumentOutOfRangeException(nameof(scale), scale, "The transform scale must be positive and finite.");
+
+            _transformStack.Add(_transform);
+            NowSdfTransform parent = _transform;
+            Vector2 local = translation * parent.scale;
+
+            if (parent.rotationDegrees != 0f)
+                local = RotatePointAroundPivot(local, Vector2.zero, RotationDegrees(parent.rotationDegrees), nameof(translation));
+
+            _transform = new NowSdfTransform
+            {
+                translation = parent.translation + local,
+                scale = parent.scale * scale,
+                rotationDegrees = NormalizeRotationDegrees(parent.rotationDegrees + rotationDegrees)
+            };
+            return this;
+        }
+
+        /// <summary>
+        /// Pushes a transform that scales and rotates the following shapes around
+        /// <paramref name="pivot"/>, in the current coordinates.
+        /// </summary>
+        public NowSdfGraph PushTransformAround(Vector2 pivot, float scale, float rotationDegrees = 0f)
+        {
+            ValidateFinite(pivot, nameof(pivot));
+            Vector2 moved = pivot * scale;
+
+            if (rotationDegrees != 0f)
+                moved = RotatePointAroundPivot(moved, Vector2.zero, RotationDegrees(NormalizeRotationDegrees(rotationDegrees)), nameof(pivot));
+
+            return PushTransform(pivot - moved, scale, rotationDegrees);
+        }
+
+        /// <summary>Restores the transform that was current before the matching <see cref="PushTransform"/>.</summary>
+        public NowSdfGraph PopTransform()
+        {
+            if (_transformStack.Count == 0)
+                throw new InvalidOperationException("PopTransform was called without a matching PushTransform.");
+
+            _transform = _transformStack[_transformStack.Count - 1];
+            _transformStack.RemoveAt(_transformStack.Count - 1);
+            return this;
+        }
+
         public NowSdfGraph PushRotation(float angleDegrees)
         {
             ValidateFinite(angleDegrees, nameof(angleDegrees));
@@ -613,12 +1091,23 @@ namespace NowUI.Sdf
             if (sweep == 0f)
                 return SkipPrimitive();
 
+            // Square caps reach past the ring's outer radius at their corners.
+            float reach = _arcCap == NowLineCap.Square && Mathf.Abs(sweep) < FullTurnRadians
+                ? Mathf.Sqrt(outer * outer + thickness * thickness)
+                : outer;
             Add(
                 NowSdfShapeType.Arc,
                 new Vector4(center.x, center.y, radius, thickness),
                 RadialData(from, sweep),
-                new NowRect(center.x - outer, center.y - outer, outer * 2f, outer * 2f));
+                new NowRect(center.x - reach, center.y - reach, reach * 2f, reach * 2f));
             return this;
+        }
+
+        /// <summary>Adds a circular band over <paramref name="sweep"/>; see <see cref="NowSweep.Clock"/> for clock-face angles.</summary>
+        /// <param name="thickness">Half-width of the band around <paramref name="radius"/>.</param>
+        public NowSdfGraph Arc(Vector2 center, float radius, float thickness, NowSweep sweep)
+        {
+            return Arc(center, radius, thickness, sweep.from, sweep.sweep);
         }
 
         /// <summary>
@@ -650,6 +1139,12 @@ namespace NowUI.Sdf
                 RadialData(from, sweep),
                 new NowRect(center.x - radius, center.y - radius, radius * 2f, radius * 2f));
             return this;
+        }
+
+        /// <summary>Adds a filled circular sector over <paramref name="sweep"/>; see <see cref="NowSweep.Clock"/> for clock-face angles.</summary>
+        public NowSdfGraph Pie(Vector2 center, float radius, NowSweep sweep)
+        {
+            return Pie(center, radius, sweep.from, sweep.sweep);
         }
 
         public NowSdfGraph Text(Vector2 position, string value, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
@@ -888,12 +1383,19 @@ namespace NowUI.Sdf
             _texture = source._textureFromGlyph ? null : source._texture;
             _textureFromGlyph = false;
             _useTexture = source._useTexture;
+            _gradient = source._gradient;
+            _arcCap = source._arcCap;
+            _transformStack.Clear();
+            _transformStack.AddRange(source._transformStack);
+            _transform = source._transform;
         }
 
         internal void CopyFrom(NowSdfGraph source)
         {
             _nodes.Clear();
             _nodes.AddRange(source._nodes);
+            _nodeGradients.Clear();
+            _nodeGradients.AddRange(source._nodeGradients);
             _glyphSources.Clear();
             _glyphSources.AddRange(source._glyphSources);
             _imageSources.Clear();
@@ -907,6 +1409,11 @@ namespace NowUI.Sdf
             _texture = source._texture;
             _textureFromGlyph = source._textureFromGlyph;
             _useTexture = source._useTexture;
+            _gradient = source._gradient;
+            _arcCap = source._arcCap;
+            _transformStack.Clear();
+            _transformStack.AddRange(source._transformStack);
+            _transform = source._transform;
             _operation = source._operation;
             _smoothing = source._smoothing;
             _nextRotationDegrees = source._nextRotationDegrees;
@@ -937,6 +1444,9 @@ namespace NowUI.Sdf
             float smoothing,
             bool resetPendingModifiers)
         {
+            if (!_transform.isIdentity && type != NowSdfShapeType.Glyph)
+                TransformNode(type, ref data1, ref data2, ref bounds, ref smoothing);
+
             Vector2 rotation = EffectiveRotation();
             if (rotation != Vector2.zero)
                 bounds = RotatedShapeBounds(type, data1, data2, bounds, rotation, nameof(bounds));
@@ -952,6 +1462,85 @@ namespace NowUI.Sdf
         }
 
         void AddText(
+            Vector2 position,
+            string value,
+            NowFontAsset font,
+            float fontSize,
+            NowFontStyle fontStyle,
+            int tabSpaces)
+        {
+            if (_transform.isIdentity)
+            {
+                AddTextRun(position, value, font, fontSize, fontStyle, tabSpaces);
+                return;
+            }
+
+            int firstGlyph = _nodes.Count;
+            int firstGlyphSource = _glyphSources.Count;
+            NowRect previousBounds = _bounds;
+            bool previouslyHadBounds = _hasBounds;
+
+            // The run lays out scaled and rotated (the group angle is part of
+            // EffectiveRotation) around its own center; one shift then moves that
+            // center where the group transform maps it. Shifting the glyph sources
+            // too keeps later atlas re-resolution in place.
+            AddTextRun(position * _transform.scale, value, font, fontSize * _transform.scale, fontStyle, tabSpaces);
+
+            if (_nodes.Count == firstGlyph)
+                return;
+
+            Vector2 pivot;
+
+            if (firstGlyphSource < _glyphSources.Count && _glyphSources[firstGlyphSource].rotation != Vector2.zero)
+            {
+                pivot = _glyphSources[firstGlyphSource].pivot;
+            }
+            else
+            {
+                NowRect first = _nodes[firstGlyph].bounds;
+                Vector2 min = first.position;
+                Vector2 max = new Vector2(first.xMax, first.yMax);
+
+                for (int i = firstGlyph + 1; i < _nodes.Count; ++i)
+                {
+                    NowRect glyphBounds = _nodes[i].bounds;
+                    min = Vector2.Min(min, glyphBounds.position);
+                    max = Vector2.Max(max, new Vector2(glyphBounds.xMax, glyphBounds.yMax));
+                }
+
+                pivot = (min + max) * 0.5f;
+            }
+
+            Vector2 delta = GroupShift(pivot);
+
+            if (delta == Vector2.zero)
+                return;
+
+            _bounds = previousBounds;
+            _hasBounds = previouslyHadBounds;
+
+            for (int i = firstGlyph; i < _nodes.Count; ++i)
+            {
+                var node = _nodes[i];
+                node.data1.x += delta.x;
+                node.data1.y += delta.y;
+                node.bounds.x += delta.x;
+                node.bounds.y += delta.y;
+                _nodes[i] = node;
+                Encapsulate(node.bounds);
+            }
+
+            for (int i = firstGlyphSource; i < _glyphSources.Count; ++i)
+            {
+                var source = _glyphSources[i];
+                source.x += delta.x;
+                source.y += delta.y;
+                source.pivot += delta;
+                _glyphSources[i] = source;
+            }
+        }
+
+        void AddTextRun(
             Vector2 position,
             string value,
             NowFontAsset font,
@@ -1795,7 +2384,10 @@ namespace NowUI.Sdf
             _hasBounds = false;
 
             for (int i = 0; i < _nodes.Count; ++i)
-                Encapsulate(_nodes[i].bounds);
+            {
+                if (!IsGroupMarker(_nodes[i].type))
+                    Encapsulate(_nodes[i].bounds);
+            }
         }
 
         void AppendNode(
@@ -1812,6 +2404,8 @@ namespace NowUI.Sdf
         {
             AdvanceContentRevision();
             operation = _nodes.Count == 0 ? NowSdfOperation.Union : operation;
+            int gradient = ResolveGradient(type, data1, data2, useTexture);
+            byte cap = type == NowSdfShapeType.Arc ? ArcCapCode(_arcCap) : (byte)0;
             _nodes.Add(new NowSdfNode
             {
                 type = type,
@@ -1823,19 +2417,47 @@ namespace NowUI.Sdf
                 uv = uv,
                 rotation = rotation,
                 useTexture = useTexture,
-                bounds = bounds
+                bounds = bounds,
+                gradient = gradient,
+                cap = cap
             });
 
             if (type == NowSdfShapeType.ChamferedBox ||
                 type == NowSdfShapeType.Triangle ||
                 type == NowSdfShapeType.Image ||
-                rotation != Vector2.zero)
+                rotation != Vector2.zero ||
+                gradient != 0 ||
+                cap != 0)
             {
                 _requiredMaterialAbi = 2;
             }
 
             if (encapsulate)
                 Encapsulate(bounds);
+        }
+
+        static byte ArcCapCode(NowLineCap cap)
+        {
+            switch (cap)
+            {
+                case NowLineCap.Butt: return 1;
+                case NowLineCap.Square: return 2;
+                default: return 0;
+            }
+        }
+
+        int ResolveGradient(NowSdfShapeType type, Vector4 data1, Vector4 data2, bool useTexture)
+        {
+            if (!_gradient.active || useTexture || !NowSdfNodeGradient.TryGetFillBox(type, data1, data2, out NowRect box))
+                return 0;
+
+            NowSdfNodeGradient resolved = _gradient.Resolve(box);
+
+            if (!resolved.enabled)
+                return 0;
+
+            _nodeGradients.Add(resolved);
+            return _nodeGradients.Count;
         }
 
         void AdvanceContentRevision()
@@ -1945,7 +2567,81 @@ namespace NowUI.Sdf
             float scoped = _rotationStack.Count > 0
                 ? _rotationStack[_rotationStack.Count - 1]
                 : 0f;
-            return RotationDegrees(scoped + _nextRotationDegrees);
+            return RotationDegrees(scoped + _nextRotationDegrees + _transform.rotationDegrees);
+        }
+
+        /// <summary>
+        /// Applies the group transform to one analytic or image node: lengths scale
+        /// about the origin, then the node moves so its rotation pivot lands where the
+        /// group maps it. Its own rotation already includes the group angle, so the
+        /// result is the exact rigid transform of the authored shape.
+        /// </summary>
+        Vector2 TransformNode(NowSdfShapeType type, ref Vector4 data1, ref Vector4 data2, ref NowRect bounds, ref float smoothing)
+        {
+            float scale = _transform.scale;
+
+            if (scale != 1f)
+            {
+                switch (type)
+                {
+                    case NowSdfShapeType.Circle:
+                    case NowSdfShapeType.Pie:
+                        data1 = new Vector4(data1.x * scale, data1.y * scale, data1.z * scale, data1.w);
+                        break;
+                    case NowSdfShapeType.RoundedBox:
+                        data1 *= scale;
+                        data2 *= scale;
+                        break;
+                    case NowSdfShapeType.Capsule:
+                    case NowSdfShapeType.ChamferedBox:
+                        data1 *= scale;
+                        data2.x *= scale;
+                        break;
+                    case NowSdfShapeType.Triangle:
+                        data1.x *= scale;
+                        data1.y *= scale;
+                        data2.w *= scale;
+                        break;
+                    case NowSdfShapeType.Image:
+                        data1 *= scale;
+                        data2.x *= scale;
+                        data2.y *= scale;
+                        break;
+                    default:
+                        data1 *= scale;
+                        break;
+                }
+
+                bounds = new NowRect(bounds.x * scale, bounds.y * scale, bounds.width * scale, bounds.height * scale);
+                smoothing *= scale;
+            }
+
+            Vector2 delta = GroupShift(RotationPivot(type, data1, data2));
+
+            if (delta == Vector2.zero)
+                return delta;
+
+            data1.x += delta.x;
+            data1.y += delta.y;
+
+            if (type == NowSdfShapeType.Capsule)
+            {
+                data1.z += delta.x;
+                data1.w += delta.y;
+            }
+
+            bounds.x += delta.x;
+            bounds.y += delta.y;
+            return delta;
+        }
+
+        /// <summary>How far the group transform moves content whose rotation pivot is <paramref name="pivot"/> (already scaled).</summary>
+        Vector2 GroupShift(Vector2 pivot)
+        {
+            Vector2 moved = _transform.rotationDegrees != 0f
+                ? RotatePointAroundPivot(pivot, Vector2.zero, RotationDegrees(_transform.rotationDegrees), "transform")
+                : pivot;
+            return moved + _transform.translation - pivot;
         }
 
         static NowRect RotatedShapeBounds(
@@ -2811,6 +3507,104 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <inheritdoc cref="NowSdfGraph.SetGradient(Color, Color)"/>
+        public NowSdfBuilder SetGradient(Color from, Color to)
+        {
+            _cache.EditGraph().SetGradient(from, to);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradient(Vector4, Vector4)"/>
+        public NowSdfBuilder SetGradient(Vector4 from, Vector4 to)
+        {
+            _cache.EditGraph().SetGradient(from, to);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradient(Gradient, int)"/>
+        public NowSdfBuilder SetGradient(Gradient gradient, int revision = 0)
+        {
+            _cache.EditGraph().SetGradient(gradient, revision);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientLinear(NowGradientDirection)"/>
+        public NowSdfBuilder SetGradientLinear(NowGradientDirection direction = NowGradientDirection.ToBottom)
+        {
+            _cache.EditGraph().SetGradientLinear(direction);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientLinear(float)"/>
+        public NowSdfBuilder SetGradientLinear(float angleDegrees)
+        {
+            _cache.EditGraph().SetGradientLinear(angleDegrees);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientLinear(Vector2)"/>
+        public NowSdfBuilder SetGradientLinear(Vector2 direction)
+        {
+            _cache.EditGraph().SetGradientLinear(direction);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientRadial(NowGradientShape)"/>
+        public NowSdfBuilder SetGradientRadial(NowGradientShape shape = NowGradientShape.Ellipse)
+        {
+            _cache.EditGraph().SetGradientRadial(shape);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientRadial(Vector2, Vector2)"/>
+        public NowSdfBuilder SetGradientRadial(Vector2 center, Vector2 radius)
+        {
+            _cache.EditGraph().SetGradientRadial(center, radius);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientRadial(Vector2, float)"/>
+        public NowSdfBuilder SetGradientRadial(Vector2 center, float radius)
+        {
+            _cache.EditGraph().SetGradientRadial(center, radius);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientConic(float)"/>
+        public NowSdfBuilder SetGradientConic(float startAngle = 0f)
+        {
+            _cache.EditGraph().SetGradientConic(startAngle);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientConic(Vector2, float)"/>
+        public NowSdfBuilder SetGradientConic(Vector2 center, float startAngle = 0f)
+        {
+            _cache.EditGraph().SetGradientConic(center, startAngle);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientSpread(NowGradientSpread)"/>
+        public NowSdfBuilder SetGradientSpread(NowGradientSpread spread)
+        {
+            _cache.EditGraph().SetGradientSpread(spread);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetGradientRepetitions(float)"/>
+        public NowSdfBuilder SetGradientRepetitions(float repetitions)
+        {
+            _cache.EditGraph().SetGradientRepetitions(repetitions);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.UseGradient"/>
+        public NowSdfBuilder UseGradient()
+        {
+            _cache.EditGraph().UseGradient();
+            return this;
+        }
+
         public NowSdfBuilder SetFeather(float feather)
         {
             _cache.SetFeather(feather);
@@ -2864,6 +3658,30 @@ namespace NowUI.Sdf
         public NowSdfBuilder SetShadow(Vector2 offset, float softness, Vector4 color, float spread = 0f)
         {
             _cache.SetShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        /// <summary>
+        /// Adds a second drop shadow beneath the first, for layered depth such as a
+        /// tight contact shadow over a wide ambient one:
+        /// <code>
+        /// .SetShadow(new Vector2(0f, 2f), 3f, new Color(0f, 0f, 0f, 0.30f))
+        /// .AddShadow(new Vector2(0f, 12f), 24f, new Color(0f, 0f, 0f, 0.18f))
+        /// </code>
+        /// A scene has up to two shadows: with none set this acts as
+        /// <c>SetShadow</c>, and a further call replaces the second. Each costs one
+        /// more field evaluation per pixel.
+        /// </summary>
+        public NowSdfBuilder AddShadow(Vector2 offset, float softness, Color color, float spread = 0f)
+        {
+            _cache.AddShadow(offset, softness, color, spread);
+            return this;
+        }
+
+        /// <inheritdoc cref="AddShadow(Vector2, float, Color, float)"/>
+        public NowSdfBuilder AddShadow(Vector2 offset, float softness, Vector4 color, float spread = 0f)
+        {
+            _cache.AddShadow(offset, softness, color, spread);
             return this;
         }
 
@@ -3163,6 +3981,62 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <inheritdoc cref="NowSdfGraph.Arc(Vector2, float, float, NowSweep)"/>
+        public NowSdfBuilder Arc(Vector2 center, float radius, float thickness, NowSweep sweep)
+        {
+            _cache.Arc(center, radius, thickness, sweep.from, sweep.sweep);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.SetArcCap(NowLineCap)"/>
+        public NowSdfBuilder SetArcCap(NowLineCap cap)
+        {
+            _cache.EditGraph().SetArcCap(cap);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.PushTransform(Vector2, float, float)"/>
+        public NowSdfBuilder PushTransform(Vector2 translation, float scale = 1f, float rotationDegrees = 0f)
+        {
+            _cache.EditGraph().PushTransform(translation, scale, rotationDegrees);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.PushTransformAround(Vector2, float, float)"/>
+        public NowSdfBuilder PushTransformAround(Vector2 pivot, float scale, float rotationDegrees = 0f)
+        {
+            _cache.EditGraph().PushTransformAround(pivot, scale, rotationDegrees);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.PopTransform"/>
+        public NowSdfBuilder PopTransform()
+        {
+            _cache.EditGraph().PopTransform();
+            return this;
+        }
+
+        /// <summary>
+        /// Authors the following shapes in the same UI coordinates as the scene's
+        /// rect instead of relative to its corner, so positions from layout, input
+        /// or other drawing can be used as they are:
+        /// <code>
+        /// NowSdf.Scene(panel).UseUiCoordinates().Circle(cursor, 12f).Draw();
+        /// </code>
+        /// Requires a scene created with an explicit rect.
+        /// </summary>
+        public NowSdfBuilder UseUiCoordinates()
+        {
+            if (!_hasRect)
+            {
+                throw new InvalidOperationException(
+                    "NowSdfBuilder.UseUiCoordinates() requires a scene created with an explicit rect, such as NowSdf.Scene(rect).");
+            }
+
+            _cache.EditGraph().PushTransform(-_rect.position);
+            return this;
+        }
+
         /// <summary>
         /// Adds a filled circular sector. Angles are radians; zero points right,
         /// positive sweeps turn clockwise in UI space, and sweeps clamp to one full turn.
@@ -3170,6 +4044,13 @@ namespace NowUI.Sdf
         public NowSdfBuilder Pie(Vector2 center, float radius, float from, float sweep)
         {
             _cache.Pie(center, radius, from, sweep);
+            return this;
+        }
+
+        /// <inheritdoc cref="NowSdfGraph.Pie(Vector2, float, NowSweep)"/>
+        public NowSdfBuilder Pie(Vector2 center, float radius, NowSweep sweep)
+        {
+            _cache.Pie(center, radius, sweep.from, sweep.sweep);
             return this;
         }
 
@@ -3331,6 +4212,40 @@ namespace NowUI.Sdf
             return _cache.BeginMask(rect, _hasMask ? _mask : rect, _tint, _maskResolutionScale);
         }
 
+        /// <summary>
+        /// Draws the scene with its effects, then pushes its coverage as an ambient
+        /// mask, from one build: content drawn until the scope is disposed is
+        /// clipped to the shapes it sits on.
+        /// <code>
+        /// using (NowSdf.Scene(card).SetShadow(offset, 12f, shadow).RoundedBox(local, 18f).DrawAndBeginMask())
+        ///     Now.Rectangle(card).SetTexture(photo).Draw();
+        /// </code>
+        /// Requires a scene created with an explicit rect; layout callers use
+        /// <see cref="DrawAndBeginMask(NowRect)"/>.
+        /// </summary>
+        [NowConsumer]
+        public NowMaskScope DrawAndBeginMask()
+        {
+            _cache.ThrowIfReleased();
+
+            if (!_hasRect)
+            {
+                throw new InvalidOperationException(
+                    "NowSdfBuilder.DrawAndBeginMask() requires an explicit scene rect. " +
+                    "Reserve a layout rect first and pass it to DrawAndBeginMask(rect), or create the scene with NowSdf.Scene(rect).");
+            }
+
+            return DrawAndBeginMask(_rect);
+        }
+
+        /// <summary>Draws the scene over <paramref name="rect"/>, then pushes its coverage as an ambient mask there.</summary>
+        [NowConsumer]
+        public NowMaskScope DrawAndBeginMask(NowRect rect)
+        {
+            Draw(rect);
+            return BeginMask(rect);
+        }
+
         NowRect ReserveLayoutRect()
         {
             var options = _options;
@@ -3485,6 +4400,8 @@ namespace NowUI.Sdf
         static readonly int _glowColorProp = Shader.PropertyToID("_SdfGlowColor");
         static readonly int _shadowProp = Shader.PropertyToID("_SdfShadow");
         static readonly int _shadowColorProp = Shader.PropertyToID("_SdfShadowColor");
+        static readonly int _shadow2Prop = Shader.PropertyToID("_SdfShadow2");
+        static readonly int _shadow2ColorProp = Shader.PropertyToID("_SdfShadow2Color");
         static readonly int _innerShadowProp = Shader.PropertyToID("_SdfInnerShadow");
         static readonly int _innerShadowColorProp = Shader.PropertyToID("_SdfInnerShadowColor");
         static readonly int _embossProp = Shader.PropertyToID("_SdfEmboss");
@@ -3552,6 +4469,10 @@ namespace NowUI.Sdf
         Vector4 _glowColor;
         Vector4 _shadow;
         Vector4 _shadowColor;
+        Vector4 _shadow2;
+        Vector4 _shadow2Color;
+        bool _shadow2Uploaded;
+        bool _maskShadow2Uploaded;
         Vector4 _innerShadow;
         Vector4 _innerShadowColor;
         Vector4 _emboss;
@@ -3612,6 +4533,8 @@ namespace NowUI.Sdf
             _glowColor = default;
             _shadow = default;
             _shadowColor = default;
+            _shadow2 = default;
+            _shadow2Color = default;
             _innerShadow = default;
             _innerShadowColor = default;
             _emboss = default;
@@ -3659,6 +4582,8 @@ namespace NowUI.Sdf
             _materialTemplate = null;
             _hasUploadedHash = false;
             _hasMaskUploadedHash = false;
+            _shadow2Uploaded = false;
+            _maskShadow2Uploaded = false;
             _layers.Clear();
             _graphUploads.Clear();
             _preparedTextGraphs.Clear();
@@ -3774,6 +4699,13 @@ namespace NowUI.Sdf
             _activeGraph.SetTextureUV(uvRect);
         }
 
+        /// <summary>The graph receiving style changes, for setters with no scene-level bookkeeping.</summary>
+        public NowSdfGraph EditGraph()
+        {
+            InvalidateTerminalPreparation();
+            return _activeGraph;
+        }
+
         public void SetFeather(float feather)
         {
             InvalidateTerminalPreparation();
@@ -3807,6 +4739,19 @@ namespace NowUI.Sdf
             InvalidateTerminalPreparation();
             _shadow = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
             _shadowColor = color;
+        }
+
+        public void AddShadow(Vector2 offset, float softness, Vector4 color, float spread)
+        {
+            if (_shadowColor.w <= 0f)
+            {
+                SetShadow(offset, softness, color, spread);
+                return;
+            }
+
+            InvalidateTerminalPreparation();
+            _shadow2 = new Vector4(offset.x, offset.y, Mathf.Max(0f, softness), Mathf.Max(0f, spread));
+            _shadow2Color = color;
         }
 
         public void SetInnerShadow(Vector2 offset, float softness, Vector4 color, float spread)
@@ -3904,6 +4849,17 @@ namespace NowUI.Sdf
 
             graph.ThrowIfRotationScopesOpen("Graph");
 
+            // Under PushTransform the graph is copied in place, transformed, as a
+            // nested group of the inline primitives.
+            if (!_activeGraph.hasIdentityTransform)
+            {
+                PrepareActivePrimitive();
+                _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Graph(graph);
+                ResetPendingPrimitiveModifiers();
+                Encapsulate(_activeGraph.measureSize);
+                return;
+            }
+
             // Flushing the inline primitives into their own layer resets the
             // pending modifiers, so capture the operation this layer was given
             // before the flush; it applies whenever an earlier layer exists.
@@ -3929,6 +4885,15 @@ namespace NowUI.Sdf
 
             from.ThrowIfRotationScopesOpen("Morph");
             to.ThrowIfRotationScopesOpen("Morph");
+
+            if (!_activeGraph.hasIdentityTransform)
+            {
+                PrepareActivePrimitive();
+                _activeGraph.SetOperation(_pendingOperation, _pendingSmoothing).Morph(from, to, t);
+                ResetPendingPrimitiveModifiers();
+                Encapsulate(_activeGraph.measureSize);
+                return;
+            }
 
             NowSdfOperation pendingOperation = _pendingOperation;
             float pendingSmoothing = _pendingSmoothing;
@@ -4090,7 +5055,7 @@ namespace NowUI.Sdf
             if (material == null)
                 return;
 
-            Upload(material, ref _uploadedHash, ref _hasUploadedHash);
+            Upload(material, ref _uploadedHash, ref _hasUploadedHash, ref _shadow2Uploaded);
             Now.DrawSdf(rect, mask, material, tint);
         }
 
@@ -4124,7 +5089,7 @@ namespace NowUI.Sdf
             if (target == null)
                 return EmptyMask(rect);
 
-            ulong sceneHash = Upload(material, ref _maskUploadedHash, ref _hasMaskUploadedHash);
+            ulong sceneHash = Upload(material, ref _maskUploadedHash, ref _hasMaskUploadedHash, ref _maskShadow2Uploaded);
             var localRect = new NowRect(0f, 0f, rect.width, rect.height);
             var localMask = new NowRect(
                 mask.x - rect.x,
@@ -4288,6 +5253,9 @@ namespace NowUI.Sdf
 
             if (_shadowColor.w > 0f)
                 budget = Mathf.Max(budget, _shadow.z + _shadow.w);
+
+            if (_shadow2Color.w > 0f)
+                budget = Mathf.Max(budget, _shadow2.z + _shadow2.w);
 
             if (_innerShadowColor.w > 0f)
                 budget = Mathf.Max(budget, _innerShadow.z + _innerShadow.w);
@@ -5089,7 +6057,7 @@ namespace NowUI.Sdf
             return !float.IsNaN(value) && !float.IsInfinity(value);
         }
 
-        ulong Upload(Material material, ref ulong uploadedHash, ref bool hasUploadedHash)
+        ulong Upload(Material material, ref ulong uploadedHash, ref bool hasUploadedHash, ref bool shadow2Uploaded)
         {
             // Upload can target both the normal and mask material for the same
             // built scene. Rebuild this per-upload lookup so a prior material
@@ -5153,6 +6121,14 @@ namespace NowUI.Sdf
             material.SetVector(_glowColorProp, _glowColor);
             material.SetVector(_shadowProp, _shadow);
             material.SetVector(_shadowColorProp, _shadowColor);
+            // Most scenes never use a second shadow; skip its uniforms until one
+            // appears, and clear them once when it goes away.
+            if (_shadow2Color.w > 0f || shadow2Uploaded)
+            {
+                material.SetVector(_shadow2Prop, _shadow2);
+                material.SetVector(_shadow2ColorProp, _shadow2Color);
+                shadow2Uploaded = _shadow2Color.w > 0f;
+            }
             material.SetVector(_innerShadowProp, _innerShadow);
             material.SetVector(_innerShadowColorProp, _innerShadowColor);
             material.SetVector(_embossProp, _emboss);
@@ -5252,6 +6228,8 @@ namespace NowUI.Sdf
             hash = HashValue(hash, _glowColor);
             hash = HashValue(hash, _shadow);
             hash = HashValue(hash, _shadowColor);
+            hash = HashValue(hash, _shadow2);
+            hash = HashValue(hash, _shadow2Color);
             hash = HashValue(hash, _innerShadow);
             hash = HashValue(hash, _innerShadowColor);
             hash = HashValue(hash, _emboss);
@@ -5338,12 +6316,24 @@ namespace NowUI.Sdf
                     imageUv = entry.fieldRect;
                 }
 
-                _data0[shapeCount] = new Vector4((float)node.type, (float)node.operation, node.smoothing, 0f);
+                // Gradient fills: _SdfData0.w carries the ramp row and flags (0 is
+                // no gradient) and the image-UV slot, which only Image nodes use,
+                // carries the payload in scene units.
+                float gradientRamp = 0f;
+
+                if (node.gradient != 0)
+                {
+                    NowSdfNodeGradient gradient = graph.GetGradient(node);
+                    gradientRamp = gradient.EncodeRamp();
+                    imageUv = gradient.payload;
+                }
+
+                _data0[shapeCount] = new Vector4((float)node.type, (float)node.operation, node.smoothing, gradientRamp);
                 _data1[shapeCount] = node.data1;
                 _data2[shapeCount] = node.data2;
                 _shapeMeta[shapeCount] = new Vector4(
                     graphId,
-                    node.useTexture ? 1f : 0f,
+                    (node.useTexture ? 1f : 0f) + node.cap * 2f,
                     node.rotation.x,
                     node.rotation.y);
                 _colors[shapeCount] = node.color;

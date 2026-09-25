@@ -134,7 +134,8 @@ same styling calls, plus `SetSegments`. Angles are radians and match the SDF
 `Arc` primitive: `0` points right, and a positive sweep turns clockwise on
 screen because UI space is y-down. A sweep of a full turn (`Mathf.PI * 2f`) or
 more draws one closed ring with no caps or seam; a zero sweep or radius draws
-nothing.
+nothing. `Now.Arc(center, radius, NowSweep.Clock(0f, 270f))` takes clock-face
+degrees instead (clockwise from 12 o'clock, like conic gradients and CSS).
 
 A progress arc with rounded ends over a dim track:
 

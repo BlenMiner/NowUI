@@ -1126,6 +1126,199 @@ public class NowSdfTests
     }
 
     [Test]
+    public void SdfGradientFillsPackRampAndSceneSpacePayloadPerShape()
+    {
+        using (_drawList.Begin(new Vector2(80f, 80f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 80f, 80f), "sdf-gradient-packing")
+                .SetGradient(Color.red, Color.blue).SetGradientLinear(90f)
+                .Box(new NowRect(4f, 4f, 56f, 24f))
+                .SetGradientConic()
+                .Arc(new Vector2(40f, 50f), 20f, 6f, 0f, Mathf.PI)
+                .SetColor(Color.white).UseColor()
+                .Circle(new Vector2(70f, 70f), 5f)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        var data0 = material.GetVectorArray("_SdfData0");
+        var payload = material.GetVectorArray("_SdfImageUvs");
+
+        Assert.GreaterOrEqual(data0[0].w, 1f, "A gradient shape packs its ramp row in _SdfData0.w.");
+        Assert.AreEqual(Mathf.Floor(data0[0].w), Mathf.Floor(data0[1].w),
+            "Shapes sharing two colors share one ramp atlas row.");
+        Assert.AreEqual(0f, data0[2].w, "UseColor returns to solid fills.");
+
+        // Left to right over the box's own 56-unit width: t = (x - 4) / 56.
+        Assert.AreEqual(1f / 56f, payload[0].x, 1e-5f);
+        Assert.AreEqual(0f, payload[0].y, 1e-5f);
+        Assert.AreEqual(-4f / 56f, payload[0].z, 1e-5f);
+
+        // The arc's conic sweep is centered on its circle, clockwise from the top.
+        Assert.AreEqual(40f, payload[1].x, 1e-4f);
+        Assert.AreEqual(50f, payload[1].y, 1e-4f);
+        Assert.AreEqual(0f, payload[1].z, 1e-6f);
+        Assert.AreEqual(Vector4.zero, payload[2]);
+    }
+
+    [Test]
+    public void SdfGradientFillsRequireTheV2MaterialAbi()
+    {
+        var graph = NowSdf.Graph().SetGradient(Color.red, Color.blue).Circle(new Vector2(8f, 8f), 4f);
+        Assert.AreEqual(2, graph.requiredMaterialAbi);
+        Assert.AreEqual(1, NowSdf.Graph().SetColor(Color.red).Circle(new Vector2(8f, 8f), 4f).requiredMaterialAbi);
+    }
+
+    [Test]
+    public void SdfArcCapsPackAboveTheTextureFlagAndRequireAbiV2()
+    {
+        using (_drawList.Begin(new Vector2(80f, 40f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 80f, 40f), "sdf-arc-caps")
+                .Arc(new Vector2(12f, 20f), 8f, 2f, NowSweep.Clock(0f, 90f))
+                .SetArcCap(NowLineCap.Butt).Arc(new Vector2(40f, 20f), 8f, 2f, NowSweep.Clock(0f, 90f))
+                .SetArcCap(NowLineCap.Square).Arc(new Vector2(68f, 20f), 8f, 2f, NowSweep.Clock(0f, 90f))
+                .Draw();
+        }
+
+        var meta = _drawList.batches[0].material.GetVectorArray("_SdfShapeMeta");
+        Assert.AreEqual(0f, meta[0].y);
+        Assert.AreEqual(2f, meta[1].y);
+        Assert.AreEqual(4f, meta[2].y);
+
+        Assert.AreEqual(1, NowSdf.Graph().Arc(Vector2.zero, 8f, 2f, 0f, 1f).requiredMaterialAbi);
+        Assert.AreEqual(2, NowSdf.Graph().SetArcCap(NowLineCap.Butt).Arc(Vector2.zero, 8f, 2f, 0f, 1f).requiredMaterialAbi);
+    }
+
+    [Test]
+    public void NowSweepClockMeasuresDegreesFromTwelveOClock()
+    {
+        var sweep = NowSweep.Clock(0f, 90f);
+        Assert.AreEqual(-Mathf.PI * 0.5f, sweep.from, 1e-6f);
+        Assert.AreEqual(Mathf.PI * 0.5f, sweep.sweep, 1e-6f);
+        Assert.AreEqual(0f, sweep.startClockDegrees, 1e-4f);
+        Assert.AreEqual(90f, sweep.sweepDegrees, 1e-4f);
+        Assert.AreEqual(1f, NowSweep.Radians(1f, 2f).from);
+    }
+
+    [Test]
+    public void SdfGroupTransformScalesRotatesAndMovesShapesRigidly()
+    {
+        var graph = NowSdf.Graph()
+            .PushTransform(new Vector2(100f, 50f), 2f, 90f)
+            .Circle(new Vector2(10f, 0f), 3f)
+            .Capsule(new Vector2(0f, 0f), new Vector2(5f, 0f), 1f)
+            .PopTransform()
+            .Circle(new Vector2(10f, 0f), 3f);
+
+        // (10, 0) doubles to (20, 0), turns a clockwise quarter to (0, 20) in
+        // y-down space, then moves by (100, 50).
+        Assert.AreEqual(100f, graph.nodes[0].data1.x, 1e-3f);
+        Assert.AreEqual(70f, graph.nodes[0].data1.y, 1e-3f);
+        Assert.AreEqual(6f, graph.nodes[0].data1.z, 1e-5f);
+
+        // The capsule rotates about its own pivot by the group angle and its
+        // pivot lands where the group maps it.
+        Assert.AreNotEqual(Vector2.zero, graph.nodes[1].rotation);
+        Assert.AreEqual(2f, graph.nodes[1].data2.x, 1e-5f);
+
+        // PopTransform restores the identity for later shapes.
+        Assert.AreEqual(10f, graph.nodes[2].data1.x, 1e-5f);
+        Assert.AreEqual(0f, graph.nodes[2].data1.y, 1e-5f);
+
+        var around = NowSdf.Graph().PushTransformAround(new Vector2(30f, 40f), 3f).Circle(new Vector2(30f, 40f), 2f);
+        Assert.AreEqual(30f, around.nodes[0].data1.x, 1e-4f);
+        Assert.AreEqual(40f, around.nodes[0].data1.y, 1e-4f);
+        Assert.AreEqual(6f, around.nodes[0].data1.z, 1e-5f);
+
+        Assert.Throws<System.InvalidOperationException>(() => NowSdf.Graph().PopTransform());
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => NowSdf.Graph().PushTransform(Vector2.zero, 0f));
+    }
+
+    [Test]
+    public void SdfGroupTransformMovesTextRunsWithTheirSources()
+    {
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        Assert.NotNull(font);
+        var offset = new Vector2(37f, -12f);
+
+        var plain = NowSdf.Graph().Text(new Vector2(10f, 20f), "Hi", font, 24f);
+        var moved = NowSdf.Graph().PushTransform(offset).Text(new Vector2(10f, 20f), "Hi", font, 24f);
+        Assert.AreEqual(plain.nodes.Count, moved.nodes.Count);
+
+        for (int i = 0; i < plain.nodes.Count; ++i)
+        {
+            Assert.AreEqual(plain.nodes[i].data1.x + offset.x, moved.nodes[i].data1.x, 1e-3f);
+            Assert.AreEqual(plain.nodes[i].data1.y + offset.y, moved.nodes[i].data1.y, 1e-3f);
+        }
+
+        // Rotating a run a quarter about the group origin keeps the glyphs rigid:
+        // the distance between the first two glyph centers is unchanged.
+        var turned = NowSdf.Graph().PushTransform(Vector2.zero, 1f, 90f).Text(new Vector2(10f, 20f), "Hi", font, 24f);
+        float plainGap = Vector2.Distance(plain.nodes[0].data1, plain.nodes[1].data1);
+        float turnedGap = Vector2.Distance(turned.nodes[0].data1, turned.nodes[1].data1);
+        Assert.AreEqual(plainGap, turnedGap, 1e-2f);
+        Assert.AreNotEqual(Vector2.zero, turned.nodes[0].rotation);
+    }
+
+    [Test]
+    public void SdfSceneUploadsASecondShadow()
+    {
+        using (_drawList.Begin(new Vector2(40f, 40f)))
+        {
+            NowSdf.Scene(new NowRect(0f, 0f, 40f, 40f), "sdf-two-shadows")
+                .SetShadow(new Vector2(1f, 2f), 3f, Color.red)
+                .AddShadow(new Vector2(0f, 8f), 12f, Color.blue, 1f)
+                .Circle(new Vector2(20f, 20f), 8f)
+                .Draw();
+        }
+
+        var material = _drawList.batches[0].material;
+        Assert.AreEqual(new Vector4(1f, 2f, 3f, 0f), material.GetVector("_SdfShadow"));
+        Assert.AreEqual(new Vector4(0f, 8f, 12f, 1f), material.GetVector("_SdfShadow2"));
+        Assert.AreEqual((Vector4)Color.blue, material.GetVector("_SdfShadow2Color"));
+    }
+
+    [Test]
+    public void SdfNestedGraphsPackAsMarkedGroupsOneLevelDeep()
+    {
+        var dots = NowSdf.Graph().Circle(new Vector2(-6f, 0f), 5f).SmoothUnion(3f).Circle(new Vector2(6f, 0f), 5f);
+
+        // A group that opens a graph combines with nothing, so it needs no markers.
+        var opening = NowSdf.Graph().Graph(dots);
+        Assert.AreEqual(2, opening.nodes.Count);
+
+        var card = NowSdf.Graph()
+            .RoundedBox(new NowRect(0f, 0f, 64f, 64f), 8f)
+            .Subtract().PushTransform(new Vector2(32f, 32f), 2f).Graph(dots).PopTransform()
+            .Circle(new Vector2(4f, 4f), 2f);
+
+        Assert.AreEqual(6, card.nodes.Count);
+        Assert.AreEqual(NowSdfShapeType.GroupBegin, card.nodes[1].type);
+        Assert.AreEqual(NowSdfShapeType.GroupEnd, card.nodes[4].type);
+        Assert.AreEqual(NowSdfOperation.Subtract, card.nodes[4].operation, "The group combines with the pending operation.");
+        Assert.Less(card.nodes[4].data1.x, 0f, "A plain group carries no morph weight.");
+        Assert.AreEqual(20f, card.nodes[2].data1.x, 1e-4f, "Nested shapes follow the transform.");
+        Assert.AreEqual(10f, card.nodes[2].data1.z, 1e-4f);
+        Assert.AreEqual(6f, card.nodes[3].smoothing, 1e-4f, "Blend radii scale with the transform.");
+        Assert.AreEqual(NowSdfOperation.Union, card.nodes[5].operation, "Operations reset after the group.");
+        Assert.AreEqual(2, card.requiredMaterialAbi);
+
+        var morph = NowSdf.Graph().Morph(dots, NowSdf.Graph().Box(new NowRect(0f, 0f, 4f, 4f)), 2f);
+        Assert.AreEqual(NowSdfShapeType.GroupBegin, morph.nodes[0].type);
+        Assert.AreEqual(NowSdfShapeType.GroupSplit, morph.nodes[3].type);
+        Assert.AreEqual(1f, morph.nodes[5].data1.x, "The morph weight is clamped.");
+
+        Assert.Throws<System.InvalidOperationException>(() => NowSdf.Graph().Graph(card),
+            "Nesting is one level deep.");
+        Assert.Throws<System.ArgumentException>(() => { var self = NowSdf.Graph().Circle(Vector2.zero, 1f); self.Graph(self); });
+
+        var font = Resources.Load<NowFontAsset>("NowUI/NotoSans");
+        var text = NowSdf.Graph().Text(new Vector2(0f, 0f), "A", font, 20f);
+        Assert.Throws<System.InvalidOperationException>(() => NowSdf.Graph().Graph(text), "Nested graphs hold analytic shapes only.");
+    }
+
+    [Test]
     public void SdfSceneUploadsEffectSettings()
     {
         using (_drawList.Begin(new Vector2(120, 90)))

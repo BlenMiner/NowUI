@@ -377,6 +377,15 @@ namespace NowUI
             return new NowArc(center, radius, startAngle, sweep);
         }
 
+        /// <summary>
+        /// Starts a stroked circular arc over <paramref name="sweep"/>, for example
+        /// <c>Now.Arc(c, r, NowSweep.Clock(0f, 270f))</c> from 12 o'clock.
+        /// </summary>
+        public static NowArc Arc(Vector2 center, float radius, NowSweep sweep)
+        {
+            return new NowArc(center, radius, sweep.from, sweep.sweep);
+        }
+
         internal static void DrawStrokePolyline(in NowPolyline polyline)
         {
             var style = polyline.style;

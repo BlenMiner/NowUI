@@ -30,8 +30,21 @@ Available primitives:
 - `Ellipse(rect)`
 - `Capsule(from, to, radius)` or `Capsule(rect)`
 - `Line(from, to, width)`
-- `Arc(center, radius, thickness, from, sweep)`
-- `Pie(center, radius, from, sweep)`
+- `Arc(center, radius, thickness, from, sweep)` or `Arc(center, radius, thickness, NowSweep)`
+- `Pie(center, radius, from, sweep)` or `Pie(center, radius, NowSweep)`
+
+Arc and pie angles in the float overloads are radians with zero at 3 o'clock.
+`NowSweep.Clock(startDegrees, sweepDegrees)` measures degrees clockwise from
+12 o'clock instead, the convention of conic gradients, `RotateNext` and CSS,
+so a dial reads naturally and matches its gradient:
+`.SetGradientConic().Arc(c, r, w, NowSweep.Clock(0f, 270f))`.
+`NowSweep.Radians(from, sweep)` names the float convention, and `Now.Arc`
+accepts a `NowSweep` too.
+
+Arcs end in round caps unless `SetArcCap(NowLineCap.Butt)` (flat at the
+sweep's ends) or `SetArcCap(NowLineCap.Square)` (flat, extended by the
+half-width) applies to the arcs that follow. Full rings have no ends. Butt and
+square caps require material ABI v2.
 
 `Line` is the full-width, round-capped spelling of a capsule stroke: it is
 equivalent to `Capsule(from, to, width * 0.5f)`. This differs from
@@ -255,6 +268,33 @@ Arbitrary point-list polygons and mixed SDF paths composed from line, arc, and
 Bezier commands are also not supported. Lottie can import and tessellate
 animated vector paths, but it does not turn those paths into SDF graph nodes.
 
+## Group Transforms And UI Coordinates
+
+`PushTransform(translation, scale = 1, rotationDegrees = 0)` places the shapes
+and text that follow as one rigid group: they are scaled and turned clockwise
+around the local origin, then moved. `PushTransformAround(pivot, scale,
+degrees)` scales and turns around a point instead, nested pushes compose, and
+`PopTransform()` restores the parent. Author an icon around its own origin and
+place it anywhere:
+
+```csharp
+NowSdf.Scene(panel)
+    .PushTransform(slot.center, 1.5f, 30f)
+    .Capsule(new Vector2(-10f, 0f), new Vector2(10f, 0f), 3f)
+    .Circle(new Vector2(10f, 0f), 5f)
+    .PopTransform()
+    .Draw();
+```
+
+Lengths such as radii, stroke half-widths and blend radii scale with the group;
+scene effects (outline width, blur, shadow offset) do not. Gradients laid over
+each shape follow it.
+
+A scene's shapes are normally placed relative to its rect's corner.
+`UseUiCoordinates()` lets them use the same UI coordinates as the rect itself,
+so positions from layout, input, or other drawing work as they are:
+`NowSdf.Scene(panel).UseUiCoordinates().Circle(cursor, 12f).Draw()`.
+
 ## Use A Scene As A Mask
 
 Finish a scene with `BeginMask()` instead of `Draw()` when its composited alpha
@@ -279,6 +319,20 @@ using (mask.BeginMask())
     Now.Text(cardRect.Inset(14f))
         .SetColor(Color.white)
         .Draw("Composed SDF mask");
+}
+```
+
+To draw a scene and clip content to it, finish it with `DrawAndBeginMask()`
+instead of building it twice: the scene draws with its effects, then its
+coverage becomes the ambient mask until the scope is disposed.
+
+```csharp
+using (NowSdf.Scene(card, "photo-card")
+           .SetShadow(new Vector2(0f, 8f), 16f, new Color(0f, 0f, 0f, 0.3f))
+           .RoundedBox(new NowRect(0f, 0f, card.width, card.height), 18f)
+           .DrawAndBeginMask())
+{
+    Now.Rectangle(card).SetTexture(photo).Draw();
 }
 ```
 
@@ -391,6 +445,9 @@ Available scene effects:
   smooth unions, subtraction, morphing, or custom field shading.
 - `SetOutline(width, color, softness = 0)` draws an outer stroke.
 - `SetShadow(offset, softness, color, spread = 0)` draws a soft drop shadow.
+- `AddShadow(offset, softness, color, spread = 0)` adds a second drop shadow
+  beneath the first, such as a tight contact shadow over a wide ambient one.
+  A scene has up to two; each costs one more field evaluation per pixel.
 - `SetInnerShadow(offset, softness, color, spread = 0)` darkens inside edges.
 - `SetGlow(radius, color, power = 1)` draws an outside halo.
 - `SetEmboss(lightDirection, strength = 0.35, size = 6)` lights the edge band.
@@ -471,6 +528,42 @@ composited result share clipping with ordinary NowUI content; see
 Scene effects measure against a locally normalized field distance, so stroke,
 shadow, emboss, and contour sizes stay close to scene-pixel units even through
 smooth blends, morphs, and warped organic fields.
+
+## Gradient Fills
+
+`SetGradient` fills the following shapes with a color ramp instead of the solid
+color. Each shape lays the ramp over its own box, the same box a `SetTexture`
+fill uses, and the geometry calls match [text gradients](TextStyling.md#gradient-fills):
+
+```csharp
+NowSdf.Scene(dial)
+    .SetGradient(rose, crimson).SetGradientConic()        // clockwise from 12 o'clock
+    .Arc(center, radius, halfWidth, -Mathf.PI * 0.5f, sweep)
+    .SetGradient(Color.white, gray).SetGradientLinear(NowGradientDirection.ToBottomRight)
+    .RoundedBox(card, 12f)
+    .SetColor(Color.white).UseColor()                     // back to solid fills
+    .Circle(knob, 8f)
+    .Draw();
+```
+
+- `SetGradient(from, to)` or `SetGradient(unityGradient, revision)` picks the
+  ramp; `SetGradientLinear` (a direction or a CSS angle), `SetGradientRadial`
+  (ellipse, or a circle relative to the box's smaller side) and
+  `SetGradientConic(center, startAngle)` place it in coordinates normalized to
+  each shape's box. `SetGradientSpread` and `SetGradientRepetitions` repeat or
+  reflect it. The default is top to bottom.
+- Arcs and pies are boxed around their circle's center, so a default conic
+  sweep follows an arc around its ring whatever its sweep. Rotated shapes turn
+  their gradient with them.
+- The gradient replaces the solid color; the scene tint still applies.
+  `UseColor()` returns to solid fills, `UseGradient()` resumes the last
+  gradient, and `SetTexture`/`UseTexture` switch to texture fills. Smooth
+  unions and morphs crossfade gradient fills like any other fill.
+- Glyphs and images keep their own fills. Ramps share the cached atlas behind
+  `Now.Gradient` and text gradients, so a scene can mix any number of them
+  without binding another texture, and they coexist with text and
+  `SetTexture` fills. Colors are used as authored, like solid SDF colors.
+- Gradient fills require material ABI v2 (see below).
 
 ## Images And Sprites
 
@@ -579,8 +672,8 @@ a supported integer ABI version. Declaring it is a compatibility assertion;
 the shader still has to include the matching implementation and keep its
 required ShaderLab declarations. ABI-v1 templates remain accepted for scenes
 that only use the released v1 primitive set. A scene containing
-`ChamferedBox`, `Triangle`, or any nonidentity node rotation (including rotated
-text) requires ABI v2 and fails before drawing or mask rasterization when
+`ChamferedBox`, `Triangle`, a gradient fill, butt or square arc caps, a nested
+group, or any nonidentity node rotation (including rotated text) requires ABI v2 and fails before drawing or mask rasterization when
 paired with an ABI-v1 template. `RotateNext(0f)` and equivalent whole turns
 remain identity, and an unrotated `Line` remains compatible with v1 because it
 packs as `Capsule`.
@@ -621,9 +714,11 @@ or checked out at `Assets/NowUI`, use
 `Assets/NowUI/Extensions/Sdf/NowSdfShaderV2.cginc`. Shaders living beside the
 packaged examples can use their relative `../NowSdfShaderV2.cginc` path. Do not
 mix an ABI property with an implementation from another installed package
-version. ABI v2 adds the chamfered-box and triangle opcodes plus per-node
-rotation metadata; templates that use those features must update both their
-property value and include.
+version. ABI v2 adds the chamfered-box and triangle opcodes, per-node
+rotation metadata, and gradient fills (the ramp row in `_SdfData0.w`, the
+payload in `_SdfImageUvs` for non-image nodes, and the global
+`_NowGradientRampTexture` sampler); templates that use those features must
+update both their property value and include.
 
 The callback receives:
 
@@ -803,6 +898,29 @@ graph ids. Morphs evaluate their source and target ranges; enabled drop and
 inner shadows still perform their additional scene-distance evaluations. GPU
 cost therefore still grows with covered pixels, referenced shapes, morphs,
 and effects, but multi-graph scenes avoid the former all-shapes-per-graph scan.
+
+### Nested graphs
+
+A graph can contain another graph as one shape: `Graph(other)` combines the
+other graph's shapes among themselves first, then combines the result with
+what came before using the pending operation, and `Morph(from, to, t)` does
+the same with a morph. Under `PushTransform` the nested graph is placed,
+scaled and turned, so one reusable graph can appear several times:
+
+```csharp
+var dots = NowSdf.Graph()
+    .Circle(new Vector2(-6f, 0f), 5f).SmoothUnion(3f).Circle(new Vector2(6f, 0f), 5f);
+
+var card = NowSdf.Graph()
+    .RoundedBox(new NowRect(0f, 0f, 64f, 64f), 8f)
+    .Subtract().PushTransform(new Vector2(32f, 32f), 1.5f).Graph(dots).PopTransform();
+```
+
+Nesting is one level deep and holds analytic shapes (no text or images). The
+nested shapes are copied when added, and each group takes two of the 64 shape
+slots for its markers (three for a morph). On a scene builder, `Graph` and
+`Morph` add scene layers as before, or nest in place while a transform is
+pushed. Nested groups require material ABI v2.
 
 ## Morphs
 

@@ -124,7 +124,9 @@ namespace NowUI.Browser
             public const int MaskOutput = 1980;          // float
             public const int CanvasLayout = 1981;        // float
             public const int Time = 1982;                // float
-            public const int Count = 1983;
+            public const int Shadow2 = 1983;             // vec4
+            public const int Shadow2Color = 1987;        // vec4
+            public const int Count = 1991;
         }
         const int SdfShapeCapacity = 64;
         const int SdfLayerCapacity = 16;
@@ -181,6 +183,8 @@ namespace NowUI.Browser
         static readonly int IdSdfGlowColor = Shader.PropertyToID("_SdfGlowColor");
         static readonly int IdSdfShadow = Shader.PropertyToID("_SdfShadow");
         static readonly int IdSdfShadowColor = Shader.PropertyToID("_SdfShadowColor");
+        static readonly int IdSdfShadow2 = Shader.PropertyToID("_SdfShadow2");
+        static readonly int IdSdfShadow2Color = Shader.PropertyToID("_SdfShadow2Color");
         static readonly int IdSdfInnerShadow = Shader.PropertyToID("_SdfInnerShadow");
         static readonly int IdSdfInnerShadowColor = Shader.PropertyToID("_SdfInnerShadowColor");
         static readonly int IdSdfEmboss = Shader.PropertyToID("_SdfEmboss");
@@ -572,6 +576,9 @@ namespace NowUI.Browser
             {
                 m_DrawInfo[5] = TextureId(material, properties, IdSdfImageField);
                 m_DrawInfo[6] = TextureId(material, properties, IdSdfImageColor);
+                // Gradient fills sample the shared ramp atlas; nowui-gl.js binds
+                // the unit for any program that declares the sampler.
+                m_DrawInfo[7] = TextureId(material, properties, IdGradientRampTexture);
                 BuildSdfUniformBlock(material, properties);
                 Interop.SetSdfUniforms(MemoryMarshal.AsBytes(new Span<float>(m_SdfUniforms)));
             }
@@ -996,6 +1003,9 @@ namespace NowUI.Browser
             WriteVector(m_SdfUniforms, SdfUniformSlots.Shadow, ResolveVector(material, properties, IdSdfShadow));
             WriteVector(m_SdfUniforms, SdfUniformSlots.ShadowColor,
                         ResolveVector(material, properties, IdSdfShadowColor));
+            WriteVector(m_SdfUniforms, SdfUniformSlots.Shadow2, ResolveVector(material, properties, IdSdfShadow2));
+            WriteVector(m_SdfUniforms, SdfUniformSlots.Shadow2Color,
+                        ResolveVector(material, properties, IdSdfShadow2Color));
             WriteVector(m_SdfUniforms, SdfUniformSlots.InnerShadow,
                         ResolveVector(material, properties, IdSdfInnerShadow));
             WriteVector(m_SdfUniforms, SdfUniformSlots.InnerShadowColor,

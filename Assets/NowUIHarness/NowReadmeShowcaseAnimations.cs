@@ -154,10 +154,12 @@ namespace NowUI.Editor
             DrawMetricChip(new NowRect(826f, 30f, 94f, 28f), "LIVE FIELD", pink);
 
             var stage = new NowRect(154f, 116f, 652f, 332f);
-            Now.Rectangle(new NowRect(stage.x - 16f, stage.y + 16f, stage.width + 32f, stage.height + 18f))
-                .SetColor(new Color(0f, 0f, 0f, 0.34f))
-                .SetRadius(32f)
+            Now.Shadow(stage)
+                .SetOffset(0f, 18f)
+                .SetSpread(16f)
+                .SetRadius(16f)
                 .SetBlur(24f)
+                .SetColor(new Color(0f, 0f, 0f, 0.34f))
                 .Draw();
             Now.Rectangle(stage)
                 .SetColor(new Color(0.025f, 0.035f, 0.075f, 0.86f))
@@ -311,10 +313,12 @@ namespace NowUI.Editor
             DrawMetricChip(new NowRect(858f, 30f, 72f, 28f), "1 MASK", cyan);
 
             var stage = new NowRect(68f, 116f, 824f, 342f);
-            Now.Rectangle(new NowRect(stage.x - 14f, stage.y + 14f, stage.width + 28f, stage.height + 18f))
-                .SetColor(new Color(0f, 0f, 0f, 0.38f))
-                .SetRadius(30f)
+            Now.Shadow(stage)
+                .SetOffset(0f, 18f)
+                .SetSpread(14f)
+                .SetRadius(16f)
                 .SetBlur(24f)
+                .SetColor(new Color(0f, 0f, 0f, 0.38f))
                 .Draw();
 
             var stageMask = NowMaskShape.RoundedRect(stage, 24f).SetFeather(0.5f);
@@ -563,10 +567,12 @@ namespace NowUI.Editor
 
         static void DrawDesktopWindow(NowRect window, float u, Vector2 cursor, float minimizePress)
         {
-            Now.Rectangle(new NowRect(window.x - 14f, window.y + 12f, window.width + 28f, window.height + 20f))
-                .SetColor(new Color(0f, 0f, 0f, 0.34f))
-                .SetRadius(28f)
+            Now.Shadow(window)
+                .SetOffset(0f, 18f)
+                .SetSpread(14f)
+                .SetRadius(14f)
                 .SetBlur(30f)
+                .SetColor(new Color(0f, 0f, 0f, 0.34f))
                 .Draw();
             Now.Glass(window)
                 .SetBlurRadius(28f)
@@ -720,10 +726,12 @@ namespace NowUI.Editor
 
         static void DrawGalleryCard(NowRect card, string label, Color accent, float hover)
         {
-            Now.Rectangle(new NowRect(card.x - 2f, card.y + 5f, card.width + 4f, card.height + 2f))
-                .SetColor(new Color(0f, 0f, 0f, 0.18f + hover * 0.10f))
-                .SetRadius(13f)
+            Now.Shadow(card)
+                .SetOffset(0f, 5f)
+                .SetSpread(2f)
+                .SetRadius(11f)
                 .SetBlur(10f)
+                .SetColor(new Color(0f, 0f, 0f, 0.18f + hover * 0.10f))
                 .Draw();
             Now.Rectangle(card)
                 .SetColor(new Color(0.08f + accent.r * 0.04f, 0.09f + accent.g * 0.04f, 0.14f + accent.b * 0.04f, 0.72f))
@@ -789,10 +797,12 @@ namespace NowUI.Editor
             // vibrancy ramp in on their own.
             using (Now.Opacity(alpha))
             {
-                Now.Rectangle(new NowRect(panel.x - 10f, panel.y + 10f, panel.width + 20f, panel.height + 16f))
-                    .SetColor(new Color(0f, 0f, 0f, 0.28f))
-                    .SetRadius(24f)
+                Now.Shadow(panel)
+                    .SetOffset(0f, 16f)
+                    .SetSpread(10f)
+                    .SetRadius(14f)
                     .SetBlur(20f)
+                    .SetColor(new Color(0f, 0f, 0f, 0.28f))
                     .Draw();
                 Now.Glass(panel)
                     .SetBlurRadius(30f * alpha)
@@ -884,10 +894,12 @@ namespace NowUI.Editor
                 Mathf.Min(1f, accent.g + 0.24f),
                 Mathf.Min(1f, accent.b + 0.24f),
                 1f);
-            Now.Rectangle(new NowRect(rect.x - 1f, rect.y + 3f, rect.width + 2f, rect.height + 2f))
-                .SetColor(new Color(0f, 0f, 0f, 0.25f))
-                .SetRadius(rect.width * 0.24f)
+            Now.Shadow(rect)
+                .SetOffset(0f, 4f)
+                .SetSpread(1f)
+                .SetRadius(rect.width * 0.24f - 1f)
                 .SetBlur(6f)
+                .SetColor(new Color(0f, 0f, 0f, 0.25f))
                 .Draw();
             Now.Gradient(rect, light, accent)
                 .SetLinear(145f)

@@ -355,6 +355,7 @@ namespace NowUI.Editor
                 new NowHarnessScenario { name = "sdf-mask-gallery", width = 960, height = 520, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfMaskGallery },
                 new NowHarnessScenario { name = "sdf-planar-primitives", width = 960, height = 390, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfPlanarPrimitives },
                 new NowHarnessScenario { name = "sdf-radial-primitives", width = 840, height = 360, includeInGoldens = true, warmupFrames = 2, draw = DrawSdfRadialPrimitives },
+                new NowHarnessScenario { name = "sdf-composition", width = 900, height = 500, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfComposition },
                 new NowHarnessScenario { name = "sdf-image-effects", width = 960, height = 390, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfImageEffects },
                 new NowHarnessScenario { name = "sdf-custom-shaders", width = 960, height = 430, includeInGoldens = false, warmupFrames = 2, draw = DrawSdfCustomShaders },
                 new NowHarnessScenario { name = "lottie", width = 512, height = 512, includeInGoldens = true, draw = DrawLottie },
@@ -2984,6 +2985,65 @@ namespace NowUI.Editor
                         new Color(0.10f, 0.42f, 1f, 1f))
                     .SetLinear(35f)
                     .Draw();
+            }
+        }
+
+        /// <summary>
+        /// Gradient fills, arc caps, group transforms, UI-space coordinates, two
+        /// shadows, draw-and-mask, and nested groups, drawn at 3x: the same content
+        /// as the native renderer parity scenes, so both shader ports can be compared.
+        /// </summary>
+        static void DrawSdfComposition(NowRect rect)
+        {
+            Now.Rectangle(rect).SetColor(Color.black).Draw();
+
+            using (Now.Transform(new Vector2(3f, 3f), Vector2.zero))
+            {
+                NowSdf.Scene(new NowRect(0, 0, 128, 96), "harness-sdf-gradient")
+                    .SetGradient(Color.red, Color.blue).SetGradientLinear(90f)
+                    .Box(new NowRect(4, 4, 56, 24))
+                    .SetGradient(Color.green, Color.blue).SetGradientRadial(NowGradientShape.Circle)
+                    .Circle(new Vector2(96, 16), 14)
+                    .SetGradient(Color.red, Color.green).SetGradientConic()
+                    .Arc(new Vector2(32, 64), 20, 6, 0f, Mathf.PI * 2f)
+                    .SetGradient(Color.red, Color.blue).SetGradientLinear(90f)
+                    .RotateNext(90f)
+                    .Box(new NowRect(80, 44, 40, 40))
+                    .SetColor(Color.white).UseColor()
+                    .Circle(new Vector2(70, 70), 5)
+                    .Draw();
+
+                var arcs = NowSdf.Scene(new NowRect(130, 0, 128, 48), "harness-sdf-caps").SetColor(Color.white);
+                arcs.SetArcCap(NowLineCap.Round).Arc(new Vector2(20, 24), 12, 4, NowSweep.Clock(0f, 90f));
+                arcs.SetArcCap(NowLineCap.Butt).Arc(new Vector2(60, 24), 12, 4, NowSweep.Clock(0f, 90f));
+                arcs.SetArcCap(NowLineCap.Square).Arc(new Vector2(100, 24), 12, 4, NowSweep.Clock(0f, 90f));
+                arcs.Draw();
+
+                NowSdf.Scene(new NowRect(130, 48, 64, 48), "harness-sdf-transform").SetColor(Color.white)
+                    .PushTransform(new Vector2(16, 8), 2f, 90f)
+                    .Box(new NowRect(0f, -2f, 10f, 4f))
+                    .PopTransform()
+                    .Draw();
+
+                NowSdf.Scene(new NowRect(194, 48, 64, 48), "harness-sdf-two-shadows").SetColor(Color.white)
+                    .SetShadow(new Vector2(6, 0), 0.01f, Color.red)
+                    .AddShadow(new Vector2(0, 6), 0.01f, Color.blue)
+                    .Box(new NowRect(24, 8, 16, 16))
+                    .Draw();
+
+                using (NowSdf.Scene(new NowRect(260, 0, 32, 48), "harness-sdf-draw-mask").SetColor(Color.white)
+                           .Circle(new Vector2(16, 16), 10).DrawAndBeginMask())
+                    Now.Rectangle(new NowRect(260, 0, 32, 48)).SetColor(Color.green).Draw();
+
+                var dots = NowSdf.Graph().SetColor(Color.white)
+                    .Circle(new Vector2(-6f, 0f), 5f).SmoothUnion(3f).Circle(new Vector2(6f, 0f), 5f);
+                var card = NowSdf.Graph().SetColor(Color.white)
+                    .RoundedBox(new NowRect(4f, 4f, 56f, 56f), 8f)
+                    .Subtract().PushTransform(new Vector2(32f, 32f), 1.5f).Graph(dots).PopTransform();
+                var circle = NowSdf.Graph().SetColor(Color.red).Circle(new Vector2(96f, 32f), 12f);
+                var box = NowSdf.Graph().SetColor(Color.blue).Box(new NowRect(84f, 20f, 24f, 24f));
+                var morph = NowSdf.Graph().Morph(circle, box, 0.5f);
+                NowSdf.Scene(new NowRect(130, 100, 128, 64), "harness-sdf-nested").Graph(card).Graph(morph).Draw();
             }
         }
 

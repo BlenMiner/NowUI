@@ -1883,6 +1883,22 @@
           "defaultVector": [0, 0, 0, 0]
         },
         {
+          "name": "_SdfShadow2",
+          "type": "Vector",
+          "description": "Second Shadow",
+          "flags": [],
+          "attributes": [],
+          "defaultVector": [0, 0, 0, 0]
+        },
+        {
+          "name": "_SdfShadow2Color",
+          "type": "Color",
+          "description": "Second Shadow Color",
+          "flags": [],
+          "attributes": [],
+          "defaultVector": [0, 0, 0, 0]
+        },
+        {
           "name": "_SdfShadowColor",
           "type": "Color",
           "description": "Shadow Color",

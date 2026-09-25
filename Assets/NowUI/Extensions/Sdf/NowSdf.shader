@@ -20,6 +20,8 @@ Shader "NowUI/SDF Scene"
         _SdfGlowColor ("Glow Color", Color) = (0, 0, 0, 0)
         _SdfShadow ("Shadow", Vector) = (0, 0, 0, 0)
         _SdfShadowColor ("Shadow Color", Color) = (0, 0, 0, 0)
+        _SdfShadow2 ("Second Shadow", Vector) = (0, 0, 0, 0)
+        _SdfShadow2Color ("Second Shadow Color", Color) = (0, 0, 0, 0)
         _SdfInnerShadow ("Inner Shadow", Vector) = (0, 0, 0, 0)
         _SdfInnerShadowColor ("Inner Shadow Color", Color) = (0, 0, 0, 0)
         _SdfEmboss ("Emboss", Vector) = (0, 0, 1, 0)

@@ -25,8 +25,9 @@ namespace NowUI.Editor
         static readonly Vector2 MonthDialCenter = new Vector2(480f, 268f);
         static readonly Color MonthInk = new Color(0.07f, 0.07f, 0.09f, 1f);
 
-        static Texture2D _monthProgressRamp;
-        static Texture2D _monthTrackRamp;
+        static readonly Color MonthTrackDark = new Color(0.80f, 0.80f, 0.82f, 1f);
+        static readonly Color MonthTrackLight = new Color(0.975f, 0.975f, 0.98f, 1f);
+        static Gradient _monthProgressRamp;
 
         static void DrawMonthSlider(NowRect rect, NowHarnessAnimationFrame frame)
         {
@@ -76,8 +77,8 @@ namespace NowUI.Editor
         }
 
         /// <summary>
-        /// The idle track: one full-ring arc with a diagonal gray ramp as its
-        /// fill, a faint inner shadow so it reads as a groove, and a dot at
+        /// The idle track: one full-ring arc with a diagonal gray gradient as
+        /// its fill, a faint inner shadow so it reads as a groove, and a dot at
         /// every month stop.
         /// </summary>
         static void DrawMonthTrack()
@@ -87,7 +88,8 @@ namespace NowUI.Editor
                 .SetFeather(1f)
                 .SetInnerShadow(new Vector2(2f, 3f), 9f, new Color(0f, 0f, 0f, 0.10f))
                 .SetShadow(new Vector2(0f, 2f), 6f, new Color(0f, 0f, 0f, 0.05f))
-                .SetTexture(GetMonthTrackRamp())
+                .SetGradient(MonthTrackDark, MonthTrackLight)
+                .SetGradientLinear(NowGradientDirection.ToBottomRight)
                 .Arc(c, MonthRingRadius, MonthRingHalfWidth, 0f, FullTurn)
                 .Draw();
 
@@ -99,9 +101,9 @@ namespace NowUI.Editor
         }
 
         /// <summary>
-        /// The progress arc. Its fill is a conic ramp texture, so one primitive
-        /// carries the rose-to-crimson sweep no matter how far the knob is
-        /// dragged; the inner shadow and emboss give it a rounded tube feel.
+        /// The progress arc. Its fill is a conic gradient around the dial, so one
+        /// primitive carries the rose-to-crimson sweep no matter how far the
+        /// knob is dragged; the inner shadow and emboss give it a rounded tube feel.
         /// </summary>
         static void DrawMonthProgress(float angleDegrees)
         {
@@ -118,7 +120,8 @@ namespace NowUI.Editor
                     .SetShadow(new Vector2(0f, 10f), 22f, new Color(0.45f, 0.02f, 0.16f, 0.40f), 2f)
                     .SetInnerShadow(new Vector2(3f, 4f), 12f, new Color(0.35f, 0f, 0.10f, 0.42f))
                     .SetEmboss(new Vector2(-0.55f, -0.85f), 0.16f, 9f)
-                    .SetTexture(GetMonthProgressRamp())
+                    .SetGradient(GetMonthProgressRamp())
+                    .SetGradientConic()
                     .Arc(c, MonthRingRadius, MonthRingHalfWidth, -Mathf.PI * 0.5f, sweep)
                     .Draw();
             }
@@ -271,94 +274,31 @@ namespace NowUI.Editor
         }
 
         /// <summary>
-        /// Conic ramp: rose at the top, vivid pink a third of the way round,
-        /// deepening to crimson by the end of the turn. Sampled by the arc's
-        /// conservative-square UVs, so texture center is dial center.
+        /// The progress ramp, clockwise from the top: rose, vivid pink a third of
+        /// the way round, deepening to crimson. The last slice eases back to
+        /// rose so the round start cap, which reaches a few degrees
+        /// counter-clockwise past the top, matches the arc's beginning.
         /// </summary>
-        static Texture2D GetMonthProgressRamp()
+        static Gradient GetMonthProgressRamp()
         {
             if (_monthProgressRamp != null)
                 return _monthProgressRamp;
 
-            const int size = 256;
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                name = "README Month Slider Progress Ramp",
-                hideFlags = HideFlags.HideAndDontSave,
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear
-            };
-            var pixels = new Color32[size * size];
             var rose = new Color(0.96f, 0.42f, 0.52f, 1f);
             var pink = new Color(1f, 0.16f, 0.40f, 1f);
             var crimson = new Color(0.78f, 0.02f, 0.30f, 1f);
-            float half = size * 0.5f;
-
-            for (int y = 0; y < size; ++y)
-            {
-                for (int x = 0; x < size; ++x)
+            _monthProgressRamp = new Gradient();
+            _monthProgressRamp.SetKeys(
+                new[]
                 {
-                    // Texture rows run bottom-up while the dial is measured
-                    // clockwise from the top in screen space.
-                    float dx = x + 0.5f - half;
-                    float dyScreen = half - (y + 0.5f);
-                    float turn = Mathf.Atan2(dx, -dyScreen) / FullTurn;
-                    if (turn < 0f)
-                        turn += 1f;
-                    // The last slice eases back to rose so the round start cap,
-                    // which reaches a few degrees counter-clockwise past the
-                    // top, matches the arc's beginning instead of its end.
-                    Color color = turn < 0.33f
-                        ? Color.Lerp(rose, pink, turn / 0.33f)
-                        : turn < 0.90f
-                            ? Color.Lerp(pink, crimson, (turn - 0.33f) / 0.57f)
-                            : Color.Lerp(crimson, rose, Mathf.SmoothStep(0f, 1f, (turn - 0.90f) / 0.10f));
-                    // A slight radial lift toward the outer edge sells the tube.
-                    float radial = Mathf.Clamp01(new Vector2(dx, dyScreen).magnitude / half);
-                    color = Color.Lerp(color, Color.white, Mathf.SmoothStep(0f, 1f, radial) * 0.12f);
-                    pixels[y * size + x] = color;
-                }
-            }
-
-            texture.SetPixels32(pixels);
-            texture.Apply(false, false);
-            _monthProgressRamp = texture;
-            return texture;
-        }
-
-        /// <summary>Diagonal ramp for the idle track: gray at the top-left, near white at the bottom-right.</summary>
-        static Texture2D GetMonthTrackRamp()
-        {
-            if (_monthTrackRamp != null)
-                return _monthTrackRamp;
-
-            const int size = 128;
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                name = "README Month Slider Track Ramp",
-                hideFlags = HideFlags.HideAndDontSave,
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear
-            };
-            var pixels = new Color32[size * size];
-            var dark = new Color(0.80f, 0.80f, 0.82f, 1f);
-            var light = new Color(0.975f, 0.975f, 0.98f, 1f);
-
-            for (int y = 0; y < size; ++y)
-            {
-                for (int x = 0; x < size; ++x)
-                {
-                    float u = (x + 0.5f) / size;
-                    float v = 1f - (y + 0.5f) / size;
-                    float t = Mathf.Clamp01((u + v) * 0.5f);
-                    pixels[y * size + x] = Color.Lerp(dark, light, Mathf.SmoothStep(0f, 1f, t));
-                }
-            }
-
-            texture.SetPixels32(pixels);
-            texture.Apply(false, false);
-            _monthTrackRamp = texture;
-            return texture;
+                    new GradientColorKey(rose, 0f),
+                    new GradientColorKey(pink, 0.33f),
+                    new GradientColorKey(crimson, 0.90f),
+                    new GradientColorKey(Color.Lerp(crimson, rose, 0.5f), 0.95f),
+                    new GradientColorKey(rose, 1f)
+                },
+                new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+            return _monthProgressRamp;
         }
     }
 }

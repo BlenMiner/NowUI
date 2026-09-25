@@ -58,10 +58,12 @@ namespace NowUI.Editor
             Now.GridLines(rect, 48f).SetColor(new Color(0.60f, 0.72f, 1f, 0.035f)).Draw();
 
             var card = new NowRect(100f, 92f, 760f, 356f);
-            Now.Rectangle(new NowRect(card.x - 14f, card.y + 18f, card.width + 28f, card.height + 14f))
-                .SetColor(new Color(0f, 0f, 0f, 0.40f))
-                .SetRadius(34f)
+            Now.Shadow(card)
+                .SetOffset(0f, 18f)
+                .SetSpread(14f)
+                .SetRadius(20f)
                 .SetBlur(28f)
+                .SetColor(new Color(0f, 0f, 0f, 0.40f))
                 .Draw();
             Now.Rectangle(card)
                 .SetColor(new Color(0.055f, 0.055f, 0.10f, 0.94f))
@@ -283,17 +285,19 @@ namespace NowUI.Editor
 
         static void DrawPlayerSkipIcon(Vector2 center, float direction, Color color, float press)
         {
-            float s = 1f - press * 0.12f;
-            Now.Triangle(
-                    center + new Vector2(-9f * direction, -9f) * s,
-                    center + new Vector2(3f * direction, 0f) * s,
-                    center + new Vector2(-9f * direction, 9f) * s)
-                .SetColor(color)
-                .Draw();
-            Now.Rectangle(new NowRect(center.x + 4f * direction * s - 1.5f, center.y - 9f * s, 3f, 18f * s))
-                .SetColor(color)
-                .SetRadius(1.5f)
-                .Draw();
+            using (Now.TransformAround(1f - press * 0.12f, center))
+            {
+                Now.Triangle(
+                        center + new Vector2(-9f * direction, -9f),
+                        center + new Vector2(3f * direction, 0f),
+                        center + new Vector2(-9f * direction, 9f))
+                    .SetColor(color)
+                    .Draw();
+                Now.Rectangle(new NowRect(center.x + 4f * direction - 1.5f, center.y - 9f, 3f, 18f))
+                    .SetColor(color)
+                    .SetRadius(1.5f)
+                    .Draw();
+            }
         }
 
         /// <summary>
