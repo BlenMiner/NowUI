@@ -658,6 +658,9 @@ namespace NowUI
                 }
             }
 
+#if NOWUI_UGUI
+            // Only NowGraphic draws with the Canvas variant. Hosts without UGUI,
+            // including the standalone builds, ship no template for it.
             if (_canvasMaterial == null)
             {
                 var template = Now.LoadRequiredResource<Material>("NowUI/GradientMaterialUGUI");
@@ -671,6 +674,7 @@ namespace NowUI
                     };
                 }
             }
+#endif
 
             if (_material != null && !ReferenceEquals(_material.mainTexture, atlas))
                 _material.mainTexture = atlas;
@@ -695,7 +699,11 @@ namespace NowUI
 
             material = _material;
             canvasMaterial = _canvasMaterial;
+#if NOWUI_UGUI
             return material != null && canvasMaterial != null;
+#else
+            return material != null;
+#endif
         }
 
         internal static void Reset()

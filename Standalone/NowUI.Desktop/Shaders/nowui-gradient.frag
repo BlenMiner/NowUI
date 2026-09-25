@@ -129,11 +129,11 @@ highp float sdRoundedBox(highp vec2 p, highp vec2 b, highp vec4 r)
 // The result is divided by 255, not 256: the two bytes are colour channels in
 // [0, 255] mapping onto [0, 1], so 255 must land on exactly 1.0.
 // ---------------------------------------------------------------------------
-highp vec2 decodePair8(highp float packed)
+highp vec2 decodePair8(highp float packedPair)
 {
-    packed = floor(packed + 0.5);
-    highp float first = floor(packed / 256.0);
-    highp float second = packed - first * 256.0;
+    packedPair = floor(packedPair + 0.5);
+    highp float first = floor(packedPair / 256.0);
+    highp float second = packedPair - first * 256.0;
     return vec2(first, second) / 255.0;
 }
 

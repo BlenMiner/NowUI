@@ -115,3 +115,19 @@ public sealed class DataTextureParityScene : INowScene, IDisposable
         foreach (var target in targets) if (target != null) { target.Release(); UnityEngine.Object.Destroy(target); }
     }
 }
+
+public sealed class GradientParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+        // Left to right: red -> blue.
+        Now.Gradient(new NowRect(0, 0, 64, 32), Color.red, Color.blue).SetLinear(90f).Draw();
+        // A 16 px circle of green fading to blue, clamped to blue outside it.
+        Now.Gradient(new NowRect(64, 0, 64, 32), Color.green, Color.blue).SetRadial(new Vector2(0.5f, 0.5f), 0.5f).Draw();
+        // Clockwise from straight up: red just right of 12 o'clock, green just left of it.
+        Now.Gradient(new NowRect(0, 32, 64, 64), Color.red, Color.green).SetConic(new Vector2(0.5f, 0.5f), 0f).Draw();
+        Now.Text(new NowRect(64, 48, 64, 48)).SetFontSize(30f).SetBold()
+            .SetGradient(Color.red, Color.blue).SetGradientLinear(90f).Draw("WW");
+    }
+}

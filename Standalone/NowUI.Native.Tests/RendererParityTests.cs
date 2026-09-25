@@ -69,7 +69,34 @@ public sealed class RendererParityTests
                 red, column >= 3 ? green : 0, column >= 5 ? blue : 0, 255, 1);
     }
 
-    static byte[] Render(string scene, int width, int height, string colorSpace)
+    // The source checkout is a Unity project whose Resources folder holds the UGUI
+    // gradient .mat; an empty project resolves no template at all. Both must draw.
+    [TestCase("gamma", false), TestCase("linear", false), TestCase("gamma", true)]
+    public void LinearRadialConicAndTextGradientsRender(string colorSpace, bool sourceProject)
+    {
+        var pixels = Render("GradientParityScene", 128, 96, colorSpace, sourceProject);
+        AssertDominant(pixels, 128, 96, 3, 16, 0);     // linear start: red
+        AssertDominant(pixels, 128, 96, 60, 16, 2);    // linear end: blue
+        AssertDominant(pixels, 128, 96, 96, 16, 1);    // radial centre: green
+        AssertDominant(pixels, 128, 96, 66, 2, 2);     // radial outside the circle: blue
+        AssertDominant(pixels, 128, 96, 36, 40, 0);    // conic just after 12 o'clock: red
+        AssertDominant(pixels, 128, 96, 28, 40, 1);    // conic just before 12 o'clock: green
+        int leftRed = 0, rightBlue = 0, wrong = 0;
+        for (int y = 40; y < 96; y++) for (int x = 64; x < 128; x++)
+        {
+            int i = ((95 - y) * 128 + x) * 4;
+            if (pixels[i + 3] < 200 || pixels[i] + pixels[i + 2] < 200) continue;
+            bool red = pixels[i] > pixels[i + 2];
+            if (x < 80 && red) leftRed++;
+            else if (x >= 104 && !red) rightBlue++;
+            if (pixels[i + 1] > 60) wrong++;
+        }
+        Assert.That(leftRed, Is.GreaterThan(20), "Text gradient must start red.");
+        Assert.That(rightBlue, Is.GreaterThan(20), "Text gradient must end blue.");
+        Assert.That(wrong, Is.Zero, "A red-to-blue text gradient must not produce green.");
+    }
+
+    static byte[] Render(string scene, int width, int height, string colorSpace, bool sourceProject = false)
     {
         if (Environment.GetEnvironmentVariable("NOWUI_TEST_NATIVE_GRAPHICS") != "1")
             Assert.Ignore("Set NOWUI_TEST_NATIVE_GRAPHICS=1 in a desktop graphics session.");
@@ -86,7 +113,7 @@ public sealed class RendererParityTests
             foreach (string argument in new[] { Path.Combine(standalone, "NowUI.Cli/bin", configuration, "net9.0/nowui.dll"),
                 "render", Path.Combine(standalone, "NowUI.Native.Tests/Scenes/Scenes.csproj"), "--scene", scene,
                 "--output", output, "--width", width.ToString(), "--height", height.ToString(),
-                "--color-space", colorSpace, "--unity-project", directory,
+                "--color-space", colorSpace, "--unity-project", sourceProject ? Path.GetDirectoryName(standalone)! : directory,
                 "--configuration", configuration, "--no-build" }) start.ArgumentList.Add(argument);
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();
@@ -101,6 +128,15 @@ public sealed class RendererParityTests
             return pixels;
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    static void AssertDominant(byte[] pixels, int width, int height, int x, int y, int channel)
+    {
+        int i = ((height - 1 - y) * width + x) * 4;
+        Assert.That((int)pixels[i + 3], Is.EqualTo(255), $"Pixel ({x},{y}) alpha");
+        for (int c = 0; c < 3; c++)
+            if (c != channel)
+                Assert.That((int)pixels[i + channel], Is.GreaterThan(pixels[i + c] + 100), $"Pixel ({x},{y}) channel {channel} must dominate channel {c}");
     }
 
     static void AssertPixel(byte[] pixels, int width, int height, int x, int y, int r, int g, int b, int a, int tolerance)
