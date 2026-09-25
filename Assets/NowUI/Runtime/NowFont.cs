@@ -393,6 +393,53 @@ namespace NowUI
             }
         }
 
+        Dictionary<int, float> _flatGlyphTops;
+
+        /// <summary>
+        /// Vertical metrics for <paramref name="style"/> in em units: line height,
+        /// ascender, and descender from the font, plus cap height and x-height measured
+        /// from the flat-bottomed "H" and "x" glyphs (NowUI fonts carry no OS/2 table).
+        /// The first call per style may resolve those glyphs; later calls are cached.
+        /// </summary>
+        public NowFontMetrics GetMetrics(NowFontStyle style = NowFontStyle.Regular)
+        {
+            float lineHeight = GetLineHeight(style);
+            float ascender = GetAscender(style);
+            float descender = TryGetOwnFont(style, out var own) && own != null
+                ? own.GetDescender()
+                : 0f;
+
+            if (descender <= 0f)
+                descender = Mathf.Max(0f, lineHeight - ascender);
+
+            float capHeight = GetFlatGlyphTop('H', style, ascender * 0.72f);
+            float xHeight = GetFlatGlyphTop('x', style, capHeight * 0.7f);
+            return new NowFontMetrics(lineHeight, ascender, descender, capHeight, xHeight);
+        }
+
+        float GetFlatGlyphTop(int codepoint, NowFontStyle style, float fallback)
+        {
+            int key = ((int)style << 21) | codepoint;
+            _flatGlyphTops ??= new Dictionary<int, float>(4);
+
+            if (_flatGlyphTops.TryGetValue(key, out float cached))
+                return cached;
+
+            float top = fallback;
+
+            // Plane bounds include the distance-field padding on every side. These
+            // glyphs sit flat on the baseline, so their padded bottom is exactly
+            // minus that padding, and top + bottom is the ink height.
+            if (Now.TryResolveTextGlyph(this, codepoint, 64f, 0f, style, out _, out var glyph, out _) &&
+                glyph.planeBounds.top > glyph.planeBounds.bottom)
+            {
+                top = Mathf.Max(0f, glyph.planeBounds.top + Mathf.Min(0f, glyph.planeBounds.bottom));
+            }
+
+            _flatGlyphTops[key] = top;
+            return top;
+        }
+
         public float GetLineHeight(NowFontStyle style = NowFontStyle.Regular)
         {
             if (this == null)
@@ -1272,6 +1319,13 @@ namespace NowUI
         public int dynamicMaxAtlasSize = DEFAULT_DYNAMIC_MAX_ATLAS_SIZE;
 
         public int dynamicMaxAtlasBytes = DEFAULT_DYNAMIC_MAX_ATLAS_BYTES;
+
+        /// <summary>
+        /// Largest glyph cell that resolution tiers may use for large text (Max Glyph
+        /// Size). Set it to <see cref="dynamicAtlasSize"/> to disable tiers for this
+        /// font, for example to bound atlas memory on constrained platforms.
+        /// </summary>
+        public int dynamicMaxGlyphSize = MAX_DYNAMIC_TIER_GLYPH_SIZE;
 
         public bool isColor => atlasInfo.atlas.type == ATLAS_TYPE_RGBA;
 
@@ -2556,6 +2610,31 @@ namespace NowUI
             return 1;
         }
 
+        /// <summary>Distance from the baseline to the lowest descent in em units (positive), or 0 when unknown.</summary>
+        public float GetDescender()
+        {
+            if (atlasInfo.metrics.descender != 0)
+                return Mathf.Abs(atlasInfo.metrics.descender);
+
+            if (_hasDynamicColorLayoutMetrics && _dynamicColorLayoutMetrics.descender != 0)
+                return Mathf.Abs(_dynamicColorLayoutMetrics.descender);
+
+            EnsureBakedPagesLoaded();
+
+            if (_dynamicPages != null)
+            {
+                for (int i = 0; i < _dynamicPages.Count; ++i)
+                {
+                    var font = _dynamicPages[i].font;
+
+                    if (font != null && font.atlasInfo.metrics.descender != 0)
+                        return Mathf.Abs(font.atlasInfo.metrics.descender);
+                }
+            }
+
+            return 0f;
+        }
+
         public float GetAscender()
         {
             if (atlasInfo.metrics.ascender > 0)
@@ -2680,9 +2759,109 @@ namespace NowUI
                 (long)requestedPixelRange * atlasSize;
         }
 
+        /// <summary>
+        /// Default largest glyph cell a resolution tier may use (see
+        /// <see cref="dynamicMaxGlyphSize"/>). Large display text bakes up to this
+        /// cell; beyond it the field is magnified. 64 keeps a new screen's text
+        /// cheap to prepare (all of printable ASCII bakes in about 10 ms with Burst);
+        /// a font can raise it to 128 or 256 for hero text, whose glyphs then cost
+        /// about 0.7 or 2.6 ms each to bake.
+        /// </summary>
+        public const int MAX_DYNAMIC_TIER_GLYPH_SIZE = 64;
+
+        /// <summary>
+        /// How far a glyph cell may be magnified before the next resolution tier is
+        /// used. 1.5 keeps the base cell for all ordinary UI text: the 32 px cell
+        /// was measured to be indistinguishable from 64 px up to 48 px text.
+        /// </summary>
+        public const float DYNAMIC_TIER_MAX_MAGNIFICATION = 1.5f;
+
+        /// <summary>
+        /// The glyph cell, in atlas pixels per em, used for text drawn at
+        /// <paramref name="fontSize"/>. Text up to 1.5x the font's base cell uses the
+        /// base cell (<see cref="dynamicAtlasSize"/>); larger display text doubles the
+        /// cell per tier, up to <see cref="dynamicMaxGlyphSize"/>, so sharp
+        /// corners stay sharp without making ordinary text slower to bake. Tiers follow
+        /// the size passed in; Now's own text draws pass authored size and select
+        /// the tier from the rendered size (see <see cref="PushRenderScale"/>). Fonts
+        /// without an embedded source and color bitmap fonts always use their fixed cell.
+        /// </summary>
         public int GetDynamicGlyphSize(float fontSize)
         {
-            return GetBaseDynamicGlyphSize();
+            int baseSize = GetBaseDynamicGlyphSize();
+
+            if (!HasEmbeddedSource ||
+                float.IsNaN(fontSize) ||
+                float.IsInfinity(fontSize) ||
+                fontSize <= baseSize * DYNAMIC_TIER_MAX_MAGNIFICATION ||
+                TryGetLargestColorBitmapSize(out _))
+            {
+                return baseSize;
+            }
+
+            int maxSize = Mathf.Max(baseSize, dynamicMaxGlyphSize > 0 ? dynamicMaxGlyphSize : MAX_DYNAMIC_TIER_GLYPH_SIZE);
+            int size = baseSize;
+
+            while (size < maxSize && fontSize > size * DYNAMIC_TIER_MAX_MAGNIFICATION)
+                size = Mathf.Min(size * 2, maxSize);
+
+            return size;
+        }
+
+        static float s_renderScale = 1f;
+
+        /// <summary>
+        /// Rendered pixels per authored text pixel while a text draw or measure is in
+        /// progress: UI scale times the current transform's scale. Glyph resolution
+        /// tiers are chosen from authored size times this scale, so text enlarged by
+        /// a transform or a high-DPI UI scale bakes a cell sized for what is on screen.
+        /// It never drops below 1: shrunken text keeps its authored tier, so a
+        /// scale-in animation does not bake a smaller tier first.
+        /// </summary>
+        internal static float renderScale => s_renderScale;
+
+        internal readonly struct RenderScaleScope : IDisposable
+        {
+            readonly float _previous;
+            readonly bool _active;
+
+            internal RenderScaleScope(float scale)
+            {
+                _previous = s_renderScale;
+                _active = true;
+                s_renderScale = scale;
+            }
+
+            public void Dispose()
+            {
+                if (_active)
+                    s_renderScale = _previous;
+            }
+        }
+
+        /// <summary>
+        /// Sets <see cref="renderScale"/> until the returned scope is disposed.
+        /// Invalid values and scales below 1 select the authored tier.
+        /// </summary>
+        internal static RenderScaleScope PushRenderScale(float scale)
+        {
+            return new RenderScaleScope(
+                scale > 1f && !float.IsInfinity(scale) ? scale : 1f);
+        }
+
+        /// <summary>Font size whose resolution tier the current draw uses.</summary>
+        static float TierFontSize(float fontSize)
+        {
+            return s_renderScale > 1f ? fontSize * s_renderScale : fontSize;
+        }
+
+        /// <summary>
+        /// Glyph cell for text authored at <paramref name="fontSize"/> and drawn at
+        /// the current <see cref="renderScale"/>.
+        /// </summary>
+        int GetTierGlyphSize(float fontSize)
+        {
+            return GetDynamicGlyphSize(TierFontSize(fontSize));
         }
 
         /// <summary>
@@ -2690,11 +2869,31 @@ namespace NowUI
         /// em-relative outline. The exact authored width remains draw data; only
         /// backing field capacity rounds upward through hidden doubling tiers so
         /// arbitrary, animated, and Inspector-driven values share a logarithmic
-        /// set of atlas variants.
+        /// set of atlas variants. The cell follows the current
+        /// <see cref="renderScale"/>; the one-pixel guard follows authored size.
         /// </summary>
         internal int GetDynamicPixelRange(float outline, float fontSize)
         {
+            return GetDynamicPixelRange(outline, fontSize, TierFontSize(fontSize));
+        }
+
+        /// <summary>
+        /// Range for text drawn at <paramref name="fontSize"/> but baked in the
+        /// resolution tier of <paramref name="tierFontSize"/>, as SDF scenes do when
+        /// text of several sizes shares one atlas. The cell and its range limits come
+        /// from the tier; the one-UI-pixel guard comes from the drawn size.
+        /// </summary>
+        internal int GetDynamicPixelRange(float outline, float fontSize, float tierFontSize)
+        {
             int baseRange = dynamicPixelRange > 0 ? dynamicPixelRange : DEFAULT_DYNAMIC_PIXEL_RANGE;
+
+            // A resolution tier scales the range with the cell, so every em-relative
+            // quantity (field reach, screen pixel range, outline budget) is unchanged.
+            int tierAtlasSize = GetDynamicGlyphSize(Mathf.Max(fontSize, tierFontSize));
+            int baseAtlasSize = GetBaseDynamicGlyphSize();
+
+            if (tierAtlasSize > baseAtlasSize && baseAtlasSize > 0)
+                baseRange = (int)Math.Min(int.MaxValue, (long)baseRange * (tierAtlasSize / baseAtlasSize));
 
             if (!HasEmbeddedSource || float.IsNaN(outline) || float.IsInfinity(outline) || Mathf.Approximately(outline, 0f))
                 return baseRange;
@@ -2707,7 +2906,7 @@ namespace NowUI
             if (_dynamicSourceIsColor.Value)
                 return baseRange;
 
-            int atlasSize = GetBaseDynamicGlyphSize();
+            int atlasSize = tierAtlasSize;
             float outlineAtlasPixels = Mathf.Abs(outline) * atlasSize;
             float uiPixelGuardInAtlas = fontSize > 0f && !float.IsNaN(fontSize) && !float.IsInfinity(fontSize)
                 ? atlasSize / fontSize
@@ -2734,6 +2933,20 @@ namespace NowUI
             }
 
             return bucket;
+        }
+
+        /// <summary>
+        /// Whether the authored base atlas can serve glyphs of this cell and range. It
+        /// covers ordinary text whenever its range suffices; a resolution tier above
+        /// the base cell also needs the base atlas to be at least that fine, or large
+        /// text would keep magnifying the coarser prebaked glyphs.
+        /// </summary>
+        bool BaseAtlasServes(int atlasSize, int pixelRange)
+        {
+            var atlas = atlasInfo.atlas;
+
+            return AtlasSupportsPixelRange(atlas, atlasSize, pixelRange) &&
+                (atlasSize <= GetBaseDynamicGlyphSize() || atlas.size <= 0 || atlas.size >= atlasSize);
         }
 
         internal int GetBaseDynamicGlyphSize()
@@ -3502,7 +3715,7 @@ namespace NowUI
             if (_dynamicMisses != null && _dynamicMisses.Contains(key))
                 return false;
 
-            if ((TryGetCachedGlyph(unicode, out _) && AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)) ||
+            if ((TryGetCachedGlyph(unicode, out _) && BaseAtlasServes(atlasSize, pixelRange)) ||
                 TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out _))
             {
                 return false;
@@ -4462,7 +4675,7 @@ namespace NowUI
             if (DynamicFontBytes == null || string.IsNullOrEmpty(value) || fontSize <= 0)
                 return;
 
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
             string missingCharacters = GetMissingDynamicCharacters(value, atlasSize, pixelRange);
 
@@ -4492,10 +4705,12 @@ namespace NowUI
 
         [NonSerialized] float _glyphTierFontSize = float.NaN;
         [NonSerialized] float _glyphTierOutline = float.NaN;
+        [NonSerialized] float _glyphTierRenderScale = float.NaN;
         [NonSerialized] int _glyphTierDynamicAtlasSize;
         [NonSerialized] int _glyphTierDynamicPixelRange;
         [NonSerialized] int _glyphTierDynamicMaxAtlasSize;
         [NonSerialized] int _glyphTierDynamicMaxAtlasBytes;
+        [NonSerialized] int _glyphTierDynamicMaxGlyphSize;
         [NonSerialized] bool _glyphTierHasSource;
         [NonSerialized] string _glyphTierAtlasType;
         [NonSerialized] int _glyphTierAtlasDistanceRange;
@@ -4522,11 +4737,13 @@ namespace NowUI
 
             if (fontSize == _glyphTierFontSize &&
                 outline == _glyphTierOutline &&
+                s_renderScale == _glyphTierRenderScale &&
                 hasSource == _glyphTierHasSource &&
                 dynamicAtlasSize == _glyphTierDynamicAtlasSize &&
                 dynamicPixelRange == _glyphTierDynamicPixelRange &&
                 dynamicMaxAtlasSize == _glyphTierDynamicMaxAtlasSize &&
                 dynamicMaxAtlasBytes == _glyphTierDynamicMaxAtlasBytes &&
+                dynamicMaxGlyphSize == _glyphTierDynamicMaxGlyphSize &&
                 ReferenceEquals(atlasInfo.atlas.type, _glyphTierAtlasType) &&
                 atlasInfo.atlas.distanceRange == _glyphTierAtlasDistanceRange &&
                 atlasInfo.atlas.size == _glyphTierAtlasSize)
@@ -4537,17 +4754,19 @@ namespace NowUI
                 return;
             }
 
-            atlasSize = GetDynamicGlyphSize(fontSize);
+            atlasSize = GetTierGlyphSize(fontSize);
             pixelRange = GetDynamicPixelRange(outline, fontSize);
-            baseSupportsRange = !hasSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange);
+            baseSupportsRange = !hasSource || BaseAtlasServes(atlasSize, pixelRange);
 
             _glyphTierFontSize = fontSize;
             _glyphTierOutline = outline;
+            _glyphTierRenderScale = s_renderScale;
             _glyphTierHasSource = hasSource;
             _glyphTierDynamicAtlasSize = dynamicAtlasSize;
             _glyphTierDynamicPixelRange = dynamicPixelRange;
             _glyphTierDynamicMaxAtlasSize = dynamicMaxAtlasSize;
             _glyphTierDynamicMaxAtlasBytes = dynamicMaxAtlasBytes;
+            _glyphTierDynamicMaxGlyphSize = dynamicMaxGlyphSize;
             _glyphTierAtlasType = atlasInfo.atlas.type;
             _glyphTierAtlasDistanceRange = atlasInfo.atlas.distanceRange;
             _glyphTierAtlasSize = atlasInfo.atlas.size;
@@ -4626,12 +4845,12 @@ namespace NowUI
             out NowFontAtlasInfo.Glyph glyph,
             out Material glyphMaterial)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             pixelRange = Mathf.Max(1, pixelRange);
             bool hasBaseGlyph = TryGetCachedGlyph(unicode, out glyph);
 
             if (hasBaseGlyph &&
-                (!HasEmbeddedSource || AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)))
+                (!HasEmbeddedSource || BaseAtlasServes(atlasSize, pixelRange)))
             {
                 glyphMaterial = material;
                 return true;
@@ -4679,11 +4898,29 @@ namespace NowUI
             out Material glyphMaterial,
             out float screenPixelRange)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            return GetGlyphForExactPixelRange(unicode, fontSize, pixelRange, fontSize, out glyph, out glyphMaterial, out screenPixelRange);
+        }
+
+        /// <summary>
+        /// Resolves a glyph in the resolution tier of <paramref name="tierFontSize"/>
+        /// rather than of its own size, so text of several sizes can share one atlas
+        /// (SDF scenes expose a single glyph texture). Screen pixel range still
+        /// follows the glyph's own <paramref name="fontSize"/> and resolved page.
+        /// </summary>
+        internal bool GetGlyphForExactPixelRange(
+            int unicode,
+            float fontSize,
+            int pixelRange,
+            float tierFontSize,
+            out NowFontAtlasInfo.Glyph glyph,
+            out Material glyphMaterial,
+            out float screenPixelRange)
+        {
+            int atlasSize = GetDynamicGlyphSize(tierFontSize);
             pixelRange = Mathf.Max(1, pixelRange);
 
             if (TryGetCachedGlyph(unicode, out glyph) &&
-                AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange))
+                BaseAtlasServes(atlasSize, pixelRange))
             {
                 glyphMaterial = material;
                 screenPixelRange = ScreenPixelRange(fontSize, atlasInfo.atlas);
@@ -4709,11 +4946,16 @@ namespace NowUI
 
         internal bool HasGlyphForExactPixelRange(int unicode, float fontSize, int pixelRange)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            return HasGlyphForExactPixelRange(unicode, fontSize, pixelRange, fontSize);
+        }
+
+        internal bool HasGlyphForExactPixelRange(int unicode, float fontSize, int pixelRange, float tierFontSize)
+        {
+            int atlasSize = GetDynamicGlyphSize(tierFontSize);
             pixelRange = Mathf.Max(1, pixelRange);
 
             return (TryGetCachedGlyph(unicode, out _) &&
-                    AtlasSupportsPixelRange(atlasInfo.atlas, atlasSize, pixelRange)) ||
+                    BaseAtlasServes(atlasSize, pixelRange)) ||
                 TryGetDynamicCachedGlyph(unicode, atlasSize, pixelRange, out _);
         }
 
@@ -5479,7 +5721,7 @@ namespace NowUI
             if (run == null || run.Length == 0)
                 return false;
 
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
             var missing = _shapedMissingScratch ??= new List<int>(32);
             missing.Clear();
@@ -5884,7 +6126,7 @@ namespace NowUI
             out Material glyphMaterial)
         {
             int encoded = EncodeGlyphIndexKey(glyphIndex);
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
 
             if (TryGetDynamicCachedGlyph(encoded, atlasSize, pixelRange, out glyph, out var page))
@@ -5920,7 +6162,7 @@ namespace NowUI
 
             if (_dynamicGlyphPages != null &&
                 _dynamicGlyphPages.TryGetValue(
-                    new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize), pixelRange),
+                    new DynamicGlyphKey(unicode, GetTierGlyphSize(fontSize), pixelRange),
                     out var page) &&
                 page != null)
             {
@@ -5941,7 +6183,7 @@ namespace NowUI
 
             if (_dynamicGlyphPages != null &&
                 _dynamicGlyphPages.TryGetValue(
-                    new DynamicGlyphKey(unicode, GetDynamicGlyphSize(fontSize), pixelRange),
+                    new DynamicGlyphKey(unicode, GetTierGlyphSize(fontSize), pixelRange),
                     out var page) &&
                 page != null)
             {
@@ -5964,7 +6206,7 @@ namespace NowUI
 
         internal Material GetMaterial(int unicode, float fontSize, float outline)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
 
             if (_dynamicGlyphPages != null &&
@@ -5992,7 +6234,7 @@ namespace NowUI
 
         internal bool IsColorGlyph(int unicode, float fontSize, float outline)
         {
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             int pixelRange = GetDynamicPixelRange(outline, fontSize);
 
             if (_dynamicGlyphPages != null &&
@@ -6034,7 +6276,7 @@ namespace NowUI
         internal float GetScreenPixelRangeForPixelRange(int unicode, float fontSize, int pixelRange)
         {
             var fontAtlas = atlasInfo.atlas;
-            int atlasSize = GetDynamicGlyphSize(fontSize);
+            int atlasSize = GetTierGlyphSize(fontSize);
             pixelRange = Mathf.Max(1, pixelRange);
 
             if (_dynamicGlyphPages != null &&

@@ -204,6 +204,9 @@ namespace NowUI
                 kind == NowMeshKind.CustomRectangle ||
                 kind == NowMeshKind.Gradient ||
                 kind == NowMeshKind.Ripple ||
+                // SDF quads carry their scene mapping per vertex like rectangles,
+                // so a subdivided grid keeps perspective warps from folding the field.
+                kind == NowMeshKind.Sdf ||
                 kind == NowMeshKind.Text && subdivideText;
         }
 

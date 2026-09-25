@@ -116,7 +116,8 @@ an earlier output file. Capture returns a nonzero exit code on failure.
 Two zero-time warmup frames settle resources and layout. `render --time` advances
 at 60 Hz. `animate` captures from time zero at the requested frame rate; use host
 time rather than wall-clock time for deterministic results. `--width` and
-`--height` default to 960 × 640, with limits of 8192 per axis and 16,777,216 pixels.
+`--height` default to 960 × 540 (16:9), which is also the preview window's starting
+size, with limits of 8192 per axis and 16,777,216 pixels.
 Choose `--color-space gamma|linear` to match the Unity project (default Gamma).
 PNG output is straight alpha with a transparent clear color.
 

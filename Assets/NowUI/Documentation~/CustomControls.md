@@ -296,6 +296,9 @@ and constructor that carry a `NowRect` and skip `NowLayout.ReserveRect` — comp
   them: `Transition` (animated 0..1), `Repeat` (key repeat), `Blink`
   (caret), `DetectDoubleClick`, `ClickStreak` (double = 2, triple = 3).
   Common animation/repeat helpers also accept `NowInteraction` directly.
+  `Transition` moves linearly; shape its value with a curve such as
+  `NowEase.OutCubic(hoverT)` or `NowEase.OutBack(pressT)` from
+  [Easing](Easing.md) before using it for size, offset, or color.
 - Call `NowControlState.RequestRepaint()` whenever the control will look
   different next frame for reasons input can't predict (running animations,
   timers). `Transition` and `Repeat` already do.

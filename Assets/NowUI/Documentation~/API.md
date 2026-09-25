@@ -63,8 +63,28 @@ when enabled. No manual NowUI input define is required.
   `NowTextFieldResult`, and rich-text types:
   text rendering, gradient fills, caller-timed glyph animation, shaping,
   editing, wrapping, selection, and parser hooks.
+- `NowTextAlign`, `NowTextVerticalAlign`, `NowFontMetrics`,
+  `INowTextGlyphAnimator`, and `NowTextGlyphState`: text alignment inside a
+  rect, optical cap-height centering, letter spacing, vertical font metrics,
+  per-unit layout boxes (`NowText.GetUnitRects`), and caller-defined per-glyph
+  animation (`NowTextAnimations.Custom`). See
+  [Text Layout, Gradients, And Animation](TextStyling.md).
+- `NowEase` and `NowEasing`: stateless, allocation-free easing curves (Sine,
+  polynomial, Expo, Circ, Back, Elastic, Bounce, Spring, and CSS
+  `CubicBezier`), plus `Progress` for caller-owned time windows. See
+  [Easing](Easing.md).
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
+- `NowLine`, `NowPolyline`, `NowArc`, `NowLineCap`, and `NowLineArrow`:
+  anti-aliased strokes for segments, cubic Beziers, sampled or closed paths,
+  circular arcs, and rings, sharing width, cap, gradient, dash, arrow, and
+  mask styling. `Now.DrawPolyline` is the one-call solid-stroke form. See
+  [Lines](Lines.md).
+- `Now.Transform`, `Now.TransformAround`, `Now.Rotate`, `Now.Opacity`, and
+  `Now.Tint` with their `NowTransformScope`, `NowRotationScope`, and
+  `NowTintScope` values, plus `Now.currentTint`: stack-backed scopes that scale,
+  pan, rotate, fade, or tint everything drawn inside them. See
+  [Transforms](Transforms.md).
 - `NowGradient`, `NowGradientKind`, `NowGradientDirection`,
   `NowGradientShape`, and `NowGradientSpread`: CSS-inspired linear, radial,
   and conic paints backed by two-color or Unity `Gradient` ramps.

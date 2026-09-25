@@ -338,7 +338,8 @@ contract and the packaged example source.
 ## Lines
 
 `NowLine` draws anti-aliased strokes, cubic Beziers, dashes, caps and arrow
-heads. See [Lines](Lines.md) for the full stroke API.
+heads. `NowPolyline` and `NowArc` apply the same styling to sampled or closed
+paths, arcs, and rings. See [Lines](Lines.md) for the full stroke API.
 
 ```csharp
 Now.Bezier(
@@ -685,6 +686,48 @@ retaining 16-bit distance precision while keeping the high byte replicated in
 RGB for legacy-material compatibility. Bundled text and SDF-scene shaders
 decode both bytes; native CFF and color-font output continues through its
 ordinary MTSDF/RGBA path.
+
+Each font bakes glyphs into a fixed cell of **Glyph Size** atlas pixels per em
+(`NowFont.dynamicAtlasSize`, 32 for the bundled Latin and monospace faces, 64 for
+the denser CJK, Arabic, emoji and icon faces). Text up to 1.5x that cell uses it
+directly, which covers ordinary UI text. Larger display text uses a resolution
+tier: the cell doubles per tier up to the font's **Max Glyph Size**
+(`NowFont.dynamicMaxGlyphSize`, 64 by default), and the distance range doubles
+with it, so outlines, effects and anti-aliasing keep their size while corners
+stay sharper. Tiers follow the size text is rendered at: the authored font size
+times the UI scale and the current `Now.Transform` scale, so 40 px text under a
+2x transform or on a 2x display bakes the cell for 80 px. A scale below 1 keeps
+the authored size's tier, so shrunken text and scale-in animations never bake an
+extra, smaller tier. Each tier bakes only the glyphs actually drawn in it. An SDF
+scene bakes all of its text in the tier of its largest text at the scene's
+render scale, because a scene binds one glyph atlas.
+
+Baking cost grows with the cell's area. Baking all 95 printable ASCII
+characters into a font that has none of them yet (NotoSans Regular, managed
+compiler, median of five runs, including the new atlas page) takes:
+
+| Cell | Text size | Unity Editor, Burst | Native preview (.NET, no Burst) |
+| ---: | --- | ---: | ---: |
+| 32 | up to 48 px | 6 ms | 20 ms |
+| 64 | 49–96 px | 10 ms | 57 ms |
+| 128 | 97–192 px | 64 ms | 232 ms |
+| 256 | above 192 px | 238 ms | 1150 ms |
+
+Creating a tier's page costs 2–6 ms of that; each further glyph costs about
+0.05, 0.1, 0.7 and 2.6 ms at those cells with Burst. A hitch is therefore
+proportional to the new glyphs on screen: the default 64 cap bounds a whole
+fresh ASCII set to about 10 ms, while a five-letter logo at 256 costs about
+15 ms. Browser builds were not measured and bake at least as slowly as the
+native preview. Because tiers use
+the rendered size, a 2x UI scale moves text above 24 px into the 64 px cell,
+and text that a transform animation enlarges past a tier boundary bakes that
+tier's glyphs once, when it first crosses it. Raise Max Glyph Size to 128 (or
+256 for text several hundred pixels tall) on a font used for logos or hero
+titles above about 100 rendered pixels when their inside corners must stay
+crisp, and warm those strings before the screen appears by drawing or measuring
+them once at their final scale; set it equal to Glyph Size to disable tiers.
+Hosts without Burst (the native preview and browser builds) bake several times
+slower.
 
 Text is shaped through HarfBuzz when the native plugin is present
 (`Now.textShaping`, on by default): ligatures, kerning, and complex-script

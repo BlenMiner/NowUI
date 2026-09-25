@@ -305,6 +305,9 @@ float4 shapeFill(int index, float type, float4 data1, float4 data2, float2 scene
     return tex2D(_MainTex, uv) * color;
 }
 
+// Scene-unit tolerance for draw-order fill ties in combine(); far below one pixel.
+#define NOW_SDF_FILL_TIE 0.001
+
 void combine(
     inout float dist,
     inout float4 fill,
@@ -317,10 +320,16 @@ void combine(
 {
     if (operation < 0.5)
     {
+        // Coincident primitives resolve in draw order: a later shape within
+        // NOW_SDF_FILL_TIE of the accumulated distance takes the fill, so exactly
+        // overlapping shapes (a progress arc over its track) never pick a fill
+        // per pixel from rounding noise. The distance itself stays the exact min.
+        if (shapeDist <= dist + NOW_SDF_FILL_TIE)
+            fill = nextFill;
+
         if (shapeDist < dist)
         {
             dist = shapeDist;
-            fill = nextFill;
             codeStep = shapeCodeStep;
         }
         else if (shapeDist == dist)
@@ -347,9 +356,12 @@ void combine(
 
     if (operation < 2.5)
     {
+        // Same draw-order tie rule as the union above.
+        if (shapeDist >= dist - NOW_SDF_FILL_TIE)
+            fill = nextFill;
+
         if (shapeDist > dist)
         {
-            fill = nextFill;
             codeStep = shapeCodeStep;
         }
         else if (shapeDist == dist)
@@ -1165,7 +1177,19 @@ fixed4 frag(v2f i) : SV_Target
 
     if (_SdfEmboss.w > 0.0)
     {
-        float2 grad = float2(ddx(dist), ddy(dist));
+        // The field gradient comes from scene-space differences mapped to screen
+        // through the scene position's derivatives. Screen derivatives of the
+        // distance itself average across the medial axis of sharp inside corners
+        // in 2x2 pixel blocks, which drew a stair-stepped crease in the bevel.
+        float2 sceneDx = ddx(scenePosBase);
+        float2 sceneDy = ddy(scenePosBase);
+        float embossStep = max(max(length(sceneDx), length(sceneDy)), 0.0001);
+        float embossDistX;
+        float embossDistY;
+        evalSceneDistance(warpScenePos(scenePosBase + float2(embossStep, 0.0)), embossDistX);
+        evalSceneDistance(warpScenePos(scenePosBase + float2(0.0, embossStep)), embossDistY);
+        float2 sceneGrad = float2(embossDistX - dist, embossDistY - dist) / embossStep;
+        float2 grad = float2(dot(sceneGrad, sceneDx), dot(sceneGrad, sceneDy));
         float2 normal2 = normalize(grad + 0.0001);
         float2 light = normalize(_SdfEmboss.xy + 0.0001);
         float band = 1.0 - smoothstep(0.0, max(_SdfEmboss.z, pixelWidth), abs(dist));

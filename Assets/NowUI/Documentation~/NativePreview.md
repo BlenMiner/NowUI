@@ -105,7 +105,8 @@ Inspect the resulting PNG or WebP and open or attach it with the agent's media
 tools. A successful build or a directory of frames alone does not demonstrate
 that the requested image or playable animation was delivered.
 
-Choose capture size with `--width` and `--height`, select a scene with `--scene`,
+Choose capture size with `--width` and `--height` (default 960 × 540, 16:9),
+select a scene with `--scene`,
 and select `--color-space gamma|linear` when comparing with a Unity project.
 Remote assets settle at the capture's fixed animation time; `--load-timeout`
 sets the loading limit in seconds (default 30). Interactive previews load them

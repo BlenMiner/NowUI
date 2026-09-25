@@ -151,9 +151,39 @@ Operations apply to the next primitive only, then reset to `Union`:
 .SmoothIntersect(10)
 ```
 
+When two shapes share an edge exactly, such as a progress arc drawn over its
+track, a hard union or intersection takes the fill of the shape added later, so
+coincident shapes resolve in draw order instead of flickering between fills.
+
 Edges are anti-aliased in screen space. `SetFeather(0)` gives the crisp default
 one-pixel ramp; `SetFeather(1)` widens that transition by roughly one extra
 screen pixel, independent of Canvas Scaler changes.
+
+### Align text in a rect
+
+The `Text(rect, value, fontSize, fontStyle, align, verticalAlign)` overloads
+place text inside a scene-local rect with the same rules as
+`Now.Text(...).SetAlign(...)`, including optical `CapMiddle` centering, so a
+word can be centered in a scene without measuring it:
+
+```csharp
+NowSdf.Scene(card, "title")
+    .SetGlow(24f, glowColor)
+    .SetColor(Color.white)
+    .Text(new NowRect(0f, 0f, card.width, card.height), "NowUI", 96f,
+        NowFontStyle.Bold, NowTextAlign.Center, NowTextVerticalAlign.CapMiddle)
+    .Draw();
+```
+
+All text in one scene is baked in the glyph resolution tier of the scene's
+largest text at its rendered size (authored size times UI scale and the current
+`Now.Transform` scale), because a scene binds a single glyph atlas; see
+[Font Compilation](Features.md#font-compilation).
+
+The positional and plain rect overloads still place the first line's top-left
+corner. Single-line aligned text is one `Text` call, so a pending `RotateNext`
+turns it around its center; each line of multi-line aligned text is added
+separately, so rotate such a block as a whole with `Now.Rotate`.
 
 ## Transform A Whole Scene
 
@@ -208,12 +238,14 @@ using (Now.TransformAround(scale, pivot))
 ```
 
 Use `Vector2.one * pulse` when only uniform scaling is wanted. The stable scene
-id and existing font tiers are reused; changing rotation or the outer transform
-does not rebake the glyphs. Isolating the text prevents the same scale from
+id and existing font tiers are reused; rotating, or scaling within one
+resolution tier, does not rebake the glyphs. Isolating the text prevents the same scale from
 also squashing unrelated SDF shapes or effects in another scene. Outline, glow,
 and shadow distances stay in scene-local units, so they stretch with the text.
-Transform animation does not allocate another font tier; its main variable GPU
-cost is the transformed quad's on-screen pixel area.
+An outer scale that enlarges the text past a tier boundary re-resolves it in
+the finer tier, baking those glyphs once; shrinking never selects a smaller
+tier. Otherwise the main variable GPU cost of transform animation is the
+transformed quad's on-screen pixel area.
 
 This transforms the submitted scene as a unit; it does not add a transform
 node to the SDF graph. Primitive rotation APIs cannot rotate a `Graph` or
@@ -281,9 +313,11 @@ effects, effective tint, local mask, source texture version, and physical size
 are unchanged, `BeginMask()` reuses the already-rasterized coverage. Translation
 and mirroring alone can reuse it. A shape/effect/tint/mask change,
 `Texture2D.Apply()`, physical size change, or mask-resolution change that
-produces different target dimensions rerasterizes; nonzero-speed warp,
-`RenderTexture` fills, and synchronized custom materials rerasterize every
-call. Switching a custom material template also invalidates the cached
+produces different target dimensions rerasterizes; nonzero-speed warp on the
+shader clock (without `SetTime`), `RenderTexture` fills, and synchronized
+custom materials rerasterize every call. With `SetTime(seconds)`, a warp is
+static for each time: equal times reuse coverage and a changed warp phase
+rerasterizes it. Switching a custom material template also invalidates the cached
 coverage. Keep the resolution scale stable for a stable id to avoid target
 resize churn.
 
@@ -345,6 +379,7 @@ NowSdf.Scene(new NowRect(20f, 20f, 220f, 170f))
     .SetContours(18f, 1.2f, new Color(1f, 1f, 1f, 0.16f), Time.time * 10f, bandCount: 2)
     .SetContourMask(new Vector2(116f, 76f), 72f, 18f)
     .SetWarp(2.5f, 52f, 0.18f)
+    .SetTime(Time.time)
     .Graph(blob)
     .Draw();
 ```
@@ -359,13 +394,26 @@ Available scene effects:
 - `SetInnerShadow(offset, softness, color, spread = 0)` darkens inside edges.
 - `SetGlow(radius, color, power = 1)` draws an outside halo.
 - `SetEmboss(lightDirection, strength = 0.35, size = 6)` lights the edge band.
+  Its normal comes from two extra samples of the field per pixel, so sharp
+  inside corners get a clean bevel crease.
 - `SetContours(spacing, width, color, offset = 0, bandCount = 0)` draws
   distance rings. `bandCount` limits the rings to the nearest edge bands;
   `0` keeps the old repeating contour field.
 - `SetContourMask(center, radius, softness = 0)` reveals contours around a
   scene-local point, which works well for pointer-focused field inspection.
 - `SetWarp(amplitude, scale, speed = 0, seed = 0)` bends the distance domain
-  before the scene is evaluated.
+  before the scene is evaluated. `amplitude` is the maximum displacement and
+  `scale` the noise feature size, both in scene units; the noise phase is
+  `seed + time * speed`.
+- `SetTime(seconds)` supplies that time as caller-owned elapsed seconds, like
+  `NowText.SetTime`. Without it, a nonzero `speed` follows the shader/host
+  clock (Unity `_Time.y`, the native and browser hosts' frame time), which a
+  capture cannot control except through `seed`. With it, NowUI computes the
+  phase on the CPU and uploads a static warp, so a given time renders the same
+  in Unity, the native host and the browser, and `BeginMask()` coverage is
+  reused until the phase changes. Prefer `SetTime` for deterministic captures,
+  replays and animation frames; a retained host must still repaint when the
+  time changes. It applies only to the current scene's stock warp.
 
 Source-backed dynamic fonts automatically reserve enough signed-distance reach
 for the scene's finite outline, glow, shadow, inner-shadow, emboss, and bounded
@@ -682,7 +730,9 @@ captured by `BeginMask()`; this forces that cached coverage to rerasterize.
 It recopies template properties before each draw, then reuploads the SDF ABI
 data that the copy replaced. Direct `Draw()` has no intermediate mask texture,
 so `_Time` animation does not itself require a property copy, but the host must
-still repaint. Any retained host must be dirtied before changed builder or
+still repaint. `SetTime` does not change a custom shader's own `_Time` reads; pass a
+caller time through a synchronized material property when those must be
+deterministic. Any retained host must be dirtied before changed builder or
 template state can run again. Synchronization makes custom masks rerasterize on
 every `BeginMask()` because arbitrary shader properties have no reliable change
 version.

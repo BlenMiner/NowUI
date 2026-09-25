@@ -535,6 +535,25 @@ namespace NowUI
         /// Applies current transform to a scalar value (like radius, outline width).
         /// Returns the scaled value using the larger scale component.
         /// </summary>
+        /// <summary>
+        /// Rendered pixels per authored text pixel at the current draw position: UI
+        /// scale times the current transform's largest axis scale.
+        /// </summary>
+        internal static float TextRenderScale()
+        {
+            return _uiScale * ApplyTransformScalar(1f);
+        }
+
+        /// <summary>
+        /// Selects glyph resolution tiers from the rendered text size until disposed,
+        /// so text enlarged by <see cref="Transform(float, Vector2)"/> or UI scale bakes a cell
+        /// sized for the screen rather than magnifying the authored size's cell.
+        /// </summary>
+        internal static NowFont.RenderScaleScope PushTextRenderScale()
+        {
+            return NowFont.PushRenderScale(TextRenderScale());
+        }
+
         static float ApplyTransformScalar(float value)
         {
             if (_transformStack.Count == 0)
@@ -639,6 +658,11 @@ namespace NowUI
             public readonly List<NowTransform> transformStack = new List<NowTransform>(4);
             public readonly List<int> maskScopeTokens = new List<int>(4);
             public readonly List<int> transformScopeTokens = new List<int>(4);
+            public Vector4 colorMultiplier = Vector4.one;
+            public readonly List<Vector4> colorMultiplierStack = new List<Vector4>(4);
+            public readonly List<int> tintScopeTokens = new List<int>(4);
+            public readonly List<RotationState> rotationStack = new List<RotationState>(4);
+            public readonly List<int> rotationScopeTokens = new List<int>(4);
         }
 
         static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
@@ -654,6 +678,23 @@ namespace NowUI
         static Vector4 _colorMultiplier = Vector4.one;
 
         static readonly List<Vector4> _colorMultiplierStack = new List<Vector4>(4);
+
+        static readonly NowScopeGuard _tintScopes = new NowScopeGuard("Now.Opacity/Now.Tint");
+
+        struct RotationState
+        {
+            public int captureDepth;
+            public int meshCount;
+            public int lastMesh;
+            public int lastMeshVertexCount;
+            public Vector2 pivot;
+            public float cos;
+            public float sin;
+        }
+
+        static readonly List<RotationState> _rotationStack = new List<RotationState>(4);
+
+        static readonly NowScopeGuard _rotationScopes = new NowScopeGuard("Now.Rotate");
 
         static Matrix4x4 _projectionMatrix;
 
@@ -1352,6 +1393,9 @@ namespace NowUI
             ResetMaskShaderState();
             _transformStack.Clear();
             _transformScopes.Clear();
+            ResetColorMultiplier();
+            _rotationStack.Clear();
+            _rotationScopes.Clear();
 
             return _screenFrameScopes.Enter();
         }
@@ -1506,6 +1550,13 @@ namespace NowUI
             state.transformStack.AddRange(_transformStack);
             _maskScopes.CopyTo(state.maskScopeTokens);
             _transformScopes.CopyTo(state.transformScopeTokens);
+            state.colorMultiplier = _colorMultiplier;
+            state.colorMultiplierStack.Clear();
+            state.colorMultiplierStack.AddRange(_colorMultiplierStack);
+            _tintScopes.CopyTo(state.tintScopeTokens);
+            state.rotationStack.Clear();
+            state.rotationStack.AddRange(_rotationStack);
+            _rotationScopes.CopyTo(state.rotationScopeTokens);
             _meshCaptureStack.Add(state);
 
             Now.screenMask = screenMask;
@@ -1513,6 +1564,10 @@ namespace NowUI
             _maskScopes.Clear();
             _transformStack.Clear();
             _transformScopes.Clear();
+            // A rotation rotates the vertices emitted into the mesh list that was
+            // current when it began, so it never reaches into a capture's list.
+            _rotationStack.Clear();
+            _rotationScopes.Clear();
             Initialize();
             if (inheritContext)
             {
@@ -1520,6 +1575,12 @@ namespace NowUI
                 _maskScopes.RestoreFrom(state.maskScopeTokens);
                 _transformStack.AddRange(state.transformStack);
                 _transformScopes.RestoreFrom(state.transformScopeTokens);
+            }
+            else
+            {
+                // An independent capture starts untinted, like its cleared
+                // transform and mask stacks.
+                ResetColorMultiplier();
             }
             _ambientAnalyticMaskCount = inheritContext ? state.analyticMaskCount : 0;
             _ambientTextureMaskCount = inheritContext ? state.textureMaskCount : 0;
@@ -1599,6 +1660,156 @@ namespace NowUI
             _colorMultiplierStack.RemoveAt(index);
         }
 
+        static void ResetColorMultiplier()
+        {
+            _colorMultiplier = Vector4.one;
+            _colorMultiplierStack.Clear();
+            _tintScopes.Clear();
+        }
+
+        /// <summary>
+        /// The combined color multiplier applied to everything drawn at this point:
+        /// the product of the active <see cref="Opacity(float)"/> and
+        /// <see cref="Tint(Color)"/> scopes and any host tint, such as a
+        /// <c>NowGraphic</c> color. Custom drawing that bypasses the stock
+        /// builders can multiply its own colors by this value.
+        /// </summary>
+        public static Color currentTint => new Color(
+            _colorMultiplier.x,
+            _colorMultiplier.y,
+            _colorMultiplier.z,
+            _colorMultiplier.w);
+
+        /// <summary>
+        /// Multiplies the alpha of everything drawn inside the scope, including
+        /// text, shapes, lines, gradients, images, glass, SDF scenes, and Lottie.
+        /// Nested scopes multiply. Each draw fades on its own, so overlapping
+        /// shapes inside one scope stay visible through each other; this is not
+        /// a flattened group opacity (render the group with
+        /// <c>NowEffects.Modifier(...).SetRenderToTexture()</c> inside the scope
+        /// for that). Hit testing is unchanged.
+        /// <code>
+        /// using (Now.Opacity(fade))
+        ///     DrawPanel(rect);
+        /// </code>
+        /// </summary>
+        /// <param name="opacity">Alpha multiplier, clamped to 0..1. NaN is treated as 1.</param>
+        public static NowTintScope Opacity(float opacity)
+        {
+            return Tint(new Color(1f, 1f, 1f, opacity));
+        }
+
+        /// <summary>
+        /// Multiplies the color and alpha of everything drawn inside the scope by
+        /// <paramref name="tint"/>. <see cref="Opacity(float)"/> is the alpha-only
+        /// form. Supply display/sRGB values, like every other NowUI color.
+        /// </summary>
+        /// <param name="tint">Channel multipliers. Negative channels are treated as
+        /// 0 and NaN channels as 1; alpha is clamped to 0..1.</param>
+        public static NowTintScope Tint(Color tint)
+        {
+            BeginColorMultiplier(new Color(
+                SanitizeTintChannel(tint.r, float.MaxValue),
+                SanitizeTintChannel(tint.g, float.MaxValue),
+                SanitizeTintChannel(tint.b, float.MaxValue),
+                SanitizeTintChannel(tint.a, 1f)));
+            return new NowTintScope(_tintScopes.Enter());
+        }
+
+        static float SanitizeTintChannel(float value, float max)
+        {
+            if (float.IsNaN(value))
+                return 1f;
+
+            return Mathf.Clamp(value, 0f, max);
+        }
+
+        /// <summary>
+        /// Replays a captured multiplier as an absolute value (not multiplied by
+        /// the current one), for deferred work such as overlays that draw later
+        /// in a different ambient context.
+        /// </summary>
+        internal static NowTintScope ApplyTintSnapshot(Vector4 multiplier)
+        {
+            _colorMultiplierStack.Add(_colorMultiplier);
+            _colorMultiplier = multiplier;
+            return new NowTintScope(_tintScopes.Enter());
+        }
+
+        internal static Vector4 currentColorMultiplier => _colorMultiplier;
+
+        /// <summary>
+        /// Rotates everything drawn inside the scope by <paramref name="degrees"/>
+        /// around <paramref name="pivot"/>. Positive angles turn clockwise on screen,
+        /// matching SDF <c>RotateNext</c>. The pivot is in the current coordinate
+        /// space (the active <see cref="Transform(Vector2, Vector2)"/> applies to it);
+        /// nested rotations and transforms compose.
+        /// <para>
+        /// The rotation is visual. Shapes, text, images, gradients, glass, lines and
+        /// SDF scenes turn rigidly, but hit testing stays in the unrotated space.
+        /// Masks opened inside the scope rotate with the content; masks opened
+        /// outside it clip the content's unrotated footprint. Deferred overlays
+        /// are not rotated.
+        /// </para>
+        /// <code>
+        /// using (Now.Rotate(angle, card.center))
+        ///     DrawCard(card);
+        /// </code>
+        /// </summary>
+        /// <exception cref="ArgumentException">The angle or pivot is not finite.</exception>
+        public static NowRotationScope Rotate(float degrees, Vector2 pivot)
+        {
+            if (float.IsNaN(degrees) || float.IsInfinity(degrees))
+                throw new ArgumentException("Rotation angle must be finite.", nameof(degrees));
+
+            if (float.IsNaN(pivot.x) || float.IsInfinity(pivot.x) || float.IsNaN(pivot.y) || float.IsInfinity(pivot.y))
+                throw new ArgumentException("Rotation pivot must be finite.", nameof(pivot));
+
+            float radians = degrees * Mathf.Deg2Rad;
+            int lastMesh = _lastUsedMeshId >= 0 && _lastUsedMeshId < _meshes.count ? _lastUsedMeshId : -1;
+
+            _rotationStack.Add(new RotationState
+            {
+                captureDepth = _meshCaptureStack.Count,
+                meshCount = _meshes.count,
+                lastMesh = lastMesh,
+                lastMeshVertexCount = lastMesh >= 0 ? _meshes.array[lastMesh].vertexCount : 0,
+                pivot = ApplyTransform(pivot),
+                cos = Mathf.Cos(radians),
+                sin = Mathf.Sin(radians)
+            });
+
+            return new NowRotationScope(_rotationScopes.Enter());
+        }
+
+        internal static void PopRotation(int token)
+        {
+            if (!_rotationScopes.Exit(token) || _rotationStack.Count == 0)
+                return;
+
+            int index = _rotationStack.Count - 1;
+            RotationState state = _rotationStack[index];
+            _rotationStack.RemoveAt(index);
+
+            if (state.captureDepth != _meshCaptureStack.Count || (state.cos == 1f && state.sin == 0f))
+                return;
+
+            if (state.lastMesh >= 0 && state.lastMesh < _meshes.count)
+                _meshes.array[state.lastMesh].RotateVertices(state.lastMeshVertexCount, state.pivot, state.cos, state.sin);
+
+            for (int i = state.meshCount; i < _meshes.count; ++i)
+            {
+                if (i != state.lastMesh)
+                    _meshes.array[i].RotateVertices(0, state.pivot, state.cos, state.sin);
+            }
+        }
+
+        internal static void PopTint(int token)
+        {
+            if (_tintScopes.Exit(token))
+                EndColorMultiplier();
+        }
+
         internal static void CancelMeshCapture()
         {
             if (!_captureMesh)
@@ -1633,11 +1844,22 @@ namespace NowUI
             _transformStack.Clear();
             _transformStack.AddRange(state.transformStack);
             _transformScopes.RestoreFrom(state.transformScopeTokens);
+            _colorMultiplier = state.colorMultiplier;
+            _colorMultiplierStack.Clear();
+            _colorMultiplierStack.AddRange(state.colorMultiplierStack);
+            _tintScopes.RestoreFrom(state.tintScopeTokens);
+            _rotationStack.Clear();
+            _rotationStack.AddRange(state.rotationStack);
+            _rotationScopes.RestoreFrom(state.rotationScopeTokens);
             InvalidateMaskShaderState();
             state.maskStack.Clear();
             state.transformStack.Clear();
             state.maskScopeTokens.Clear();
             state.transformScopeTokens.Clear();
+            state.colorMultiplierStack.Clear();
+            state.tintScopeTokens.Clear();
+            state.rotationStack.Clear();
+            state.rotationScopeTokens.Clear();
             state.analyticMaskCount = 0;
             state.textureMaskCount = 0;
 
@@ -2743,6 +2965,7 @@ namespace NowUI
             int totalUnits = style.animationUnitCount > 0
                 ? style.animationUnitCount
                 : style.animationUnitOffset + Mathf.Max(0, localAnimationUnits);
+            style.resolvedAnimationUnits = totalUnits;
 
             if (style.animationTimeNormalized)
             {
@@ -2762,7 +2985,7 @@ namespace NowUI
             // Settled entrance/reveal presets are visually identical to static
             // text. Drop only the local draw copy back to the bulk/native path;
             // the caller's immutable builder still retains its configuration.
-            if (style.animation.kind != NowTextAnimationKind.Wave &&
+            if (!style.animation.keepsFinalState &&
                 style.animation.IsComplete(style.animationTime, totalUnits))
             {
                 style.animation = default;
@@ -2775,7 +2998,19 @@ namespace NowUI
         /// </summary>
         internal static int GetTextAnimationUnitCount(in NowText style, string value)
         {
-            if (!style.animation.isAnimated || string.IsNullOrEmpty(value))
+            if (!style.animation.isAnimated)
+                return 0;
+
+            return CountTextUnits(style, value);
+        }
+
+        /// <summary>
+        /// Number of animation/spacing units (shaped clusters, or grapheme
+        /// approximations without shaping) the string draw path emits.
+        /// </summary>
+        internal static int CountTextUnits(in NowText style, string value)
+        {
+            if (string.IsNullOrEmpty(value))
                 return 0;
 
             if (textShaping &&
@@ -2821,6 +3056,14 @@ namespace NowUI
         {
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
+
+            using var renderScale = PushTextRenderScale();
+
+            if (style.needsBlockLayout)
+            {
+                DrawTextBlock(style, value);
+                return;
+            }
 
             using var profile = NowProfiler.TextDraw.Auto();
 
@@ -2909,6 +3152,14 @@ namespace NowUI
         {
             if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
                 return;
+
+            using var renderScale = PushTextRenderScale();
+
+            if (style.needsBlockLayout)
+            {
+                DrawTextBlock(style, value);
+                return;
+            }
 
             using var profile = NowProfiler.TextDraw.Auto();
 
@@ -3082,17 +3333,29 @@ namespace NowUI
             ref float outline,
             ref float pixelRange)
         {
-            if (!style.animation.isAnimated)
+            _glyphRotationCos = 1f;
+            _glyphRotationSin = 0f;
+
+            if (!style.perGlyph)
                 return true;
 
-            NowTextAnimationState state = style.animation.Sample(animationUnit, style.animationTime);
+            NowTextAnimationState state = style.animation.isAnimated
+                ? style.animation.Sample(animationUnit, style.resolvedAnimationUnits, style.animationTime)
+                : NowTextAnimationState.identity;
 
             if (!state.visible || state.alpha <= 0.0005f || state.scale <= 0.0005f)
                 return false;
 
+            Vector2 localOffset = state.offset;
+
+            // Tracking adds a constant gap after every unit before this one. Units
+            // are shaped clusters, so ligatures and combining marks stay together.
+            if (style.letterSpacing != 0f)
+                localOffset.x += style.letterSpacing * style.fontSize * (animationUnit - style.animationUnitOffset);
+
             Vector2 offset = _transformStack.Count > 0
-                ? TransformScreenVector(state.offset)
-                : state.offset;
+                ? TransformScreenVector(localOffset)
+                : localOffset;
             x += offset.x;
             y += offset.y;
             color.w *= state.alpha;
@@ -3111,7 +3374,38 @@ namespace NowUI
                 pixelRange *= state.scale;
             }
 
+            if (state.rotation != 0f)
+            {
+                var plane = glyph.planeBounds;
+                float radians = state.rotation * Mathf.Deg2Rad;
+                _glyphRotationCos = Mathf.Cos(radians);
+                _glyphRotationSin = Mathf.Sin(radians);
+                _glyphRotationPivot = new Vector2(
+                    x + (plane.left + plane.right) * fontSize * 0.5f,
+                    y + baseline - (plane.bottom + plane.top) * fontSize * 0.5f);
+            }
+
             return true;
+        }
+
+        static float _glyphRotationCos = 1f;
+
+        static float _glyphRotationSin;
+
+        static Vector2 _glyphRotationPivot;
+
+        /// <summary>
+        /// Turns the quad just emitted for a glyph by the rotation its animation
+        /// sampled in <see cref="ApplyTextAnimation"/>; a no-op for unrotated glyphs.
+        /// </summary>
+        static void RotateEmittedGlyph(NowMesh mesh, int firstVertex)
+        {
+            if (_glyphRotationSin == 0f && _glyphRotationCos == 1f)
+                return;
+
+            mesh.RotateVertices(firstVertex, _glyphRotationPivot, _glyphRotationCos, _glyphRotationSin);
+            _glyphRotationCos = 1f;
+            _glyphRotationSin = 0f;
         }
 
         static float TextLineOriginY(in NowText style, float baseline)
@@ -3173,7 +3467,7 @@ namespace NowUI
                         break;
                     default:
                     {
-                        int animationUnit = style.animation.isAnimated && codepoint != '\r'
+                        int animationUnit = style.perGlyph && codepoint != '\r'
                             ? animationCursor.MoveNext(codepoint)
                             : animationCursor.index;
 
@@ -3249,6 +3543,7 @@ namespace NowUI
                                 break;
                             }
 
+                            int glyphStart = mesh.vertexCount;
                             mesh.AddTextGlyphReserved(
                                 glyph,
                                 glyphX,
@@ -3263,6 +3558,7 @@ namespace NowUI
                                 style.resolvedGradientPayload,
                                 style.resolvedGradientRamp,
                                 style.outlineOnlyPass);
+                            RotateEmittedGlyph(mesh, glyphStart);
                         }
 
                         style.rect.x += glyph.advance * fontSize;
@@ -3309,7 +3605,7 @@ namespace NowUI
                 out material);
         }
 
-        static bool TryResolveTextGlyph(
+        internal static bool TryResolveTextGlyph(
             NowFontAsset fontAsset,
             int codepoint,
             float fontSize,
@@ -3381,7 +3677,7 @@ namespace NowUI
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
 
-            if (!hasTransform && !style.animation.isAnimated)
+            if (!hasTransform && !style.perGlyph)
             {
                 DrawPreparedCodepointRunUntransformed(
                     ref style,
@@ -3420,7 +3716,7 @@ namespace NowUI
 
                 int animationUnit = 0;
 
-                if (style.animation.isAnimated)
+                if (style.perGlyph)
                 {
                     if (prepared.codepoint == '\t' || prepared.codepoint == '\r')
                         animationCursor.BreakSequence();
@@ -3494,6 +3790,7 @@ namespace NowUI
                         continue;
                     }
 
+                    int glyphStart = mesh.vertexCount;
                     mesh.AddTextGlyphReserved(
                         prepared.glyph,
                         glyphX,
@@ -3508,6 +3805,7 @@ namespace NowUI
                         style.resolvedGradientPayload,
                         style.resolvedGradientRamp,
                         style.outlineOnlyPass);
+                    RotateEmittedGlyph(mesh, glyphStart);
                 }
 
                 style.rect.x += prepared.advance * fontSize;
@@ -3642,6 +3940,363 @@ namespace NowUI
         /// all-or-nothing. Tabs advance by four spaces, matching the codepoint path's
         /// TAB_SPACES.
         /// </summary>
+        const int TEXT_LINE_CACHE_LIMIT = 256;
+
+        static readonly Dictionary<string, string[]> _textLineCache = new Dictionary<string, string[]>(32);
+
+        /// <summary>
+        /// Cached '\n' split used by aligned and letter-spaced multi-line text, so
+        /// repeated draws of the same string do not allocate line substrings.
+        /// </summary>
+        internal static string[] GetTextLines(string value)
+        {
+            if (_textLineCache.TryGetValue(value, out var lines))
+                return lines;
+
+            lines = value.Split('\n');
+
+            if (_textLineCache.Count >= TEXT_LINE_CACHE_LIMIT)
+                _textLineCache.Clear();
+
+            _textLineCache[value] = lines;
+            return lines;
+        }
+
+        /// <summary>Advance width of one line including letter spacing between its units.</summary>
+        internal static float MeasureTextLineWidth(in NowText style, string line)
+        {
+            if (string.IsNullOrEmpty(line) || style.font == null)
+                return 0f;
+
+            float width = style.font.MeasureText(line, style.fontSize, style.fontStyle).x;
+
+            if (style.letterSpacing != 0f)
+                width += style.letterSpacing * style.fontSize * Mathf.Max(0, CountTextUnits(style, line) - 1);
+
+            return width;
+        }
+
+        internal static float MeasureTextLineWidth(in NowText style, ReadOnlySpan<char> line)
+        {
+            if (line.IsEmpty || style.font == null)
+                return 0f;
+
+            float width = style.font.MeasureText(line, style.fontSize, style.fontStyle).x;
+
+            if (style.letterSpacing != 0f)
+                width += style.letterSpacing * style.fontSize * Mathf.Max(0, NowTextUnitCursor.Count(line) - 1);
+
+            return width;
+        }
+
+        /// <summary>Widest line of a string, including letter spacing.</summary>
+        internal static float MeasureTextBlockWidth(in NowText style, string value)
+        {
+            if (value.IndexOf('\n') < 0)
+                return MeasureTextLineWidth(style, value);
+
+            float width = 0f;
+            var lines = GetTextLines(value);
+
+            for (int i = 0; i < lines.Length; ++i)
+                width = Mathf.Max(width, MeasureTextLineWidth(style, lines[i]));
+
+            return width;
+        }
+
+        internal static float MeasureTextBlockWidth(in NowText style, ReadOnlySpan<char> value)
+        {
+            float width = 0f;
+
+            while (true)
+            {
+                int newline = value.IndexOf('\n');
+                var line = newline < 0 ? value : value.Slice(0, newline);
+                width = Mathf.Max(width, MeasureTextLineWidth(style, line));
+
+                if (newline < 0)
+                    return width;
+
+                value = value.Slice(newline + 1);
+            }
+        }
+
+        /// <summary>Top of the first line box for a block of <paramref name="lineCount"/> lines.</summary>
+        internal static float AlignedTextTop(in NowText style, int lineCount)
+        {
+            float fontSize = style.fontSize;
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
+            float blockHeight = lineHeight * lineCount;
+            var rect = style.rect;
+
+            switch (style.verticalAlign)
+            {
+                case NowTextVerticalAlign.Middle:
+                    return rect.y + (rect.height - blockHeight) * 0.5f;
+                case NowTextVerticalAlign.Bottom:
+                    return rect.y + rect.height - blockHeight;
+                case NowTextVerticalAlign.CapMiddle:
+                {
+                    var metrics = style.font.GetMetrics(style.fontStyle);
+                    float ascender = metrics.ascender * fontSize;
+                    float capHeight = metrics.capHeight * fontSize;
+                    float span = (lineCount - 1) * lineHeight + capHeight;
+                    return rect.y + rect.height * 0.5f - ascender + capHeight - span * 0.5f;
+                }
+                default:
+                    return rect.y;
+            }
+        }
+
+        internal static float AlignedLineLeft(in NowText style, float lineWidth)
+        {
+            switch (style.align)
+            {
+                case NowTextAlign.Center:
+                    return style.rect.x + (style.rect.width - lineWidth) * 0.5f;
+                case NowTextAlign.Right:
+                    return style.rect.x + style.rect.width - lineWidth;
+                default:
+                    return style.rect.x;
+            }
+        }
+
+        /// <summary>
+        /// Resolves alignment and letter spacing into one draw per line: each line is
+        /// placed inside the authored rect, keeps one animation sequence and one
+        /// gradient mapping across lines, and restarts its spacing at the line start.
+        /// </summary>
+        static void DrawTextBlock(NowText style, string value)
+        {
+            bool multiline = value.IndexOf('\n') >= 0;
+            var lines = multiline ? GetTextLines(value) : null;
+            int lineCount = multiline ? lines.Length : 1;
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * style.fontSize;
+            float top = AlignedTextTop(style, lineCount);
+
+            NowText lineStyle = style;
+            lineStyle.layoutResolved = true;
+
+            if (style.gradientEnabled && !style.hasGradientBounds)
+            {
+                float blockWidth = MeasureTextBlockWidth(style, value);
+                lineStyle.gradientBounds = new NowRect(AlignedLineLeft(style, blockWidth), top, blockWidth, lineHeight * lineCount);
+                lineStyle.hasGradientBounds = true;
+            }
+
+            int totalUnits = 0;
+
+            if (style.animation.isAnimated && multiline && style.animationUnitCount <= 0)
+            {
+                for (int i = 0; i < lineCount; ++i)
+                    totalUnits += CountTextUnits(style, lines[i]);
+            }
+
+            int unitOffset = style.animationUnitOffset;
+
+            for (int i = 0; i < lineCount; ++i)
+            {
+                string line = multiline ? lines[i] : value;
+                float width = MeasureTextLineWidth(style, line);
+                lineStyle.rect = new NowRect(AlignedLineLeft(style, width), top + i * lineHeight, width, lineHeight);
+
+                if (multiline)
+                {
+                    int lineUnits = CountTextUnits(style, line);
+                    lineStyle = lineStyle.SetAnimationSequence(unitOffset, style.animationUnitCount > 0 ? style.animationUnitCount : totalUnits);
+                    unitOffset += lineUnits;
+                }
+
+                if (!string.IsNullOrEmpty(line))
+                    DrawString(lineStyle, line);
+            }
+        }
+
+        static void DrawTextBlock(NowText style, ReadOnlySpan<char> value)
+        {
+            int lineCount = 1;
+
+            for (int i = 0; i < value.Length; ++i)
+            {
+                if (value[i] == '\n')
+                    ++lineCount;
+            }
+
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * style.fontSize;
+            float top = AlignedTextTop(style, lineCount);
+
+            NowText lineStyle = style;
+            lineStyle.layoutResolved = true;
+
+            if (style.gradientEnabled && !style.hasGradientBounds)
+            {
+                float blockWidth = MeasureTextBlockWidth(style, value);
+                lineStyle.gradientBounds = new NowRect(AlignedLineLeft(style, blockWidth), top, blockWidth, lineHeight * lineCount);
+                lineStyle.hasGradientBounds = true;
+            }
+
+            int totalUnits = style.animationUnitCount > 0
+                ? style.animationUnitCount
+                : style.animation.isAnimated ? NowTextUnitCursor.Count(value) : 0;
+            int unitOffset = style.animationUnitOffset;
+
+            for (int i = 0; i < lineCount; ++i)
+            {
+                int newline = value.IndexOf('\n');
+                var line = newline < 0 ? value : value.Slice(0, newline);
+                float width = MeasureTextLineWidth(style, line);
+                lineStyle.rect = new NowRect(AlignedLineLeft(style, width), top + i * lineHeight, width, lineHeight);
+
+                if (lineCount > 1)
+                {
+                    lineStyle = lineStyle.SetAnimationSequence(unitOffset, totalUnits);
+                    unitOffset += NowTextUnitCursor.Count(line);
+                }
+
+                if (!line.IsEmpty)
+                    DrawString(lineStyle, line);
+
+                if (newline < 0)
+                    break;
+
+                value = value.Slice(newline + 1);
+            }
+        }
+
+        /// <summary>
+        /// Writes the laid-out box of every unit of <paramref name="value"/> in draw
+        /// order, applying alignment and letter spacing exactly as a draw would.
+        /// Returns the total unit count, which may exceed <paramref name="rects"/>.
+        /// </summary>
+        internal static int GetTextUnitRects(in NowText style, string value, Span<NowRect> rects)
+        {
+            if (string.IsNullOrEmpty(value) || style.font == null)
+                return 0;
+
+            bool multiline = value.IndexOf('\n') >= 0;
+            var lines = multiline ? GetTextLines(value) : null;
+            int lineCount = multiline ? lines.Length : 1;
+            bool aligned = style.align != NowTextAlign.Left || style.verticalAlign != NowTextVerticalAlign.Top;
+            float lineHeight = style.font.GetLineHeight(style.fontStyle) * style.fontSize;
+            float top = aligned ? AlignedTextTop(style, lineCount) : style.rect.y;
+            int written = 0;
+
+            for (int i = 0; i < lineCount; ++i)
+            {
+                string line = multiline ? lines[i] : value;
+
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
+                float left = aligned
+                    ? AlignedLineLeft(style, MeasureTextLineWidth(style, line))
+                    : style.rect.x;
+                written = AppendLineUnitRects(style, line, left, top + i * lineHeight, lineHeight, rects, written);
+            }
+
+            return written;
+        }
+
+        static int AppendLineUnitRects(
+            in NowText style,
+            string line,
+            float left,
+            float top,
+            float lineHeight,
+            Span<NowRect> rects,
+            int written)
+        {
+            float fontSize = style.fontSize;
+            float spacing = style.letterSpacing * fontSize;
+
+            // Shaped path: one unit per HarfBuzz cluster, matching the draw path's
+            // animation units. Lines with tabs use the unshaped advances below.
+            if (textShaping &&
+                !HasShapedControlCharacters(line) &&
+                style.font.TryResolveFont(style.fontStyle, out var font) &&
+                font != null &&
+                font.TryGetShapedRun(line, out var glyphs) &&
+                glyphs.Length > 0)
+            {
+                float pen = left;
+                int unit = 0;
+                int g = 0;
+
+                while (g < glyphs.Length)
+                {
+                    uint cluster = glyphs[g].cluster;
+                    float start = pen;
+
+                    while (g < glyphs.Length && glyphs[g].cluster == cluster)
+                    {
+                        pen += glyphs[g].xAdvance * fontSize;
+                        ++g;
+                    }
+
+                    float x = start + spacing * unit;
+
+                    if (written < rects.Length)
+                        rects[written] = new NowRect(x, top, pen - start, lineHeight);
+
+                    ++written;
+                    ++unit;
+                }
+
+                return written;
+            }
+
+            var cursor = new NowTextUnitCursor(0);
+            float penX = left;
+            int lastUnit = -1;
+            int lastIndex = -1;
+            ReadOnlySpan<char> span = line.AsSpan();
+
+            for (int i = 0; i < span.Length; ++i)
+            {
+                int codepoint = NowFont.ReadCodepoint(span, ref i);
+
+                if (codepoint == '\r')
+                {
+                    cursor.BreakSequence();
+                    continue;
+                }
+
+                if (codepoint == '\t')
+                {
+                    cursor.BreakSequence();
+
+                    if (TryResolveTextGlyph(style.font, ' ', fontSize, 0f, style.fontStyle, out _, out var space, out _))
+                        penX += space.advance * fontSize * 4;
+
+                    continue;
+                }
+
+                int unit = cursor.MoveNext(codepoint);
+                float advance = TryResolveTextGlyph(style.font, codepoint, fontSize, 0f, style.fontStyle, out _, out var glyph, out _)
+                    ? glyph.advance * fontSize
+                    : 0f;
+
+                if (unit != lastUnit)
+                {
+                    lastUnit = unit;
+                    lastIndex = written;
+
+                    if (written < rects.Length)
+                        rects[written] = new NowRect(penX + spacing * unit, top, advance, lineHeight);
+
+                    ++written;
+                }
+                else if (lastIndex >= 0 && lastIndex < rects.Length)
+                {
+                    rects[lastIndex].width += advance;
+                }
+
+                penX += advance;
+            }
+
+            return written;
+        }
+
         static bool TryDrawShapedString(NowText style, string value)
         {
             if (!style.font.TryResolveFont(style.fontStyle, out var font) || font == null)
@@ -3891,7 +4546,7 @@ namespace NowUI
         {
             bool hasTransform = _transformStack.Count > 0;
 
-            if (!hasTransform && !style.animation.isAnimated)
+            if (!hasTransform && !style.perGlyph)
             {
                 return AppendShapedRunUntransformed(
                     ref style,
@@ -3986,6 +4641,7 @@ namespace NowUI
                         ref glyphOutline,
                         ref glyphPixelRange))
                     {
+                        int glyphStart = mesh.vertexCount;
                         mesh.AddTextGlyphReserved(
                             glyph,
                             glyphX,
@@ -4000,6 +4656,7 @@ namespace NowUI
                             style.resolvedGradientPayload,
                             style.resolvedGradientRamp,
                             style.outlineOnlyPass);
+                        RotateEmittedGlyph(mesh, glyphStart);
                     }
                 }
 
@@ -4115,6 +4772,8 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
+            using var renderScale = PushTextRenderScale();
+
             if (!PrepareTextDraw(ref style))
                 return;
             PrepareTextAnimation(ref style, style.animation.isAnimated ? 1 : 0);
@@ -4149,6 +4808,8 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
+            using var renderScale = PushTextRenderScale();
+
             if (!PrepareTextDraw(ref style))
                 return;
 
@@ -4164,6 +4825,8 @@ namespace NowUI
         {
             if (_suppressDrawDepth > 0 || font == null)
                 return;
+
+            using var renderScale = PushTextRenderScale();
 
             if (!PrepareTextDraw(ref style))
                 return;
@@ -4291,6 +4954,7 @@ namespace NowUI
                 return;
             }
 
+            int glyphStart = mesh.vertexCount;
             mesh.AddTextGlyph(
                 glyph,
                 glyphX,
@@ -4305,6 +4969,7 @@ namespace NowUI
                 style.resolvedGradientPayload,
                 style.resolvedGradientRamp,
                 style.outlineOnlyPass);
+            RotateEmittedGlyph(mesh, glyphStart);
         }
 
         internal static void DrawLottie(NowLottie lottie)
@@ -4480,6 +5145,55 @@ namespace NowUI
     /// disposing restores the previously active transform.
     /// </summary>
     [NowScope]
+    /// <summary>
+    /// Scope returned by <see cref="Now.Opacity(float)"/> and
+    /// <see cref="Now.Tint(Color)"/>. Dispose it, normally with <c>using</c>,
+    /// to restore the previous multiplier. Scopes must be disposed in reverse
+    /// order; a default or already-disposed scope is a no-op.
+    /// </summary>
+    public struct NowTintScope : IDisposable
+    {
+        int _token;
+
+        internal NowTintScope(int token)
+        {
+            _token = token;
+        }
+
+        public void Dispose()
+        {
+            if (_token == 0)
+                return;
+
+            Now.PopTint(_token);
+            _token = 0;
+        }
+    }
+
+    /// <summary>
+    /// Scope returned by <see cref="Now.Rotate(float, Vector2)"/>. Disposing it
+    /// rotates everything drawn since it began. Scopes must be disposed in
+    /// reverse order; a default or already-disposed scope is a no-op.
+    /// </summary>
+    public struct NowRotationScope : IDisposable
+    {
+        int _token;
+
+        internal NowRotationScope(int token)
+        {
+            _token = token;
+        }
+
+        public void Dispose()
+        {
+            if (_token == 0)
+                return;
+
+            Now.PopRotation(_token);
+            _token = 0;
+        }
+    }
+
     public struct NowTransformScope : IDisposable
     {
         int _token;

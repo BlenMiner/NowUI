@@ -470,7 +470,7 @@ namespace NowUI
             if (!ripple.active)
                 return;
 
-            float eased = EaseOutCubic(ripple.progress);
+            float eased = NowEase.OutCubic(ripple.progress);
             float maxRadius = MaxDistanceToCorner(context.rect, ripple.origin);
             float rippleRadius = Mathf.Lerp(Mathf.Min(context.rect.width, context.rect.height) * 0.18f, maxRadius, eased);
             float fade = 1f - Mathf.SmoothStep(0.65f, 1f, ripple.progress);
@@ -483,12 +483,6 @@ namespace NowUI
                 .SetCircleRadius(rippleRadius)
                 .SetColor(color)
                 .Draw();
-        }
-
-        static float EaseOutCubic(float value)
-        {
-            value = 1f - Mathf.Clamp01(value);
-            return 1f - value * value * value;
         }
 
         static float MaxDistanceToCorner(NowRect rect, Vector2 point)

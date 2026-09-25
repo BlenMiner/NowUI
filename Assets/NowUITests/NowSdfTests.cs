@@ -1617,11 +1617,14 @@ public class NowSdfTests
 
         try
         {
+            // Both sizes resolve in the large text's resolution tier: an SDF scene binds
+            // one glyph atlas, so its text shares one cell and one raw range.
             int sharedPixelRange = Mathf.Max(
-                font.GetDynamicPixelRange(margin / smallSize, smallSize),
+                font.GetDynamicPixelRange(margin / smallSize, smallSize, largeSize),
                 font.GetDynamicPixelRange(margin / largeSize, largeSize));
-            Assert.Greater(sharedPixelRange, font.GetDynamicPixelRange(0f, smallSize),
+            Assert.Greater(sharedPixelRange, font.GetDynamicPixelRange(0f, smallSize, largeSize),
                 "The mixed-size fixture must select an extended range.");
+            int sharedCell = font.GetDynamicGlyphSize(largeSize);
 
             var scene = NowSdf.Scene(
                     new NowRect(0f, 0f, 320f, 150f),
@@ -1638,10 +1641,8 @@ public class NowSdfTests
             var material = _drawList.batches[0].material;
             var shapeData = material.GetVectorArray("_SdfData0");
             var textData = material.GetVectorArray("_SdfData2");
-            float expectedSmallScreenRange =
-                smallSize / font.GetDynamicGlyphSize(smallSize) * sharedPixelRange;
-            float expectedLargeScreenRange =
-                largeSize / font.GetDynamicGlyphSize(largeSize) * sharedPixelRange;
+            float expectedSmallScreenRange = smallSize / sharedCell * sharedPixelRange;
+            float expectedLargeScreenRange = largeSize / sharedCell * sharedPixelRange;
 
             Assert.AreEqual(2f, material.GetFloat("_SdfShapeCount"), 0.0001f,
                 "Neither glyph may disappear while reconciling a shared atlas range.");
@@ -1665,6 +1666,149 @@ public class NowSdfTests
         }
         finally
         {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void SdfTextGraphsInDifferentResolutionTiersShareOneAtlas()
+    {
+        const float smallSize = 20f;
+        const float largeSize = 120f;
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            Assert.Greater(font.GetDynamicGlyphSize(largeSize), font.GetDynamicGlyphSize(smallSize),
+                "The fixture must span two resolution tiers.");
+
+            var small = NowSdf.Graph().Text(new Vector2(10f, 10f), "A", font, smallSize);
+            var large = NowSdf.Graph().Text(new Vector2(60f, 10f), "B", font, largeSize);
+            var scene = NowSdf.Scene(new NowRect(0f, 0f, 320f, 200f), new NowId("sdf-cross-graph-tiers"))
+                .Graph(small)
+                .Graph(large);
+
+            using (_drawList.Begin(new Vector2(320f, 200f)))
+                scene.Draw();
+
+            Assert.AreEqual(1, _drawList.batchCount, "Both tiers must resolve into one glyph atlas.");
+            var material = _drawList.batches[0].material;
+            Assert.AreEqual(2f, material.GetFloat("_SdfShapeCount"), 0.0001f, "Neither glyph may disappear.");
+            var textData = material.GetVectorArray("_SdfData2");
+            float cell = font.GetDynamicGlyphSize(largeSize);
+            int range = font.GetDynamicPixelRange(0f, largeSize);
+            Assert.AreEqual(smallSize / cell * range, textData[0].x, 0.01f);
+            Assert.AreEqual(largeSize / cell * range, textData[1].x, 0.01f);
+        }
+        finally
+        {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void SdfSceneTextResolvesInTheTierOfItsRenderedSize()
+    {
+        const float authored = 40f;
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            Assert.Greater(font.GetDynamicGlyphSize(authored * 2f), font.GetDynamicGlyphSize(authored),
+                "The fixture must cross a tier when doubled.");
+            Assert.IsTrue(font.GetGlyph('A', authored, 0f, out _, out var authoredMaterial));
+            Assert.IsTrue(font.GetGlyph('A', authored * 2f, 0f, out _, out var renderedMaterial));
+
+            Texture DrawScene(float transformScale, float uiScale, string id)
+            {
+                var graph = NowSdf.Graph().Text(new Vector2(10f, 10f), "A", font, authored);
+                var scene = NowSdf.Scene(new NowRect(0f, 0f, 120f, 80f), new NowId(id)).Graph(graph);
+                Now.SetUIScale(uiScale);
+
+                using (_drawList.Begin(new Vector2(480f, 320f)))
+                using (Now.Transform(transformScale))
+                    scene.Draw();
+
+                Assert.AreEqual(1, _drawList.batchCount);
+                Assert.AreEqual(1f, _drawList.batches[0].material.GetFloat("_SdfShapeCount"), 0.0001f,
+                    "The glyph must survive re-resolution.");
+                return _drawList.batches[0].material.mainTexture;
+            }
+
+            Assert.AreSame(authoredMaterial.mainTexture, DrawScene(1f, 1f, "sdf-render-tier-1x"),
+                "Unscaled text keeps its authored tier.");
+            Assert.AreSame(renderedMaterial.mainTexture, DrawScene(2f, 1f, "sdf-render-tier-transform"),
+                "A 2x transform resolves the text in the 2x size's tier.");
+            Assert.AreSame(renderedMaterial.mainTexture, DrawScene(1f, 2f, "sdf-render-tier-ui"),
+                "A 2x UI scale resolves the text in the 2x size's tier.");
+            Assert.AreSame(authoredMaterial.mainTexture, DrawScene(0.5f, 1f, "sdf-render-tier-shrunk"),
+                "Shrunken text keeps its authored tier.");
+
+            // One retained scene follows its render scale across draws.
+            var retainedGraph = NowSdf.Graph().Text(new Vector2(10f, 10f), "A", font, authored);
+            var retained = NowSdf.Scene(new NowRect(0f, 0f, 120f, 80f), new NowId("sdf-render-tier-retained"))
+                .Graph(retainedGraph);
+            Now.SetUIScale(1f);
+
+            foreach (var (scale, expected) in new[]
+                     {
+                         (1f, authoredMaterial.mainTexture),
+                         (2f, renderedMaterial.mainTexture),
+                         (1f, authoredMaterial.mainTexture)
+                     })
+            {
+                using (_drawList.Begin(new Vector2(480f, 320f)))
+                using (Now.Transform(scale))
+                    retained.Draw();
+
+                Assert.AreSame(expected, _drawList.batches[0].material.mainTexture,
+                    $"The retained scene follows a {scale}x transform.");
+            }
+        }
+        finally
+        {
+            DestroyManagedDynamicFont(font);
+        }
+    }
+
+    [Test]
+    public void TextResolvesInTheTierOfItsRenderedSize()
+    {
+        const float authored = 40f;
+        var font = CreateManagedDynamicFont();
+
+        try
+        {
+            Assert.IsTrue(font.GetGlyph('A', authored, 0f, out _, out var authoredMaterial));
+            Assert.IsTrue(font.GetGlyph('A', authored * 2f, 0f, out _, out var renderedMaterial));
+            Assert.AreNotSame(authoredMaterial, renderedMaterial, "The fixture must cross a tier when doubled.");
+
+            foreach (bool shaping in new[] { true, false })
+            {
+                Now.textShaping = shaping;
+
+                Material Draw(float transformScale, float uiScale, float fontSize)
+                {
+                    Now.SetUIScale(uiScale);
+
+                    using (_drawList.Begin(new Vector2(480f, 320f)))
+                    using (Now.Transform(transformScale))
+                        Now.Text(new NowRect(0f, 0f, 200f, 80f)).SetFont(font).SetFontSize(fontSize).Draw("AA");
+
+                    Assert.AreEqual(1, _drawList.batchCount);
+                    return _drawList.batches[0].material;
+                }
+
+                Assert.AreSame(authoredMaterial, Draw(1f, 1f, authored), $"shaping={shaping}: unscaled text.");
+                Assert.AreSame(renderedMaterial, Draw(2f, 1f, authored), $"shaping={shaping}: 2x transform.");
+                Assert.AreSame(renderedMaterial, Draw(1f, 2f, authored), $"shaping={shaping}: 2x UI scale.");
+                Assert.AreSame(renderedMaterial, Draw(0.5f, 1f, authored * 2f),
+                    $"shaping={shaping}: shrunken text keeps its authored tier.");
+            }
+        }
+        finally
+        {
+            Now.SetUIScale(1f);
             DestroyManagedDynamicFont(font);
         }
     }
@@ -2758,23 +2902,17 @@ public class NowSdfTests
         var rect = new NowRect(0f, 0f, 48f, 32f);
         var id = new NowId("sdf-mask-ambient-tint");
 
+        // An independent capture starts untinted, so the ambient multiplier is
+        // applied inside it, the way hosts such as NowGraphic tint their frame.
         void Capture(float alpha)
         {
-            Now.BeginColorMultiplier(new Color(1f, 1f, 1f, alpha));
-
-            try
+            using (_drawList.Begin(new Vector2(64f, 48f)))
+            using (Now.Opacity(alpha))
+            using (NowSdf.Scene(rect, id)
+                .Circle(rect.center, 12f)
+                .BeginMask())
             {
-                using (_drawList.Begin(new Vector2(64f, 48f)))
-                using (NowSdf.Scene(rect, id)
-                    .Circle(rect.center, 12f)
-                    .BeginMask())
-                {
-                    Now.Rectangle(rect).SetColor(Color.white).Draw();
-                }
-            }
-            finally
-            {
-                Now.EndColorMultiplier();
+                Now.Rectangle(rect).SetColor(Color.white).Draw();
             }
         }
 
@@ -2857,6 +2995,77 @@ public class NowSdfTests
         Capture(1f);
         Capture(1f);
         Assert.AreEqual(3, NowSdf.maskRasterizationCount);
+    }
+
+    [Test]
+    public void SdfSetTimeUploadsCallerClockWarpPhase()
+    {
+        Vector4 Upload(float speed, float seed, float? seconds, bool timeFirst = false)
+        {
+            using (_drawList.Begin(new Vector2(120f, 90f)))
+            {
+                var scene = NowSdf.Scene(new NowRect(0f, 0f, 120f, 90f)).SetColor(Color.white);
+                if (timeFirst && seconds.HasValue) scene = scene.SetTime(seconds.Value);
+                scene = scene.SetWarp(3f, 42f, speed, seed);
+                if (!timeFirst && seconds.HasValue) scene = scene.SetTime(seconds.Value);
+                scene.RoundedBox(new NowRect(16f, 18f, 88f, 54f), 18f).Draw();
+            }
+
+            return _drawList.batches[0].material.GetVector("_SdfWarp");
+        }
+
+        // Without SetTime the shader clock still owns the phase.
+        Assert.AreEqual(new Vector4(3f, 42f, 0.6f, 9f), Upload(0.6f, 9f, null));
+
+        // A caller clock folds seed + time * speed on the CPU and uploads speed 0.
+        Vector4 timed = Upload(0.6f, 9f, 2.5f);
+        Assert.AreEqual(3f, timed.x);
+        Assert.AreEqual(42f, timed.y);
+        Assert.AreEqual(0f, timed.z);
+        Assert.AreEqual(9f + 2.5f * 0.6f, timed.w, 0.00001f);
+        Assert.AreEqual(timed, Upload(0.6f, 9f, 2.5f, timeFirst: true), "SetTime must not depend on call order.");
+
+        // The same phase expressed as a seed-only warp uploads identical values.
+        Assert.AreEqual(Upload(0f, 9f + 2.5f * 0.6f, null), timed);
+
+        // SetTime is per scene: the next scene reverts to the shader clock.
+        Assert.AreEqual(new Vector4(3f, 42f, 0.6f, 9f), Upload(0.6f, 9f, null));
+    }
+
+    [Test]
+    public void SdfSetTimeWarpMaskReusesCoverageUntilThePhaseChanges()
+    {
+        var rect = new NowRect(0f, 0f, 48f, 32f);
+        var id = new NowId("sdf-mask-caller-clock-warp");
+
+        void Capture(float speed, float seed, float? seconds)
+        {
+            using (_drawList.Begin(new Vector2(64f, 48f)))
+            {
+                var scene = NowSdf.Scene(rect, id).SetWarp(3f, 20f, speed, seed);
+                if (seconds.HasValue) scene = scene.SetTime(seconds.Value);
+                using (scene.Circle(rect.center, 12f).BeginMask())
+                    Now.Rectangle(rect).SetColor(Color.white).Draw();
+            }
+        }
+
+        Capture(1f, 7f, 0.5f);
+        Capture(1f, 7f, 0.5f);
+        Assert.AreEqual(1, NowSdf.maskRasterizationCount, "An equal caller time must reuse warped coverage.");
+
+        Capture(1f, 7f, 1.25f);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount, "A new caller time must rerasterize warped coverage.");
+        Capture(1f, 7f, 1.25f);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount);
+
+        // seed + time * speed is the whole phase: an equal seed-only warp is the same coverage.
+        Capture(0f, 7f + 1.25f * 1f, null);
+        Assert.AreEqual(2, NowSdf.maskRasterizationCount, "An equal seed-only phase must reuse caller-clock coverage.");
+
+        // Dropping SetTime returns to the live shader clock.
+        Capture(1f, 7f, null);
+        Capture(1f, 7f, null);
+        Assert.AreEqual(4, NowSdf.maskRasterizationCount);
     }
 
     [Test]

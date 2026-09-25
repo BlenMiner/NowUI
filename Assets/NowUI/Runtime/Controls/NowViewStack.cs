@@ -1056,16 +1056,16 @@ namespace NowUI
                 case NowViewTransitionPreset.ScaleFade:
                     return new NowViewTransitionState(
                         Vector2.zero,
-                        Vector2.one * Mathf.Lerp(0.96f, 1f, EaseOutCubic(visibleT)),
+                        Vector2.one * Mathf.Lerp(0.96f, 1f, NowEase.OutCubic(visibleT)),
                         visibleT);
                 case NowViewTransitionPreset.SlideFromBottom:
                     return new NowViewTransitionState(
-                        new Vector2(0f, entry.rect.height * (1f - EaseOutCubic(visibleT))),
+                        new Vector2(0f, entry.rect.height * (1f - NowEase.OutCubic(visibleT))),
                         Vector2.one,
                         visibleT);
                 case NowViewTransitionPreset.SlideFromRight:
                     return new NowViewTransitionState(
-                        new Vector2(entry.rect.width * (1f - EaseOutCubic(visibleT)), 0f),
+                        new Vector2(entry.rect.width * (1f - NowEase.OutCubic(visibleT)), 0f),
                         Vector2.one,
                         visibleT);
                 default:
@@ -1188,13 +1188,6 @@ namespace NowUI
                 : surface.y;
 
             return new NowRect(x, y, width, height);
-        }
-
-        static float EaseOutCubic(float t)
-        {
-            t = Mathf.Clamp01(t);
-            float inv = 1f - t;
-            return 1f - inv * inv * inv;
         }
 
         static bool HasAnimatedTransition(NowViewOptions options)

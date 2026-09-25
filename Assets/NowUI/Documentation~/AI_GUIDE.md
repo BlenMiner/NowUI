@@ -117,7 +117,8 @@ Host lifecycle rules:
 | Need | Start with | Read |
 | --- | --- | --- |
 | Frame lifecycle, rectangles, input, text, fonts, renderer | `Now`, `NowInput`, `NowRenderer` | [Feature Usage](Features.md) |
-| Text outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Gradients And Animation](TextStyling.md) |
+| Text alignment, letter spacing, font metrics, outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Layout, Gradients, And Animation](TextStyling.md) |
+| Easing curves for caller-timed motion | `NowEase`, `NowEasing` | [Easing](Easing.md) |
 | Localization and shared text transformations | `Now.SetTextPreprocessor` | [Text Preprocessor](TextPreprocessor.md) |
 | Supported public assemblies and types | Runtime and extension namespaces | [Public API](API.md) |
 | Rows, columns, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
@@ -125,13 +126,14 @@ Host lifecycle rules:
 | New or restyled controls | Control builders and interaction primitives | [Custom Controls](CustomControls.md) |
 | Authored, resolved, repeated, or composite identity | `NowId`, `NowResolvedId`, `KeyedItem` | [Identity](Identity.md) |
 | Themes and reusable style tokens | `NowThemeAsset` | [Styles and Themes](StylesAndThemes.md) |
-| Lines, sampled paths, Beziers, dashes, arrows | `Now.Line`, `Now.DrawPolyline`, `Now.Bezier` | [Lines](Lines.md) |
+| Lines, sampled paths, Beziers, arcs, rings, dashes, arrows | `Now.Line`, `Now.Bezier`, `Now.Polyline`, `Now.Arc`, `Now.DrawPolyline` | [Lines](Lines.md) |
 | Linear, radial, and conic fills | `Now.Gradient` | [Gradients](Gradients.md) |
 | Circles, triangles, polygons | Shape builders | [Shapes](Shapes.md) |
 | Non-rectangular or soft clipping | `NowMaskShape` and `Now.Mask` | [Masks](Masks.md) |
 | Backdrop blur panes | `Now.Glass` | [Glass](Glass.md) |
 | Custom rectangle shaders/materials | `SetMaterial` | [Custom Materials](CustomMaterials.md) |
-| Mesh or texture visual modifiers | `NowEffects` | [Effects](Effects.md) |
+| Scale, rotate, fade, or tint a group of draws | `Now.Transform`, `Now.Rotate`, `Now.Opacity`, `Now.Tint` | [Transforms](Transforms.md) |
+| Mesh or texture visual modifiers, perspective turns | `NowEffects`, `NowDeformers` | [Effects](Effects.md) |
 | 3D object previews | `NowModelPreview` | [Model Previews](ModelPreviews.md) |
 | Rich spans, inline tags, selectable content | Rich-text builders and parsers | [Rich Text](RichText.md) |
 | GitHub-flavored Markdown | `NowUI.Markdown` | [Markdown](Markdown.md) |

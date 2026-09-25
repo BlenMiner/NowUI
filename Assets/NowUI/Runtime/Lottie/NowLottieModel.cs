@@ -1070,77 +1070,16 @@ namespace NowUI.Internal
         }
     }
 
-    /// <summary>Cubic-bezier easing identical to CSS cubic-bezier / AE keyframe influence.</summary>
+    /// <summary>
+    /// Cubic-bezier easing identical to CSS cubic-bezier / AE keyframe influence.
+    /// Shares the solver behind <see cref="NowEase.CubicBezier"/>; control-point x
+    /// values are used as given (the Lottie parser clamps them).
+    /// </summary>
     public static class NowLottieEasing
     {
         public static float Evaluate(float outX, float outY, float inX, float inY, float t)
         {
-            if (t <= 0f)
-                return 0f;
-
-            if (t >= 1f)
-                return 1f;
-
-            if (Mathf.Approximately(outX, outY) && Mathf.Approximately(inX, inY))
-                return t;
-
-            float u = SolveCurveX(outX, inX, t);
-            return SampleCurve(outY, inY, u);
-        }
-
-        static float SampleCurve(float p1, float p2, float t)
-        {
-            float oneMinusT = 1f - t;
-            return 3f * oneMinusT * oneMinusT * t * p1 + 3f * oneMinusT * t * t * p2 + t * t * t;
-        }
-
-        static float SampleCurveDerivative(float p1, float p2, float t)
-        {
-            float oneMinusT = 1f - t;
-            return 3f * oneMinusT * oneMinusT * p1 +
-                6f * oneMinusT * t * (p2 - p1) +
-                3f * t * t * (1f - p2);
-        }
-
-        static float SolveCurveX(float p1, float p2, float x)
-        {
-            float t = x;
-
-            for (int i = 0; i < 6; ++i)
-            {
-                float currentX = SampleCurve(p1, p2, t) - x;
-
-                if (Mathf.Abs(currentX) < 0.0001f)
-                    return t;
-
-                float derivative = SampleCurveDerivative(p1, p2, t);
-
-                if (Mathf.Abs(derivative) < 0.000001f)
-                    break;
-
-                t -= currentX / derivative;
-            }
-
-            float low = 0f;
-            float high = 1f;
-            t = x;
-
-            for (int i = 0; i < 24; ++i)
-            {
-                float currentX = SampleCurve(p1, p2, t);
-
-                if (Mathf.Abs(currentX - x) < 0.0001f)
-                    return t;
-
-                if (currentX < x)
-                    low = t;
-                else
-                    high = t;
-
-                t = (low + high) * 0.5f;
-            }
-
-            return t;
+            return NowEase.SolveCubicBezier(outX, outY, inX, inY, t);
         }
     }
 

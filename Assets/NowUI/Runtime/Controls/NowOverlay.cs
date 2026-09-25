@@ -199,6 +199,7 @@ namespace NowUI
             public NowResolvedId overlaySourceId;
             public NowResolvedId overlayId;
             public Now.NowTransformSnapshot transform;
+            public Vector4 tint;
             public NowThemeAsset theme;
             public NowResolvedId controlIdScope;
             public NowInputContextSnapshot inputContext;
@@ -844,6 +845,7 @@ namespace NowUI
                 overlaySourceId = overlaySourceId,
                 overlayId = overlayId,
                 transform = Now.CaptureTransform(),
+                tint = Now.currentColorMultiplier,
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
@@ -894,6 +896,7 @@ namespace NowUI
                 draw = draw,
                 overlaySourceId = overlaySourceId,
                 overlayId = overlayId,
+                tint = Now.currentColorMultiplier,
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
@@ -954,6 +957,7 @@ namespace NowUI
                 overlaySourceId = overlaySourceId,
                 overlayId = overlayId,
                 transform = Now.CaptureTransform(),
+                tint = Now.currentColorMultiplier,
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
@@ -1011,6 +1015,7 @@ namespace NowUI
                 state = state,
                 overlaySourceId = overlaySourceId,
                 overlayId = overlayId,
+                tint = Now.currentColorMultiplier,
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
@@ -1067,6 +1072,7 @@ namespace NowUI
                 overlaySourceId = overlaySourceId,
                 overlayId = overlayId,
                 transform = Now.CaptureTransform(),
+                tint = Now.currentColorMultiplier,
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
@@ -1856,6 +1862,7 @@ namespace NowUI
                         using (NowInput.ApplyContext(deferred.inputContext))
                         using (NowControls.RestoreIdScope(deferred.controlIdScope))
                         using (Now.ApplyTransformSnapshot(deferred.transform))
+                        using (Now.ApplyTintSnapshot(deferred.tint))
                         using (NowTheme.ScopeOrDefault(deferred.theme))
                         {
                             if (deferred.drawWithState != null)

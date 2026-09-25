@@ -207,6 +207,12 @@ namespace NowUI
 
             runStyle.font = style.font != null ? style.font : Now.font;
 
+            // Wrapping owns line placement: each run is drawn at its laid-out
+            // position, so block alignment and letter spacing do not apply to runs.
+            runStyle.align = NowTextAlign.Left;
+            runStyle.verticalAlign = NowTextVerticalAlign.Top;
+            runStyle.letterSpacing = 0f;
+
             if (runStyle.font == null || string.IsNullOrEmpty(text))
                 return;
 

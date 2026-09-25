@@ -14,7 +14,8 @@ nowui serve site
 ```
 
 Preview watches saved code and assets. Render and animation capture use a
-deterministic clock and accept JSON interaction replay. `nowui --help` lists
+deterministic clock and accept JSON interaction replay. Captures and the preview
+window default to 960 × 540 (16:9); set `--width` and `--height` to change it. `nowui --help` lists
 options, including Gamma/Linear color space and explicit Unity project selection.
 
 Native commands require the .NET 9 SDK and a desktop session with OpenGL 3.3. Unity-specific scenes,

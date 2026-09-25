@@ -14,9 +14,13 @@ installed NowUI revision. AI coding agents should begin with the
   the same C# scene, automatic asset inclusion and browser limits.
 - [Feature Usage](Features.md): core drawing lifecycle, rectangles, text, UGUI,
   and font compilation examples.
-- [Text Gradients And Animation](TextStyling.md): adaptive text outlines,
+- [Text Layout, Gradients, And Animation](TextStyling.md): alignment inside a
+  rect, optical cap-height centering, letter spacing, font metrics, per-unit
+  layout boxes, adaptive text outlines,
   first-class linear, radial, and conic fills, plus caller-timed typewriter,
-  fade, movement, scale, and wave presets.
+  fade, movement, scale, and wave presets, and custom per-glyph animators.
+- [Easing](Easing.md): allocation-free easing curves, CSS cubic-bezier, and
+  progress helpers for motion driven by a caller-owned clock.
 - [Text Preprocessor](TextPreprocessor.md): one registered hook every UI
   string resolves through before measurement — localization and other string
   transforms with correct layout, memoized results, and raw opt-outs.
@@ -39,6 +43,9 @@ installed NowUI revision. AI coding agents should begin with the
 - [Custom Materials](CustomMaterials.md): rectangle-level custom shader
   materials, UGUI material variants, texture handling, shader inputs, and the
   live frost material demo.
+- [Transforms, Rotation, And Opacity](Transforms.md): scale, pan, rotate,
+  fade, and tint scopes for groups of draws, and their hit-testing and
+  masking rules.
 - [Effects](Effects.md): scoped mesh and texture-backed visual modifiers,
   deformers, subdivision, snapshots, and performance notes.
 - [Model Previews](ModelPreviews.md): disposable 3D-to-texture previews,

@@ -205,7 +205,26 @@ namespace NowUI
 
         internal int animationUnitCount;
 
+        internal int resolvedAnimationUnits;
+
         internal bool raw;
+
+        internal NowTextAlign align;
+
+        internal NowTextVerticalAlign verticalAlign;
+
+        /// <summary>Extra advance after each unit, in em units.</summary>
+        internal float letterSpacing;
+
+        /// <summary>Set on the per-line copies a block layout draws, so they draw directly.</summary>
+        internal bool layoutResolved;
+
+        /// <summary>Whether glyphs need the per-glyph path (animation or letter spacing).</summary>
+        internal bool perGlyph => animation.isAnimated || letterSpacing != 0f;
+
+        internal bool needsBlockLayout =>
+            !layoutResolved &&
+            (align != NowTextAlign.Left || verticalAlign != NowTextVerticalAlign.Top || letterSpacing != 0f);
 
         public NowText(NowRect rect, NowFontAsset font)
         {
@@ -241,7 +260,12 @@ namespace NowUI
             animationTimeNormalized = false;
             animationUnitOffset = 0;
             animationUnitCount = 0;
+            resolvedAnimationUnits = 0;
             raw = false;
+            align = NowTextAlign.Left;
+            verticalAlign = NowTextVerticalAlign.Top;
+            letterSpacing = 0f;
+            layoutResolved = false;
         }
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
@@ -597,6 +621,80 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Places each line horizontally inside the rect's width. The default,
+        /// <see cref="NowTextAlign.Left"/>, starts lines at the rect's left edge and
+        /// ignores its width.
+        /// </summary>
+        public NowText SetAlign(NowTextAlign horizontal)
+        {
+            align = horizontal;
+            return this;
+        }
+
+        /// <summary>Places each line horizontally and the whole block vertically inside the rect.</summary>
+        public NowText SetAlign(NowTextAlign horizontal, NowTextVerticalAlign vertical)
+        {
+            align = horizontal;
+            verticalAlign = vertical;
+            return this;
+        }
+
+        /// <summary>
+        /// Places the block of lines vertically inside the rect's height.
+        /// <see cref="NowTextVerticalAlign.CapMiddle"/> centers capitals optically.
+        /// </summary>
+        public NowText SetVerticalAlign(NowTextVerticalAlign vertical)
+        {
+            verticalAlign = vertical;
+            return this;
+        }
+
+        /// <summary>
+        /// Adds <paramref name="em"/> times the font size of extra space between
+        /// consecutive units on a line (tracking). Units are shaped clusters, so
+        /// ligatures and combining marks stay together; no space is added after
+        /// a line's last unit. Negative values tighten. <see cref="Measure(string)"/>
+        /// includes the spacing.
+        /// </summary>
+        public NowText SetLetterSpacing(float em)
+        {
+            letterSpacing = float.IsNaN(em) || float.IsInfinity(em) ? 0f : em;
+            return this;
+        }
+
+        /// <summary>
+        /// Letter spacing in UI units, converted with the font size at the point of
+        /// the call; call <see cref="SetFontSize"/> first.
+        /// </summary>
+        public NowText SetLetterSpacingPixels(float pixels)
+        {
+            return SetLetterSpacing(fontSize > 0f ? pixels / fontSize : 0f);
+        }
+
+        /// <summary>
+        /// Controls the automatic clip to the text's own rect. By default a text
+        /// draw is clipped to its rect, outset for outlines, overhangs and bounded
+        /// animation motion. <c>SetClip(false)</c> removes that clip so large,
+        /// moving or letter-spaced text never needs an oversized rect; ambient masks
+        /// still apply. <see cref="SetMask"/> replaces the clip with an exact rect.
+        /// </summary>
+        public NowText SetClip(bool clip = true)
+        {
+            if (clip)
+            {
+                mask = rect;
+                hasExplicitMask = false;
+            }
+            else
+            {
+                mask = default;
+                hasExplicitMask = true;
+            }
+
+            return this;
+        }
+
         /// <summary>Internal sequence continuity used by rich text and wrapped runs.</summary>
         internal NowText SetAnimationSequence(int unitOffset, int unitCount)
         {
@@ -670,12 +768,30 @@ namespace NowUI
             if (!raw)
                 value = Now.PreprocessText(value);
 
-            return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
+            if (font == null)
+                return default;
+
+            using var renderScale = Now.PushTextRenderScale();
+            Vector2 size = font.MeasureText(value, fontSize, fontStyle);
+
+            if (letterSpacing != 0f && !string.IsNullOrEmpty(value))
+                size.x = Now.MeasureTextBlockWidth(this, value);
+
+            return size;
         }
 
         public Vector2 Measure(System.ReadOnlySpan<char> value)
         {
-            return font != null ? font.MeasureText(value, fontSize, fontStyle) : default;
+            if (font == null)
+                return default;
+
+            using var renderScale = Now.PushTextRenderScale();
+            Vector2 size = font.MeasureText(value, fontSize, fontStyle);
+
+            if (letterSpacing != 0f && !value.IsEmpty)
+                size.x = Now.MeasureTextBlockWidth(this, value);
+
+            return size;
         }
 
         public Vector2 Measure(int value, System.ReadOnlySpan<char> format = default)
@@ -702,12 +818,35 @@ namespace NowUI
             return MeasureFormatted(value, format, buffer);
         }
 
+        /// <summary>
+        /// Writes the laid-out box of each unit of <paramref name="value"/> (one shaped
+        /// glyph cluster, so a ligature is one unit) into <paramref name="rects"/>, in
+        /// draw order and in the same coordinate space as this builder's rect. Alignment
+        /// and letter spacing are applied exactly as <see cref="Draw(string)"/> applies
+        /// them; boxes span the unit's advance and the full line height. Returns the
+        /// total number of units, which may be larger than <paramref name="rects"/>:
+        /// only the first <c>rects.Length</c> boxes are written, so a caller can size a
+        /// buffer from a first call. Use it to place per-letter decoration, carets, or
+        /// hit targets without measuring substrings.
+        /// </summary>
+        public int GetUnitRects(string value, Span<NowRect> rects)
+        {
+            if (!raw)
+                value = Now.PreprocessText(value);
+
+            return Now.GetTextUnitRects(this, value, rects);
+        }
+
         public readonly Vector4 MeasureBounds(string value)
         {
             if (!raw)
                 value = Now.PreprocessText(value);
 
-            return font != null ? font.MeasureTextBounds(value, fontSize, fontStyle) : default;
+            if (font == null)
+                return default;
+
+            using var renderScale = Now.PushTextRenderScale();
+            return font.MeasureTextBounds(value, fontSize, fontStyle);
         }
 
         [NowConsumer]

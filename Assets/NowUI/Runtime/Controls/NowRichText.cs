@@ -873,6 +873,10 @@ namespace NowUI
                 if (run.hasColor)
                     style = style.SetColor(run.color);
 
+                // Rich-text layout owns run placement.
+                style.align = NowTextAlign.Left;
+                style.verticalAlign = NowTextVerticalAlign.Top;
+                style.letterSpacing = 0f;
                 style.Draw(runText);
 
                 float decorationAlpha = 1f;

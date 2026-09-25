@@ -54,11 +54,27 @@ namespace NowUI
         }
     }
 
+    /// <summary>
+    /// One captured vertex passed to <see cref="INowVertexDeformer.Deform"/>.
+    /// </summary>
     public readonly struct NowEffectVertex
     {
+        /// <summary>
+        /// Position in top-left-origin UI units (y down), after the active
+        /// <c>Now.Transform</c> (and any <c>Now.Rotate</c> scope closed inside the
+        /// modifier) but before the host's UI scale; it is not a physical pixel
+        /// coordinate. Return a position in the same space. A rotation scope that
+        /// encloses the modifier turns the deformed result afterwards.
+        /// </summary>
         public readonly Vector2 position;
+
+        /// <summary><see cref="position"/> normalized to <see cref="NowEffectContext.sourceRect"/>, clamped to 0..1.</summary>
         public readonly Vector2 normalized;
+
+        /// <summary>The vertex's primary texture coordinate.</summary>
         public readonly Vector2 uv;
+
+        /// <summary>Index of the vertex within its captured batch.</summary>
         public readonly int index;
 
         internal NowEffectVertex(Vector2 position, Vector2 normalized, Vector2 uv, int index)
@@ -70,9 +86,23 @@ namespace NowUI
         }
     }
 
+    /// <summary>
+    /// Per-scope values shared by every vertex passed to a deformer.
+    /// </summary>
     public readonly struct NowEffectContext
     {
+        /// <summary>The modifier's resolved id.</summary>
         public readonly NowResolvedId id;
+
+        /// <summary>
+        /// The region the deformer treats as its source, in the same space as
+        /// <see cref="NowEffectVertex.position"/>. It is the rect passed to
+        /// <see cref="NowModifierBuilder{TDeformer}.SetSourceRect(NowRect)"/>
+        /// (mapped through the transform that was active when the modifier began) or,
+        /// without one, the bounds of every captured vertex, which include each
+        /// shape's anti-aliasing padding. Use its center or a normalized point
+        /// inside it as a pivot.
+        /// </summary>
         public readonly NowRect sourceRect;
 
         /// <summary>
@@ -177,8 +207,86 @@ namespace NowUI
         }
     }
 
+    /// <summary>
+    /// Rotates captured geometry in 3D around a pivot inside the source rect and
+    /// projects it back with a pinhole perspective. Build it with
+    /// <see cref="NowDeformers.Perspective(float, float)"/>.
+    /// </summary>
+    public readonly struct NowPerspectiveDeformer : INowVertexDeformer
+    {
+        readonly float _cosYaw;
+        readonly float _sinYaw;
+        readonly float _cosPitch;
+        readonly float _sinPitch;
+        readonly float _distance;
+        readonly Vector2 _pivot;
+
+        internal NowPerspectiveDeformer(float yawDegrees, float pitchDegrees, float distance, Vector2 pivot)
+        {
+            float yaw = yawDegrees * Mathf.Deg2Rad;
+            float pitch = pitchDegrees * Mathf.Deg2Rad;
+            _cosYaw = Mathf.Cos(yaw);
+            _sinYaw = Mathf.Sin(yaw);
+            _cosPitch = Mathf.Cos(pitch);
+            _sinPitch = Mathf.Sin(pitch);
+            _distance = Mathf.Max(0.1f, distance);
+            _pivot = pivot;
+        }
+
+        public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
+        {
+            NowRect source = context.sourceRect;
+            Vector2 pivot = new Vector2(
+                source.x + source.width * _pivot.x,
+                source.y + source.height * _pivot.y);
+            Vector2 p = vertex.position - pivot;
+
+            // Yaw turns about the vertical axis (positive: right edge away from the
+            // viewer), then pitch about the horizontal axis (positive: top edge away).
+            float x = p.x * _cosYaw;
+            float z = p.x * _sinYaw;
+            float y = p.y * _cosPitch + z * _sinPitch;
+            z = z * _cosPitch - p.y * _sinPitch;
+
+            float eye = _distance * Mathf.Max(1f, Mathf.Max(source.width, source.height));
+            float scale = eye / Mathf.Max(eye * 0.05f, eye + z);
+            return pivot + new Vector2(x * scale, y * scale);
+        }
+    }
+
     public static class NowDeformers
     {
+        /// <summary>
+        /// A 3D card turn around the center of the source rect. Use a subdivided
+        /// modifier (for example <c>SetSubdivision(6)</c>) so large quads, gradients
+        /// and SDF scenes stay in perspective instead of folding along their
+        /// diagonal.
+        /// </summary>
+        /// <param name="yawDegrees">Turn about the vertical axis; positive moves the right edge away.</param>
+        /// <param name="pitchDegrees">Turn about the horizontal axis; positive moves the top edge away.</param>
+        public static NowPerspectiveDeformer Perspective(float yawDegrees, float pitchDegrees)
+        {
+            return new NowPerspectiveDeformer(yawDegrees, pitchDegrees, 3f, new Vector2(0.5f, 0.5f));
+        }
+
+        /// <summary>
+        /// A 3D card turn around a pivot inside the source rect.
+        /// </summary>
+        /// <param name="yawDegrees">Turn about the vertical axis; positive moves the right edge away.</param>
+        /// <param name="pitchDegrees">Turn about the horizontal axis; positive moves the top edge away.</param>
+        /// <param name="distance">Camera distance in multiples of the source rect's larger side
+        /// (minimum 0.1); smaller values exaggerate the perspective. The default is 3.</param>
+        /// <param name="normalizedPivot">Pivot relative to the source rect: (0, 0) is its
+        /// top-left and (1, 1) its bottom-right.</param>
+        public static NowPerspectiveDeformer Perspective(
+            float yawDegrees,
+            float pitchDegrees,
+            float distance,
+            Vector2 normalizedPivot)
+        {
+            return new NowPerspectiveDeformer(yawDegrees, pitchDegrees, distance, normalizedPivot);
+        }
+
         public static NowGenieDeformer Genie(
             NowRect targetRect,
             float progress,
@@ -247,6 +355,11 @@ namespace NowUI
             float time)
             where TDeformer : struct, INowVertexDeformer
         {
+            // Captured vertices arrive already transformed; map an authored source
+            // rect into that same space so deformers and texture capture agree.
+            if (hasSourceRect && !sourceRect.isEmpty)
+                sourceRect = Now.TransformScreenRect(sourceRect);
+
             var entry = GetEntry(id, out bool temporary);
             entry.inUse = true;
             entry.lastUsedTime = NowTime.realtimeSinceStartup;
@@ -385,6 +498,11 @@ namespace NowUI
                         Vector2.zero,
                         inheritContext: true,
                         flushOverlays: false))
+                    // textureRect is already in screen space and the captured
+                    // pixels already carry the ambient tint, so draw the
+                    // flattened surface without applying either a second time.
+                    using (Now.ApplyTransformSnapshot(new Now.NowTransformSnapshot(true, Now.NowTransform.identity)))
+                    using (Now.ApplyTintSnapshot(Vector4.one))
                     {
                         Now.Rectangle(textureRect)
                             .SetTexture(target, premultipliedAlpha: true)
@@ -702,6 +820,13 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Overrides the region reported as <see cref="NowEffectContext.sourceRect"/>
+        /// (and flattened by <see cref="SetRenderToTexture(bool)"/>) instead of the
+        /// captured bounds. The rect is authored in the current coordinate space: the
+        /// active <c>Now.Transform</c> maps it into the vertex space when the modifier
+        /// begins.
+        /// </summary>
         public NowModifierBuilder<TDeformer> SetSourceRect(NowRect rect)
         {
             _sourceRect = rect;

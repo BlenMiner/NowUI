@@ -25,7 +25,55 @@ namespace NowUI
         ScaleIn,
 
         /// <summary>Offsets units vertically along a continuous sine wave.</summary>
-        Wave
+        Wave,
+
+        /// <summary>Samples a caller-supplied <see cref="INowTextGlyphAnimator"/> per unit.</summary>
+        Custom
+    }
+
+    /// <summary>
+    /// Visual state for one text unit (normally one shaped glyph cluster),
+    /// returned by an <see cref="INowTextGlyphAnimator"/>.
+    /// </summary>
+    public struct NowTextGlyphState
+    {
+        /// <summary>Offset from the unit's laid-out position, in UI units (y down).</summary>
+        public Vector2 offset;
+
+        /// <summary>Uniform scale around the glyph's visual center; 1 is the authored size.</summary>
+        public float scale;
+
+        /// <summary>Opacity multiplier, clamped to 0..1.</summary>
+        public float alpha;
+
+        /// <summary>Rotation around the glyph's visual center in degrees; positive turns clockwise on screen.</summary>
+        public float rotation;
+
+        /// <summary>The unchanged state: no offset, full size, opaque, unrotated.</summary>
+        public static NowTextGlyphState identity => new NowTextGlyphState(Vector2.zero, 1f, 1f, 0f);
+
+        public NowTextGlyphState(Vector2 offset, float scale = 1f, float alpha = 1f, float rotation = 0f)
+        {
+            this.offset = offset;
+            this.scale = scale;
+            this.alpha = alpha;
+            this.rotation = rotation;
+        }
+    }
+
+    /// <summary>
+    /// A caller-defined per-unit text animation. Implement it on a class and keep
+    /// one instance (for example in a static field); the text renderer calls
+    /// <see cref="Evaluate"/> once per visible unit per draw. Implementations must
+    /// not allocate and should be pure functions of their arguments so that
+    /// captures stay deterministic.
+    /// </summary>
+    public interface INowTextGlyphAnimator
+    {
+        /// <param name="unitIndex">Index of the unit in the animated sequence, from 0.</param>
+        /// <param name="unitCount">Number of units in the sequence.</param>
+        /// <param name="time">The caller-owned time passed to <c>NowText.SetTime</c>.</param>
+        NowTextGlyphState Evaluate(int unitIndex, int unitCount, float time);
     }
 
     /// <summary>Easing applied to finite per-unit text animations.</summary>
@@ -83,6 +131,9 @@ namespace NowUI
         /// <summary>Easing used by finite fade, motion, and scale transitions.</summary>
         public readonly NowTextAnimationEasing easing;
 
+        /// <summary>The caller-supplied animator for <see cref="NowTextAnimationKind.Custom"/>; otherwise null.</summary>
+        public readonly INowTextGlyphAnimator animator;
+
         internal NowTextAnimation(
             NowTextAnimationKind kind,
             float duration,
@@ -92,10 +143,13 @@ namespace NowUI
             float wavelength,
             float speed,
             float rate,
-            NowTextAnimationEasing easing)
+            NowTextAnimationEasing easing,
+            INowTextGlyphAnimator animator = null,
+            bool infiniteDuration = false)
         {
             this.kind = kind;
-            this.duration = NonNegative(duration);
+            this.animator = animator;
+            this.duration = infiniteDuration ? float.PositiveInfinity : NonNegative(duration);
             this.stagger = NonNegative(stagger);
             this.delay = NonNegative(delay);
             this.amount = FiniteOr(amount, 0f);
@@ -129,7 +183,14 @@ namespace NowUI
             return Copy(easing: value);
         }
 
-        internal bool isAnimated => kind != NowTextAnimationKind.None;
+        internal bool isAnimated => kind != NowTextAnimationKind.None &&
+            (kind != NowTextAnimationKind.Custom || animator != null);
+
+        /// <summary>
+        /// Custom animations may hold a non-identity final state, so they are never
+        /// replaced by static text when their duration has elapsed.
+        /// </summary>
+        internal bool keepsFinalState => kind == NowTextAnimationKind.Wave || kind == NowTextAnimationKind.Custom;
 
         /// <summary>True only when sampling a changing wave requires ongoing frames.</summary>
         internal bool isContinuous =>
@@ -146,17 +207,43 @@ namespace NowUI
         {
             NowTextAnimationKind.FadeUp => Mathf.Abs(amount),
             NowTextAnimationKind.Wave => Mathf.Abs(amount),
+            NowTextAnimationKind.Custom => Mathf.Abs(amount),
             _ => 0f
         };
 
         /// <summary>Samples one text unit without allocating or consulting a clock.</summary>
         internal NowTextAnimationState Sample(int unitIndex, float time)
         {
+            return Sample(unitIndex, 0, time);
+        }
+
+        /// <summary>Samples one text unit of a sequence of <paramref name="unitCount"/> units.</summary>
+        internal NowTextAnimationState Sample(int unitIndex, int unitCount, float time)
+        {
             unitIndex = Mathf.Max(0, unitIndex);
             time = float.IsNaN(time) ? 0f : time;
 
             switch (kind)
             {
+                case NowTextAnimationKind.Custom:
+                {
+                    if (animator == null)
+                        return NowTextAnimationState.identity;
+
+                    NowTextGlyphState state = animator.Evaluate(
+                        unitIndex,
+                        Mathf.Max(unitCount, unitIndex + 1),
+                        time - delay);
+                    float scale = FiniteOr(state.scale, 1f);
+                    float alpha = FiniteOr(state.alpha, 1f);
+                    Vector2 offset = new Vector2(FiniteOr(state.offset.x, 0f), FiniteOr(state.offset.y, 0f));
+                    return new NowTextAnimationState(
+                        alpha > 0f && scale > 0f,
+                        alpha,
+                        offset,
+                        scale,
+                        FiniteOr(state.rotation, 0f));
+                }
                 case NowTextAnimationKind.Typewriter:
                 {
                     float elapsed = time - delay;
@@ -209,6 +296,8 @@ namespace NowUI
                     return delay + (unitCount - 1) * stagger + duration;
                 case NowTextAnimationKind.Wave:
                     return isContinuous ? float.PositiveInfinity : delay;
+                case NowTextAnimationKind.Custom:
+                    return float.IsInfinity(duration) ? float.PositiveInfinity : delay + duration;
                 default:
                     return 0f;
             }
@@ -231,6 +320,12 @@ namespace NowUI
 
             if (kind == NowTextAnimationKind.ScaleIn && Mathf.Approximately(amount, 1f))
                 return true;
+
+            if (kind == NowTextAnimationKind.Custom)
+            {
+                time = float.IsNaN(time) ? 0f : time;
+                return !float.IsInfinity(duration) && time >= delay + duration;
+            }
 
             time = float.IsNaN(time) ? 0f : time;
             return time >= CompletionTime(unitCount);
@@ -260,37 +355,34 @@ namespace NowUI
             float? delay = null,
             NowTextAnimationEasing? easing = null)
         {
+            float copiedDuration = duration ?? this.duration;
+
             return new NowTextAnimation(
                 kind,
-                duration ?? this.duration,
+                copiedDuration,
                 stagger ?? this.stagger,
                 delay ?? this.delay,
                 amount,
                 wavelength,
                 speed,
                 rate,
-                easing ?? this.easing);
+                easing ?? this.easing,
+                animator,
+                kind == NowTextAnimationKind.Custom && float.IsPositiveInfinity(copiedDuration));
         }
 
         static float Ease(float value, NowTextAnimationEasing easing)
         {
-            value = Mathf.Clamp01(value);
-
             switch (easing)
             {
                 case NowTextAnimationEasing.EaseIn:
-                    return value * value * value;
+                    return NowEase.InCubic(value);
                 case NowTextAnimationEasing.EaseOut:
-                {
-                    float inverse = 1f - value;
-                    return 1f - inverse * inverse * inverse;
-                }
+                    return NowEase.OutCubic(value);
                 case NowTextAnimationEasing.EaseInOut:
-                    return value < 0.5f
-                        ? 4f * value * value * value
-                        : 1f - Mathf.Pow(-2f * value + 2f, 3f) * 0.5f;
+                    return NowEase.InOutCubic(value);
                 default:
-                    return value;
+                    return NowEase.Linear(value);
             }
         }
 
@@ -414,6 +506,37 @@ namespace NowUI
                 24f,
                 NowTextAnimationEasing.Linear);
         }
+
+        /// <summary>
+        /// Animates each text unit with a caller-supplied <paramref name="animator"/>,
+        /// for staggered drops, springs, per-letter rotation, or any other motion the
+        /// presets do not cover. Keep one animator instance rather than creating one
+        /// per frame.
+        /// </summary>
+        /// <param name="animator">Evaluated once per visible unit per draw.</param>
+        /// <param name="maxOffset">The largest distance, in UI units, a unit can move or grow
+        /// beyond its laid-out box. It widens the text's automatic mask so moving glyphs
+        /// are not clipped; explicit masks stay exact.</param>
+        /// <param name="duration">Seconds after which the animation holds still, so retained
+        /// hosts stop repainting. Leave infinite for continuous motion.</param>
+        public static NowTextAnimation Custom(
+            INowTextGlyphAnimator animator,
+            float maxOffset = 0f,
+            float duration = float.PositiveInfinity)
+        {
+            return new NowTextAnimation(
+                NowTextAnimationKind.Custom,
+                duration,
+                0f,
+                0f,
+                maxOffset,
+                1f,
+                0f,
+                24f,
+                NowTextAnimationEasing.Linear,
+                animator,
+                float.IsPositiveInfinity(duration));
+        }
     }
 
     /// <summary>Resolved visual state for one text animation unit.</summary>
@@ -427,15 +550,19 @@ namespace NowUI
 
         public readonly float scale;
 
+        /// <summary>Rotation in degrees around the glyph's visual center.</summary>
+        public readonly float rotation;
+
         public static NowTextAnimationState identity =>
             new NowTextAnimationState(true, 1f, Vector2.zero, 1f);
 
-        public NowTextAnimationState(bool visible, float alpha, Vector2 offset, float scale)
+        public NowTextAnimationState(bool visible, float alpha, Vector2 offset, float scale, float rotation = 0f)
         {
             this.visible = visible;
             this.alpha = Mathf.Clamp01(alpha);
             this.offset = offset;
             this.scale = Mathf.Max(0f, scale);
+            this.rotation = rotation;
         }
     }
 

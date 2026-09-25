@@ -39,9 +39,64 @@ readonly struct BulgeDeformer : INowVertexDeformer
 }
 ```
 
+## Coordinate Space
+
+`NowEffectVertex.position` is in top-left-origin UI units with y pointing
+down. It already includes the active `Now.Transform` (and any `Now.Rotate`
+scope closed inside the modifier), but not the host's UI scale, so it is not a
+physical-pixel coordinate. Return a position in the same space.
+
+`NowEffectContext.sourceRect` is in that space too. By default it is the bounds
+of every captured vertex, which include each shape's anti-aliasing padding.
+Call `SetSourceRect(rect)` to pin it to a known region, such as a card's
+authored rect, so a pivot or `vertex.normalized` does not drift with padding,
+shadows, or animated content. The rect is authored in the current coordinate
+space and mapped through the transform that is active when the modifier
+begins.
+
+```csharp
+using (NowEffects.Modifier(new TiltDeformer(angle))
+    .SetSourceRect(card)
+    .SetSubdivision(6)
+    .Begin())
+{
+    DrawCard(card);
+}
+```
+
+A flat rotation does not need a deformer: `Now.Rotate(degrees, pivot)` turns
+any drawing without capturing it. See [Transforms](Transforms.md#rotate).
+
+## Perspective
+
+`NowDeformers.Perspective(yaw, pitch)` turns captured content in 3D around the
+center of the source rect and projects it back. Positive yaw moves the right
+edge away from the viewer; positive pitch moves the top edge away. An overload
+takes the camera distance (in multiples of the source rect's larger side,
+default 3) and a normalized pivot.
+
+```csharp
+float flip = NowEase.OutBack(NowEase.Progress(time, 0f, 0.6f));
+
+using (NowEffects.Modifier(NowDeformers.Perspective((1f - flip) * -75f, 0f))
+    .SetSourceRect(card)
+    .SetSubdivision(6)
+    .Begin())
+{
+    DrawCard(card);
+}
+```
+
+Subdivide the modifier for perspective: an undivided quad is only two
+triangles, so a large rectangle, gradient, or SDF scene would fold along its
+diagonal. Rectangles, textures, gradients, ripples, and SDF scenes subdivide;
+text subdivides with `SetSubdivideText()`.
+
 ## Time
 
-`NowEffectContext.time` is caller-driven, like every clock in NowUI: it defaults
+`NowEffectContext.time` is caller-driven, like NowUI's other animation clocks
+(an SDF warp `speed` reads the shader clock unless `NowSdfBuilder.SetTime`
+supplies one; see [SDF](SDF.md#effects)): it defaults
 to `0` and only changes when the modifier is given a time explicitly with
 `SetTime(...)`. Built-in deformers such as `NowDeformers.Wave(time, ...)` take
 their time as a constructor argument instead; `SetTime` exists for custom

@@ -8,6 +8,11 @@ internal sealed record RenderOptions(string Project, string Output, string? Scen
     string? Input = null, bool Watch = true, UnityEngine.ColorSpace ColorSpace = UnityEngine.ColorSpace.Gamma,
     double LoadTimeout = 30)
 {
+    /// <summary>Default capture and preview-window width in pixels (16:9 with <see cref="DefaultHeight"/>).</summary>
+    internal const int DefaultWidth = 960;
+    /// <summary>Default capture and preview-window height in pixels.</summary>
+    internal const int DefaultHeight = 540;
+
     internal const string Help = """
         NowUI native C# renderer
 
@@ -18,7 +23,7 @@ internal sealed record RenderOptions(string Project, string Output, string? Scen
 
           --scene <type>             Public INowScene class (required if there is more than one)
           --width <pixels>           Image width, 1..8192 (default 960)
-          --height <pixels>          Image height, 1..8192 (default 640)
+          --height <pixels>          Image height, 1..8192 (default 540, 16:9)
           --time <seconds>           Advance a fixed clock to this time, 0..60 (default 0)
           --configuration <name>     Debug or Release (default Release)
           --no-build                 Use the project's existing build output
@@ -83,8 +88,8 @@ internal sealed record RenderOptions(string Project, string Output, string? Scen
             throw new ArgumentException("--output must end in .png for render/preview.");
         if (animate && (Directory.Exists(output) || File.Exists(output)))
             throw new ArgumentException("Animation --output must name a new directory; an existing output is never replaced.");
-        int width = Dimension("--width", 960);
-        int height = Dimension("--height", 640);
+        int width = Dimension("--width", DefaultWidth);
+        int height = Dimension("--height", DefaultHeight);
         // Bound both staging memory and readback, independently of driver limits.
         if ((long)width * height > 16_777_216)
             throw new ArgumentException("The image may contain at most 16,777,216 pixels.");

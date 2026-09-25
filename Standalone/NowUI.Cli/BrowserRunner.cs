@@ -30,7 +30,7 @@ internal static class BrowserRunner
         string kit = Path.Combine(AppContext.BaseDirectory, "BrowserKit");
         if (!File.Exists(Path.Combine(kit, "NowUI.Browser.dll")))
             throw new InvalidOperationException("The optional browser kit is missing. Install a complete NowUI CLI bundle, or run Tools/Build-NowUIBrowserKit.ps1 and rebuild the CLI.");
-        string assembly = ProjectBuilder.Build(new RenderOptions(options.Project, "", options.Scene, 960, 640, 0,
+        string assembly = ProjectBuilder.Build(new RenderOptions(options.Project, "", options.Scene, RenderOptions.DefaultWidth, RenderOptions.DefaultHeight, 0,
             options.Configuration, options.NoBuild, UnityProject: options.UnityProject));
         SceneFactoryOptions sceneFactory;
         using (var loaded = LoadedScene.Create(assembly, options.Scene))

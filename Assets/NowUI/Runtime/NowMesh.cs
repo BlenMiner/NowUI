@@ -379,6 +379,38 @@ namespace NowUI.Internal
             EncapsulateBounds(rect.x, rect.y, rect.x + rect.z, rect.y + rect.w);
         }
 
+        /// <summary>
+        /// Rotates the positions of the vertices from <paramref name="start"/> to the
+        /// end of this mesh around <paramref name="pivot"/> (UI space, y down;
+        /// positive angles turn clockwise on screen). Only positions move: the
+        /// per-vertex rect/rawUV data that shaders use for shape distances stays in
+        /// the draw's own unrotated frame, so every stock shape rotates rigidly.
+        /// Bounds grow to cover the rotated vertices.
+        /// </summary>
+        internal void RotateVertices(int start, Vector2 pivot, float cos, float sin)
+        {
+            int end = _verts.count;
+
+            if (start < 0)
+                start = 0;
+
+            // Positions are stored with y negated, so work in that y-up space.
+            float pivotX = pivot.x;
+            float pivotY = -pivot.y;
+            var vertices = _verts.array;
+
+            for (int i = start; i < end; ++i)
+            {
+                Vector3 vertex = vertices[i];
+                float dx = vertex.x - pivotX;
+                float dy = vertex.y - pivotY;
+                vertex.x = pivotX + dx * cos + dy * sin;
+                vertex.y = pivotY - dx * sin + dy * cos;
+                vertices[i] = vertex;
+                EncapsulateVertex(vertex);
+            }
+        }
+
         void EnsureRectCapacity()
         {
             if (HasRectCapacity())

@@ -2,7 +2,7 @@
   "format": "NowUI.BrowserKit",
   "version": 1,
   "targetFramework": "net9.0-browser",
-  "preparedUtc": "2026-09-25T11:49:13.4340878Z",
+  "preparedUtc": "2026-09-25T14:34:56.0073910Z",
   "authoring": "Shared C# INowScene and NowUI API",
   "colorSpace": "Gamma",
   "nativeLibraries": [
@@ -74,8 +74,8 @@
     },
     {
       "path": "NowUI.Browser.dll",
-      "bytes": 344576,
-      "sha256": "5a5c07fdad8d4f2ae5a956457e6449ff1c2bdd7639fc4e75ad0c7853b3a881be"
+      "bytes": 346112,
+      "sha256": "9917e9bf99ad972fe36b11e90388db37b72bbe28c2707c98fc2cf32364402c18"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",

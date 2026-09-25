@@ -27,6 +27,7 @@ namespace NowUI.Editor
         SerializedProperty _dynamicPageSize;
         SerializedProperty _dynamicMaxAtlasSize;
         SerializedProperty _dynamicMaxAtlasBytes;
+        SerializedProperty _dynamicMaxGlyphSize;
         SerializedProperty _fallbacks;
         SerializedProperty _bakedCharacters;
         static bool s_bakedPagesExpanded;
@@ -46,6 +47,7 @@ namespace NowUI.Editor
             _dynamicPageSize = serializedObject.FindProperty("dynamicPageSize");
             _dynamicMaxAtlasSize = serializedObject.FindProperty("dynamicMaxAtlasSize");
             _dynamicMaxAtlasBytes = serializedObject.FindProperty("dynamicMaxAtlasBytes");
+            _dynamicMaxGlyphSize = serializedObject.FindProperty("dynamicMaxGlyphSize");
             _fallbacks = serializedObject.FindProperty("_fallbacks");
             _bakedCharacters = serializedObject.FindProperty("_bakedCharacters");
         }
@@ -216,6 +218,9 @@ namespace NowUI.Editor
             EditorGUILayout.PropertyField(_dynamicPageSize, new GUIContent("Page Size"));
             EditorGUILayout.PropertyField(_dynamicMaxAtlasSize, new GUIContent("Max Page Size"));
             EditorGUILayout.PropertyField(_dynamicMaxAtlasBytes, new GUIContent("Max Page Bytes"));
+            EditorGUILayout.PropertyField(_dynamicMaxGlyphSize, new GUIContent(
+                "Max Glyph Size",
+                "Largest glyph cell used for large text. Equal to Glyph Size disables resolution tiers."));
             if (_fallbacks != null)
                 EditorGUILayout.PropertyField(_fallbacks, new GUIContent("Fallback Fonts"));
 

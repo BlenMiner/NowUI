@@ -39,6 +39,13 @@ Now.Ellipse(new NowRect(240, 46, 96, 68))
 Segments are chosen from the radius. Call `SetSegments` when you need an exact
 vertex budget or a deliberately faceted look.
 
+Circle outlines are solid, closed strokes. For a dashed or gradient outline, a
+partial circle such as a progress or gauge arc, or rounded arc ends, use
+`Now.Arc(center, radius, startAngle, sweep)`; a full-turn sweep draws a ring.
+See [Lines](Lines.md#arcs-and-rings). For a dashed polygon outline, stroke its
+points with `Now.Polyline(points).SetClosed()`; see
+[Lines](Lines.md#polylines-with-styling).
+
 ## Triangles
 
 Triangles do not require an array allocation.

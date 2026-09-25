@@ -751,6 +751,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
 
         try
         {
@@ -800,6 +802,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
 
         try
         {
@@ -833,6 +837,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
 
         try
         {
@@ -923,6 +929,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
         font.dynamicCacheBudgetBytesOverride = oneWritablePageBudget;
 
         try
@@ -985,6 +993,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
 
         try
         {
@@ -1026,6 +1036,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
         font.dynamicCacheBudgetBytesOverride = Budget;
 
         try
@@ -1426,6 +1438,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
 
         try
         {
@@ -1589,6 +1603,8 @@ public class NowManagedFontCompilerTests
 
         NowFontCompiler.forceManagedCompiler = true;
         Assert.IsTrue(NowFontCompiler.TryCompile(_fontBytes, out NowFont font, out string error), error);
+        // Exercises the base cell's range and budget ladder; resolution tiers are covered by NowFontTierTests.
+        font.dynamicMaxGlyphSize = font.dynamicAtlasSize;
         font.dynamicCacheBudgetBytesOverride = oneWritablePageBudget;
 
         try

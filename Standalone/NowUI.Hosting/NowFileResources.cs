@@ -459,6 +459,10 @@ namespace NowUI.Hosting
                 // was actually authored with, which is what the editor run used.
                 font.dynamicPageSize = face.GetProperty("dynamicPageSize").GetInt32();
                 font.dynamicMaxAtlasSize = face.GetProperty("dynamicMaxAtlasSize").GetInt32();
+
+                // Exports that predate resolution tiers keep the runtime default.
+                if (face.TryGetProperty("dynamicMaxGlyphSize", out var maxGlyphSize))
+                    font.dynamicMaxGlyphSize = maxGlyphSize.GetInt32();
                 font.dynamicMaxAtlasBytes = face.GetProperty("dynamicMaxAtlasBytes").GetInt32();
 
                 FallbacksField(font) = RequireNoFallbacks(face, fileName);

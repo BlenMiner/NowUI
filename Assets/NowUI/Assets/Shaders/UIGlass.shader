@@ -256,7 +256,9 @@ Shader "NowUI/UI Glass"
                 if (coverage > 0.0001)
                     rgb = (i.outlineColor.rgb * outlineCoverage + fillRgb * fillCoverage * (1 - outlineCoverage)) / coverage;
 
-                fixed4 col = fixed4(rgb, coverage * graphicAlpha);
+                // extras.x is the ambient Now.Opacity/Now.Tint alpha, applied once
+                // to the whole pane so the backdrop fades with the tint.
+                fixed4 col = fixed4(rgb, coverage * graphicAlpha * i.extras.x);
                 col.a *= NowUIMaskCoverage(uiPosition);
                 clip(col.a - 0.001);
                 return col;

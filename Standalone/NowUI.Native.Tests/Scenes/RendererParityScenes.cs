@@ -57,6 +57,46 @@ public sealed class SdfParityScene : INowScene
     }
 }
 
+// A warped SDF fill (left) and a warped SDF mask (right). Masks exercise
+// BeginMask coverage caching: a stale cache would keep an earlier warp phase.
+static class SdfWarpParity
+{
+    internal static readonly float Speed = 1.3f, Seed = 2f, FixedTime = 0.5f;
+
+    internal static void Draw(NowRect view, float speed, float seed, float? time)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+        var fill = NowSdf.Scene(new NowRect(0, 0, 64, 64), "native-warp").SetColor(Color.white).SetWarp(6f, 14f, speed, seed);
+        if (time.HasValue) fill = fill.SetTime(time.Value);
+        fill.Circle(new Vector2(32, 32), 22).Draw();
+        var mask = NowSdf.Scene(new NowRect(64, 0, 64, 64), "native-warp-mask").SetWarp(6f, 14f, speed, seed);
+        if (time.HasValue) mask = mask.SetTime(time.Value);
+        using (mask.Circle(new Vector2(32, 32), 22).BeginMask())
+            Now.Rectangle(new NowRect(64, 0, 64, 64)).SetColor(Color.yellow).Draw();
+    }
+}
+
+public sealed class SdfWarpCallerClockScene : INowScene
+{
+    public void Draw(NowRect view) => SdfWarpParity.Draw(view, SdfWarpParity.Speed, SdfWarpParity.Seed, Time.time);
+}
+
+public sealed class SdfWarpHostClockScene : INowScene
+{
+    public void Draw(NowRect view) => SdfWarpParity.Draw(view, SdfWarpParity.Speed, SdfWarpParity.Seed, null);
+}
+
+public sealed class SdfWarpFixedTimeScene : INowScene
+{
+    public void Draw(NowRect view) => SdfWarpParity.Draw(view, SdfWarpParity.Speed, SdfWarpParity.Seed, SdfWarpParity.FixedTime);
+}
+
+public sealed class SdfWarpSeedPhaseScene : INowScene
+{
+    public void Draw(NowRect view) => SdfWarpParity.Draw(view, 0f,
+        SdfWarpParity.Seed + SdfWarpParity.FixedTime * SdfWarpParity.Speed, null);
+}
+
 public sealed class SdfImageParityScene : INowScene, IDisposable
 {
     readonly Texture2D image = new(8, 8, TextureFormat.RGBA32, false, false);
@@ -129,5 +169,45 @@ public sealed class GradientParityScene : INowScene
         Now.Gradient(new NowRect(0, 32, 64, 64), Color.red, Color.green).SetConic(new Vector2(0.5f, 0.5f), 0f).Draw();
         Now.Text(new NowRect(64, 48, 64, 48)).SetFontSize(30f).SetBold()
             .SetGradient(Color.red, Color.blue).SetGradientLinear(90f).Draw("WW");
+    }
+}
+
+public sealed class TransformScopesParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+        // Half opacity over black.
+        using (Now.Opacity(0.5f))
+            Now.Rectangle(new NowRect(0, 0, 32, 32)).SetColor(Color.white).Draw();
+        // A horizontal bar turned a quarter turn around its center becomes vertical.
+        using (Now.Rotate(90f, new Vector2(68, 16)))
+            Now.Rectangle(new NowRect(48, 12, 40, 8)).SetColor(Color.red).Draw();
+        // Fully faded glass leaves the stripes beneath it untouched.
+        for (int x = 96; x < 128; x += 8)
+            Now.Rectangle(new NowRect(x, 0, 8, 32)).SetColor(x % 16 == 0 ? Color.white : Color.black).Draw();
+        using (Now.Opacity(0f))
+            Now.Glass(new NowRect(96, 0, 32, 32)).SetBlurRadius(10).SetTint(new Color(0, 0, 1, 0.8f)).Draw();
+        // Coincident SDF shapes resolve in draw order instead of per-pixel noise.
+        NowSdf.Scene(new NowRect(0, 40, 128, 56), "parity-coincident")
+            .SetColor(Color.red).Arc(new Vector2(28, 28), 20, 5, 0f, Mathf.PI * 2f)
+            .SetColor(Color.green).Arc(new Vector2(28, 28), 20, 5, 0f, Mathf.PI * 2f)
+            .SetColor(Color.red).Circle(new Vector2(92, 28), 18)
+            .SetColor(Color.green).Circle(new Vector2(92, 28), 18)
+            .Draw();
+    }
+}
+
+public sealed class AlignedTextParityScene : INowScene
+{
+    public void Draw(NowRect view)
+    {
+        Now.Rectangle(view).SetColor(Color.black).Draw();
+        Now.Text(new NowRect(0, 0, 128, 48)).SetFontSize(28).SetBold().SetColor(Color.white)
+            .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.CapMiddle).Draw("HI");
+        NowSdf.Scene(new NowRect(0, 48, 128, 48), "parity-aligned-text")
+            .SetColor(Color.white)
+            .Text(new NowRect(0, 0, 128, 48), "HI", 28f, NowFontStyle.Bold, NowTextAlign.Center, NowTextVerticalAlign.CapMiddle)
+            .Draw();
     }
 }

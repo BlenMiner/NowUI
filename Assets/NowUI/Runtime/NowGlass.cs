@@ -289,8 +289,12 @@ namespace NowUI
 
             _tmpVertex.mask = ApplyAmbientMask(rectMask);
             _tmpVertex.radius = radius;
-            _tmpVertex.color = ApplyColorMultiplier(glass.tint);
-            _tmpVertex.outlineColor = ApplyColorMultiplier(glass.outlineColor);
+            // The ambient multiplier tints RGB here; its alpha fades the whole
+            // pane in the shader (extras.x), including the blurred backdrop that
+            // the tint alpha alone cannot reach.
+            Vector4 multiplier = currentColorMultiplier;
+            _tmpVertex.color = MultiplyGlassRgb(glass.tint, multiplier);
+            _tmpVertex.outlineColor = MultiplyGlassRgb(glass.outlineColor, multiplier);
             _tmpVertex.uvwh = _defaultUV;
             _tmpVertex.position.x = x0;
             _tmpVertex.position.y = -y0 - rectHeight;
@@ -313,11 +317,19 @@ namespace NowUI
             mesh = EnsureMeshCapacity(mesh, material, NowMeshKind.Glass, 4);
 
             Vector4 extra = default;
-            extra.x = keyData.x;
+            extra.x = multiplier.w;
             extra.y = outline;
             extra.z = keyData.y;
             extra.w = keyData.z;
             mesh.AddRect(_tmpVertex, extra, geometryPadding);
+        }
+
+        static Vector4 MultiplyGlassRgb(Vector4 color, Vector4 multiplier)
+        {
+            color.x *= multiplier.x;
+            color.y *= multiplier.y;
+            color.z *= multiplier.z;
+            return color;
         }
 
         static Material GetGlassMaterial()

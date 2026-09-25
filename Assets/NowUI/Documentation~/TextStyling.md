@@ -1,4 +1,4 @@
-# Text Gradients And Animation
+# Text Layout, Gradients, And Animation
 
 `NowText` supports gradient fills and built-in glyph animations directly on the
 text builder. They compose with the existing font, outline, mask, shaping, and
@@ -33,6 +33,82 @@ Snapping is bypassed inside `Now.Transform` scopes and when a glyph animation
 is configured, including after an entrance animation completes. Leave it disabled
 for text whose position is animated directly through its rectangle. It can help
 static small labels, but does not pixel-fit individual glyph contours.
+
+## Alignment, Spacing, And Clipping
+
+By default a text draw starts at its rect's top-left corner and only uses the
+rect's size for clipping. `SetAlign` places each line inside the rect's width
+and the block of lines inside its height, so centered labels need no manual
+measuring:
+
+```csharp
+Now.Text(button)
+    .SetFontSize(18f)
+    .SetBold()
+    .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.CapMiddle)
+    .Draw("Continue");
+```
+
+`NowTextVerticalAlign.Middle` centers the line boxes. `CapMiddle` centers the
+span from the first line's cap height to the last line's baseline instead, so
+capitals and digits sit optically centered in pills, buttons, and badges
+whatever the font's ascent and descent. Multi-line strings align each line on
+its own and keep one gradient mapping and one animation sequence across lines.
+
+`SetLetterSpacing(em)` adds that many ems of space between consecutive units on
+a line (tracking); `SetLetterSpacingPixels(px)` converts from UI units using
+the font size at the call, so set the size first. Units are shaped clusters,
+so ligatures and combining marks stay together, and no space follows a line's
+last unit, which keeps spaced text centered. `Measure` includes the spacing.
+
+```csharp
+Now.Text(header)
+    .SetFontSize(12f)
+    .SetLetterSpacing(0.3f)
+    .SetAlign(NowTextAlign.Center)
+    .Draw("MOTION DESIGN");
+```
+
+A text draw is clipped to its own rect, outset for outlines, glyph overhang,
+and bounded animation motion. `SetClip(false)` removes that self-clip so large,
+moving, or letter-spaced text does not need an oversized rect; ambient masks
+from `Now.Mask` still apply. `SetMask(rect)` replaces the self-clip with an
+exact rect.
+
+Alignment and letter spacing apply to `Now.Text` draws (string and span).
+`NowTextWrap` and rich text lay out their own runs and ignore them.
+
+### Font Metrics
+
+`font.GetMetrics(style)` returns a `NowFontMetrics` value with the line height,
+ascender, descender, cap height, and x-height in em units; call
+`.Scale(fontSize)` for UI units. Cap height and x-height are measured from the
+font's flat-bottomed "H" and "x" glyphs.
+
+```csharp
+var metrics = Now.defaultFont.GetMetrics().Scale(fontSize);
+float baseline = rect.y + metrics.ascender;
+float capTop = baseline - metrics.capHeight;
+```
+
+### Unit Boxes
+
+`GetUnitRects(value, rects)` writes the laid-out box of each unit (one shaped
+cluster) in draw order, in the same space as the text's rect, with alignment
+and letter spacing applied. It returns the total unit count, which can exceed
+the buffer, so a first call can size it. Use it to place per-letter
+decoration, underlines, carets, or hit targets without measuring substrings.
+
+```csharp
+Span<NowRect> letters = stackalloc NowRect[32];
+var title = Now.Text(rect).SetFontSize(64f).SetAlign(NowTextAlign.Center);
+int count = Math.Min(title.GetUnitRects("NowUI", letters), letters.Length);
+
+for (int i = 0; i < count; ++i)
+    Now.Rectangle(new NowRect(letters[i].x, letters[i].yMax, letters[i].width, 3f)).Draw();
+
+title.Draw("NowUI");
+```
 
 ## Gradient Fills
 
@@ -197,6 +273,8 @@ implementation; prefer shaped string draws for complex-script animation.
 Animation values are immutable. `SetDelay` offsets playback; entrance presets
 also support `SetDuration`, `SetStagger`, and `SetEasing` with
 `NowTextAnimationEasing.Linear`, `EaseIn`, `EaseOut`, or `EaseInOut`.
+These evaluate the same curves as `NowEase.Linear`, `InCubic`, `OutCubic`, and
+`InOutCubic`; for other motion driven by the same clock, see [Easing](Easing.md).
 
 ```csharp
 Now.Text(messageRect)
@@ -237,6 +315,46 @@ motion; a mask supplied explicitly with `SetMask` remains exact by design.
 animation, time, and clear methods. Wrapped and rich text keep one sequence and
 one gradient mapping across their generated runs instead of restarting each
 word or style span.
+
+### Custom Glyph Animations
+
+When the presets are not enough, implement `INowTextGlyphAnimator` and pass it
+to `NowTextAnimations.Custom`. The renderer calls `Evaluate(unitIndex,
+unitCount, time)` once per visible unit per draw and applies the returned
+`NowTextGlyphState`: an offset in UI units, a scale and a rotation (degrees,
+clockwise) around the glyph's visual center, and an alpha.
+
+```csharp
+sealed class DropIn : INowTextGlyphAnimator
+{
+    public NowTextGlyphState Evaluate(int unit, int count, float time)
+    {
+        float t = NowEase.Progress(time, unit * 0.06f, unit * 0.06f + 0.5f);
+        float settle = NowEase.OutBack(t);
+        return new NowTextGlyphState(
+            offset: new Vector2(0f, (1f - settle) * -80f),
+            alpha: t > 0f ? 1f : 0f,
+            rotation: (1f - settle) * 40f);
+    }
+}
+
+static readonly DropIn Drop = new DropIn();
+
+Now.Text(rect)
+    .SetFontSize(96f)
+    .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.CapMiddle)
+    .SetAnimation(NowTextAnimations.Custom(Drop, maxOffset: 80f, duration: 1.2f))
+    .SetTime(elapsed)
+    .Draw("FLUID");
+```
+
+Keep one animator instance (a static field is fine); the animation value only
+references it, so drawing stays allocation-free. `maxOffset` widens the text's
+automatic clip so moving glyphs are not cut off. `duration` is when the motion
+holds still, so retained hosts stop repainting; leave it infinite for
+continuous motion. Unlike the presets, a finished custom animation keeps
+applying its final state rather than reverting to static text. `SetDelay`
+shifts the time passed to the animator; stagger and easing are up to it.
 
 ## Hosts, Effects, And Performance
 

@@ -43,6 +43,18 @@ public class NativeCaptureTests
     }
 
     [Test]
+    public void CaptureAndPreviewDefaultToSixteenByNine()
+    {
+        var render = RenderOptions.Parse(["render", "Scene.csproj", "--output", "frame.png"]);
+        var animate = RenderOptions.Parse(["animate", "Scene.csproj", "--output", Path.Combine(scratch, "frames")]);
+        var preview = RenderOptions.Parse(["preview", "Scene.csproj"]);
+        foreach (var options in new[] { render, animate, preview })
+            Assert.That((options.Width, options.Height), Is.EqualTo((960, 540)));
+        var custom = RenderOptions.Parse(["render", "Scene.csproj", "--output", "frame.png", "--width", "640", "--height", "480"]);
+        Assert.That((custom.Width, custom.Height), Is.EqualTo((640, 480)));
+    }
+
+    [Test]
     public void PreviewAcceptsLiveWindowWithoutCaptureOutput()
     {
         var options = RenderOptions.Parse(["preview", "Scene.csproj", "--scene", "Demo"]);

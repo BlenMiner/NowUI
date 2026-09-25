@@ -884,6 +884,7 @@ namespace NowUI.Editor
             json.Number("dynamicPixelRange", font.dynamicPixelRange);
             json.Number("dynamicPageSize", font.dynamicPageSize);
             json.Number("dynamicMaxAtlasSize", font.dynamicMaxAtlasSize);
+            json.Number("dynamicMaxGlyphSize", font.dynamicMaxGlyphSize);
             json.Number("dynamicMaxAtlasBytes", font.dynamicMaxAtlasBytes);
 
             // A face carries no fallbacks of its own today; exported so that stays a fact and not an assumption.

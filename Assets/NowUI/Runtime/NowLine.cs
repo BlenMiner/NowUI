@@ -197,6 +197,91 @@ namespace NowUI
             Now.DrawLine(this);
             return this;
         }
+
+        internal NowStrokeStyle strokeStyle => new NowStrokeStyle
+        {
+            mask = mask,
+            color = color,
+            colorEnd = colorEnd,
+            gradient = gradient,
+            width = width,
+            cap = cap,
+            dashLength = dashLength,
+            dashGap = dashGap,
+            dashOffset = dashOffset,
+            arrows = arrows,
+            arrowLength = arrowLength,
+            arrowWidth = arrowWidth
+        };
+    }
+
+    /// <summary>
+    /// Stroke styling shared by <see cref="NowLine"/>, <see cref="NowPolyline"/>,
+    /// and <see cref="NowArc"/>. Values are authored: UI units before the active
+    /// transform and display colors before the ambient color multiplier.
+    /// </summary>
+    internal struct NowStrokeStyle
+    {
+        public NowRect mask;
+
+        public Vector4 color;
+
+        public Vector4 colorEnd;
+
+        public bool gradient;
+
+        public float width;
+
+        public NowLineCap cap;
+
+        public float dashLength;
+
+        public float dashGap;
+
+        public float dashOffset;
+
+        public NowLineArrow arrows;
+
+        public float arrowLength;
+
+        public float arrowWidth;
+
+        public static NowStrokeStyle solid => new NowStrokeStyle
+        {
+            color = Vector4.one,
+            colorEnd = Vector4.one,
+            width = 1f,
+            cap = NowLineCap.Butt
+        };
+
+        public bool dashed => dashLength > Now.LineEpsilon && dashGap > Now.LineEpsilon;
+
+        public void SetColor(Vector4 value)
+        {
+            color = value;
+            gradient = false;
+        }
+
+        public void SetGradient(Vector4 from, Vector4 to)
+        {
+            color = from;
+            colorEnd = to;
+            gradient = true;
+        }
+
+        public void SetDash(float length, float gap, float offset)
+        {
+            dashLength = length;
+            dashGap = gap;
+            dashOffset = offset;
+        }
+
+        public void SetArrow(NowLineArrow value, float length, float headWidth)
+        {
+            arrows = value;
+            arrowLength = length;
+            arrowWidth = headWidth;
+        }
     }
 
     public static partial class Now
@@ -205,13 +290,17 @@ namespace NowUI
 
         const float LineAaWidth = 0.75f;
 
-        const float LineEpsilon = 0.0001f;
+        internal const float LineEpsilon = 0.0001f;
 
         static readonly NowLottieDrawBuffer _lineBuffer = new NowLottieDrawBuffer();
 
         static StaticList<Vector2> _linePoints = new StaticList<Vector2>(64);
 
         static StaticList<Vector2> _lineDashPoints = new StaticList<Vector2>(16);
+
+        // First dash of a closed path when it starts on the seam; it is joined
+        // to the path's last dash so the seam does not split one dash in two.
+        static StaticList<Vector2> _lineDashHead = new StaticList<Vector2>(16);
 
         static StaticList<Vector2> _lineStrokePoints = new StaticList<Vector2>(64);
 
@@ -289,19 +378,16 @@ namespace NowUI
             // Scale width by transform
             float scaledWidth = hasTransform ? ApplyTransformScalar(line.width) : line.width;
 
-            var mask = line.mask;
-
-            if (hasTransform && !mask.isEmpty)
-                mask = ApplyTransformRect(mask);
-
-            mask = ApplyAmbientMask(mask);
+            var style = line.strokeStyle;
+            var mask = ResolveStrokeMask(style.mask, hasTransform);
 
             if (mask.isEmpty || !LineBoundsOverlapMask(
                     from,
                     control1,
                     control2,
                     to,
-                    line,
+                    line.cubic,
+                    style,
                     scaledWidth,
                     hasTransform,
                     mask))
@@ -340,19 +426,64 @@ namespace NowUI
             if (_linePoints.count < 2)
                 return;
 
+            EmitStrokePath(
+                style,
+                false,
+                color,
+                colorEnd,
+                scaledWidth,
+                hasTransform ? ApplyTransformScalar(1f) : 1f,
+                mask);
+        }
+
+        /// <summary>
+        /// Resolves a stroke's explicit mask into the current space and
+        /// intersects it with the ambient mask. An empty result means nothing
+        /// can be visible.
+        /// </summary>
+        static NowRect ResolveStrokeMask(NowRect mask, bool hasTransform)
+        {
+            if (hasTransform && !mask.isEmpty)
+                mask = ApplyTransformRect(mask);
+
+            return ApplyAmbientMask(mask);
+        }
+
+        /// <summary>
+        /// Strokes the already transformed centerline in <see cref="_linePoints"/>
+        /// with <paramref name="style"/> and appends it to the default mesh.
+        /// <paramref name="color"/> and <paramref name="colorEnd"/> already carry
+        /// the ambient color multiplier; <paramref name="dashScale"/> converts
+        /// authored dash lengths into path units. Closed paths join their seam
+        /// and ignore caps and arrows.
+        /// </summary>
+        static void EmitStrokePath(
+            in NowStrokeStyle style,
+            bool closed,
+            Vector4 color,
+            Vector4 colorEnd,
+            float scaledWidth,
+            float dashScale,
+            NowRect mask)
+        {
             _lineBuffer.Clear();
 
-            if (line.dashLength > LineEpsilon && line.dashGap > LineEpsilon)
-                EmitDashedLine(ref _linePoints, line, color, colorEnd, _lineBuffer, scaledWidth, hasTransform ? ApplyTransformScalar(1f) : 1f);
+            if (style.dashed)
+                EmitDashedLine(ref _linePoints, closed, style, color, colorEnd, _lineBuffer, scaledWidth, dashScale);
             else
-                EmitLineStroke(ref _linePoints, false, scaledWidth, line.cap, color, colorEnd, _lineBuffer);
+                EmitLineStroke(ref _linePoints, closed, scaledWidth, style.cap, color, colorEnd, _lineBuffer);
 
-            if ((line.arrows & NowLineArrow.Start) != 0)
-                EmitLineArrow(ref _linePoints, false, line, color, _lineBuffer, scaledWidth);
+            if (!closed && (style.arrows & NowLineArrow.Start) != 0)
+                EmitLineArrow(ref _linePoints, false, style, color, _lineBuffer, scaledWidth);
 
-            if ((line.arrows & NowLineArrow.End) != 0)
-                EmitLineArrow(ref _linePoints, true, line, colorEnd, _lineBuffer, scaledWidth);
+            if (!closed && (style.arrows & NowLineArrow.End) != 0)
+                EmitLineArrow(ref _linePoints, true, style, colorEnd, _lineBuffer, scaledWidth);
 
+            SubmitLineBuffer(mask);
+        }
+
+        static void SubmitLineBuffer(NowRect mask)
+        {
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
 
@@ -378,7 +509,8 @@ namespace NowUI
             Vector2 control1,
             Vector2 control2,
             Vector2 to,
-            in NowLine line,
+            bool cubic,
+            in NowStrokeStyle style,
             float scaledWidth,
             bool hasTransform,
             NowRect mask)
@@ -388,7 +520,7 @@ namespace NowUI
             float maxX = Mathf.Max(from.x, to.x);
             float maxY = Mathf.Max(from.y, to.y);
 
-            if (line.cubic)
+            if (cubic)
             {
                 minX = Mathf.Min(minX, Mathf.Min(control1.x, control2.x));
                 minY = Mathf.Min(minY, Mathf.Min(control1.y, control2.y));
@@ -396,6 +528,24 @@ namespace NowUI
                 maxY = Mathf.Max(maxY, Mathf.Max(control1.y, control2.y));
             }
 
+            return StrokeBoundsOverlapMask(minX, minY, maxX, maxY, style, scaledWidth, hasTransform, mask);
+        }
+
+        /// <summary>
+        /// Pads the centerline bounds of a stroke by its widest possible
+        /// extent (miter-limited joins, AA fringe, arrowheads) and tests them
+        /// against the resolved mask.
+        /// </summary>
+        static bool StrokeBoundsOverlapMask(
+            float minX,
+            float minY,
+            float maxX,
+            float maxY,
+            in NowStrokeStyle style,
+            float scaledWidth,
+            bool hasTransform,
+            NowRect mask)
+        {
             // Tessellated cubic joins can reach the emitter's 1 / 0.35 miter
             // limit beyond the centerline. Use the same UI-scale conversion as
             // stroke emission, plus its two-pixel analytic-Bezier overdraw, so
@@ -404,14 +554,14 @@ namespace NowUI
                 (scaledWidth * 0.5f + ScreenPixelsToUiUnits(LineAaWidth + 2f)) / 0.35f;
             float padding = strokeExtent;
 
-            if (line.arrows != NowLineArrow.None)
+            if (style.arrows != NowLineArrow.None)
             {
-                float arrowLength = line.arrowLength > LineEpsilon
-                    ? line.arrowLength
-                    : Mathf.Max(line.width * 4f, 10f);
-                float arrowWidth = line.arrowWidth > LineEpsilon
-                    ? line.arrowWidth
-                    : Mathf.Max(line.width * 3f, arrowLength * 0.6f);
+                float arrowLength = style.arrowLength > LineEpsilon
+                    ? style.arrowLength
+                    : Mathf.Max(style.width * 4f, 10f);
+                float arrowWidth = style.arrowWidth > LineEpsilon
+                    ? style.arrowWidth
+                    : Mathf.Max(style.width * 3f, arrowLength * 0.6f);
 
                 if (hasTransform)
                 {
@@ -442,7 +592,8 @@ namespace NowUI
         /// </summary>
         /// <remarks>
         /// Consecutive duplicate points are ignored. The span is consumed immediately
-        /// and is not retained after this call.
+        /// and is not retained after this call. Use <see cref="Polyline(Vector2[])"/>
+        /// for gradients, dashes, arrow heads, closed loops, or mask culling.
         /// </remarks>
         public static void DrawPolyline(ReadOnlySpan<Vector2> points, float width, NowLineCap cap, Vector4 color, NowRect mask = default)
         {
@@ -474,21 +625,12 @@ namespace NowUI
             if (_lineBuffer.positions.count == 0 || _lineBuffer.indices.count == 0)
                 return;
 
-            if (hasTransform && !mask.isEmpty)
-                mask = ApplyTransformRect(mask);
-
-            mask = ApplyAmbientMask(mask);
+            mask = ResolveStrokeMask(mask, hasTransform);
 
             if (mask.isEmpty)
                 return;
 
-            var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
-
-            if (mesh == null)
-                return;
-
-            mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, _lineBuffer.positions.count);
-            mesh.AddGeometry(_lineBuffer, Vector2.zero, 1f, Vector4.one, mask);
+            SubmitLineBuffer(mask);
         }
 
         static void AddBezierPoint(Vector2 pos, float t)
@@ -716,25 +858,33 @@ namespace NowUI
             return (d1 + d2) / Mathf.Sqrt(chordLengthSquared) <= tolerance;
         }
 
+        /// <summary>
+        /// Splits the centerline into dashes by distance and strokes each dash.
+        /// On a closed path the walk includes the closing segment and the
+        /// pattern phase continues across the seam: a dash that crosses the
+        /// first point is emitted as one piece rather than two capped halves.
+        /// </summary>
         static void EmitDashedLine(
             ref StaticList<Vector2> points,
-            in NowLine line,
+            bool closed,
+            in NowStrokeStyle style,
             Vector4 color,
             Vector4 colorTo,
             NowLottieDrawBuffer buffer,
             float scaledWidth,
             float scalar)
         {
-            float dash = Mathf.Max(line.dashLength * scalar, 0f);
-            float gap = Mathf.Max(line.dashGap * scalar, 0f);
+            float dash = Mathf.Max(style.dashLength * scalar, 0f);
+            float gap = Mathf.Max(style.dashGap * scalar, 0f);
             float pattern = dash + gap;
 
             if (dash <= LineEpsilon || gap <= LineEpsilon || pattern <= LineEpsilon)
             {
-                EmitLineStroke(ref points, false, scaledWidth, line.cap, color, colorTo, buffer);
+                EmitLineStroke(ref points, closed, scaledWidth, style.cap, color, colorTo, buffer);
                 return;
             }
 
+            int segmentCount = closed ? points.count : points.count - 1;
             bool hasGradient = colorTo != color;
             float totalLength = 0f;
 
@@ -743,22 +893,32 @@ namespace NowUI
                 for (int i = 1; i < points.count; ++i)
                     totalLength += (points.array[i] - points.array[i - 1]).magnitude;
 
+                if (closed)
+                    totalLength += (points.array[0] - points.array[points.count - 1]).magnitude;
+
                 if (totalLength <= LineEpsilon)
                     hasGradient = false;
             }
 
-            float phase = Mathf.Repeat(line.dashOffset * scalar, pattern);
+            float phase = Mathf.Repeat(style.dashOffset * scalar, pattern);
             bool drawing = phase < dash;
             float remaining = drawing ? dash - phase : pattern - phase;
             float traveled = 0f;
             float dashStartDistance = 0f;
 
-            _lineDashPoints.Clear();
+            // A closed path's first dash may be the tail of its last one. Hold
+            // it until the walk wraps around to the seam.
+            bool holdingHead = closed && drawing;
+            bool headHeld = false;
+            float headEndDistance = 0f;
 
-            for (int i = 1; i < points.count; ++i)
+            _lineDashPoints.Clear();
+            _lineDashHead.Clear();
+
+            for (int i = 0; i < segmentCount; ++i)
             {
-                Vector2 start = points.array[i - 1];
-                Vector2 end = points.array[i];
+                Vector2 start = points.array[i];
+                Vector2 end = points.array[i + 1 < points.count ? i + 1 : 0];
                 Vector2 delta = end - start;
                 float length = delta.magnitude;
 
@@ -794,11 +954,21 @@ namespace NowUI
 
                     if (remaining - step <= LineEpsilon)
                     {
-                        if (drawing && _lineDashPoints.count >= 2)
+                        if (drawing && holdingHead)
+                        {
+                            holdingHead = false;
+                            headHeld = _lineDashPoints.count >= 2;
+                            headEndDistance = traveled + walked;
+
+                            for (int p = 0; headHeld && p < _lineDashPoints.count; ++p)
+                                AddLinePoint(ref _lineDashHead, _lineDashPoints.array[p]);
+                        }
+                        else if (drawing && _lineDashPoints.count >= 2)
                         {
                             EmitDashStroke(
+                                ref _lineDashPoints,
                                 scaledWidth,
-                                line.cap,
+                                style.cap,
                                 color,
                                 colorTo,
                                 hasGradient,
@@ -823,22 +993,70 @@ namespace NowUI
 
             if (drawing && _lineDashPoints.count >= 2)
             {
+                if (holdingHead)
+                {
+                    // The first dash never ended: it covers the whole loop.
+                    EmitLineStroke(ref points, true, scaledWidth, style.cap, color, colorTo, buffer);
+                }
+                else if (headHeld && !hasGradient)
+                {
+                    // Continue the last dash through the seam into the held
+                    // first dash so the join is mitered like any other bend.
+                    for (int p = 0; p < _lineDashHead.count; ++p)
+                        AddLinePointIfDistinct(ref _lineDashPoints, _lineDashHead.array[p]);
+
+                    headHeld = false;
+                    EmitDashStroke(
+                        ref _lineDashPoints,
+                        scaledWidth,
+                        style.cap,
+                        color,
+                        colorTo,
+                        false,
+                        0f,
+                        0f,
+                        totalLength,
+                        buffer);
+                }
+                else
+                {
+                    // Gradient loops change color abruptly at the seam, so a
+                    // dash crossing it stays two pieces with their own slices.
+                    EmitDashStroke(
+                        ref _lineDashPoints,
+                        scaledWidth,
+                        style.cap,
+                        color,
+                        colorTo,
+                        hasGradient,
+                        dashStartDistance,
+                        traveled,
+                        totalLength,
+                        buffer);
+                }
+            }
+
+            if (headHeld)
+            {
                 EmitDashStroke(
+                    ref _lineDashHead,
                     scaledWidth,
-                    line.cap,
+                    style.cap,
                     color,
                     colorTo,
                     hasGradient,
-                    dashStartDistance,
-                    traveled,
+                    0f,
+                    headEndDistance,
                     totalLength,
                     buffer);
             }
 
             _lineDashPoints.Clear();
+            _lineDashHead.Clear();
         }
 
         static void EmitDashStroke(
+            ref StaticList<Vector2> points,
             float width,
             NowLineCap cap,
             Vector4 color,
@@ -858,13 +1076,13 @@ namespace NowUI
                 to = Vector4.Lerp(color, colorTo, Mathf.Clamp01(endDistance / totalLength));
             }
 
-            EmitLineStroke(ref _lineDashPoints, false, width, cap, from, to, buffer);
+            EmitLineStroke(ref points, false, width, cap, from, to, buffer);
         }
 
         static void EmitLineArrow(
             ref StaticList<Vector2> points,
             bool atEnd,
-            in NowLine line,
+            in NowStrokeStyle style,
             Vector4 color,
             NowLottieDrawBuffer buffer,
             float scaledWidth)
@@ -874,12 +1092,12 @@ namespace NowUI
 
             bool hasTransform = _transformStack.Count > 0;
 
-            float length = line.arrowLength > LineEpsilon
-                ? line.arrowLength
-                : Mathf.Max(line.width * 4f, 10f);
-            float width = line.arrowWidth > LineEpsilon
-                ? line.arrowWidth
-                : Mathf.Max(line.width * 3f, length * 0.6f);
+            float length = style.arrowLength > LineEpsilon
+                ? style.arrowLength
+                : Mathf.Max(style.width * 4f, 10f);
+            float width = style.arrowWidth > LineEpsilon
+                ? style.arrowWidth
+                : Mathf.Max(style.width * 3f, length * 0.6f);
 
             // Scale arrow dimensions by transform
             if (hasTransform)
@@ -991,6 +1209,10 @@ namespace NowUI
             if (count < 2)
                 return;
 
+            // Two points cannot enclose anything; stroke them as an open path.
+            if (closed && count < 3)
+                closed = false;
+
             if (!closed && cap == NowLineCap.Square)
             {
                 Vector2 startDirection = NormalizeLineVector(_lineStrokePoints.array[0] - _lineStrokePoints.array[1]);
@@ -1059,6 +1281,11 @@ namespace NowUI
                     _lineStrokeArcs.array[_lineStrokeArcs.count++] = totalArc;
                 }
 
+                // A closed gradient runs through the closing segment and meets
+                // its start color again at the seam.
+                if (closed)
+                    totalArc += (_lineStrokePoints.array[0] - _lineStrokePoints.array[count - 1]).magnitude;
+
                 if (totalArc <= LineEpsilon)
                     hasGradient = false;
             }
@@ -1098,8 +1325,28 @@ namespace NowUI
                 previousRing = ring;
             }
 
-            if (closed)
+            if (closed && hasGradient)
+            {
+                // Close through a duplicate of the first ring in the end color
+                // so the loop keeps its shared seam join but not a color blend
+                // back across the last segment.
+                Vector2 position = _lineStrokePoints.array[0];
+                Vector2 normal = _lineStrokeNormals.array[0];
+                coreColor = colorTo;
+                coreColor.w *= coreAlpha;
+                edgeColor = coreColor;
+                edgeColor.w = 0f;
+
+                int seamRing = buffer.AddVertex(position + normal * outerWidth, edgeColor);
+                buffer.AddVertex(position + normal * innerWidth, coreColor);
+                buffer.AddVertex(position - normal * innerWidth, coreColor);
+                buffer.AddVertex(position - normal * outerWidth, edgeColor);
+                ConnectLineStrokeRings(buffer, previousRing, seamRing);
+            }
+            else if (closed)
+            {
                 ConnectLineStrokeRings(buffer, previousRing, firstRing);
+            }
 
             if (!closed && cap == NowLineCap.Round)
             {

@@ -69,6 +69,42 @@ public sealed class RendererParityTests
                 red, column >= 3 ? green : 0, column >= 5 ? blue : 0, 255, 1);
     }
 
+    [Test]
+    public void SdfWarpCallerClockIsDeterministicPerTimeAndMatchesTheShaderClock()
+    {
+        var first = Render("SdfWarpCallerClockScene", 128, 64, "gamma", time: 0.5);
+        var repeat = Render("SdfWarpCallerClockScene", 128, 64, "gamma", time: 0.5);
+        Assert.That(repeat, Is.EqualTo(first), "The same caller time must render identical pixels.");
+
+        // A different phase moves both the warped fill and the cached warped mask.
+        var later = Render("SdfWarpCallerClockScene", 128, 64, "gamma", time: 1.5);
+        Assert.That(CountDifferent(first, later, 128, 0, 64, 0), Is.GreaterThan(20), "Warped fill must follow the caller time.");
+        Assert.That(CountDifferent(first, later, 128, 64, 128, 0), Is.GreaterThan(20), "Warped mask must re-rasterize for a new caller time.");
+
+        // SetTime(t) folds the phase on the CPU; it must match the shader clock at t.
+        var host = Render("SdfWarpHostClockScene", 128, 64, "gamma", time: 0.5);
+        Assert.That(CountDifferent(first, host, 128, 0, 128, 8), Is.Zero, "SetTime(Time.time) must match the host shader clock.");
+
+        // SetTime(t) with speed s equals a static warp whose seed is seed + t * s. Captured
+        // at host time 0, a fixed SetTime(0.5) still samples the 0.5 phase.
+        var fixedTime = Render("SdfWarpFixedTimeScene", 128, 64, "gamma");
+        var seedPhase = Render("SdfWarpSeedPhaseScene", 128, 64, "gamma");
+        Assert.That(seedPhase, Is.EqualTo(fixedTime), "A caller-clock phase must equal the same seed-only phase.");
+        Assert.That(CountDifferent(first, fixedTime, 128, 0, 128, 8), Is.Zero, "SetTime(0.5) must not depend on the host clock.");
+    }
+
+    static int CountDifferent(byte[] a, byte[] b, int width, int x0, int x1, int tolerance)
+    {
+        int height = a.Length / 4 / width, count = 0;
+        for (int y = 0; y < height; y++) for (int x = x0; x < x1; x++)
+        {
+            int i = (y * width + x) * 4;
+            for (int c = 0; c < 4; c++)
+                if (Math.Abs(a[i + c] - b[i + c]) > tolerance) { count++; break; }
+        }
+        return count;
+    }
+
     // The source checkout is a Unity project whose Resources folder holds the UGUI
     // gradient .mat; an empty project resolves no template at all. Both must draw.
     [TestCase("gamma", false), TestCase("linear", false), TestCase("gamma", true)]
@@ -96,7 +132,54 @@ public sealed class RendererParityTests
         Assert.That(wrong, Is.Zero, "A red-to-blue text gradient must not produce green.");
     }
 
-    static byte[] Render(string scene, int width, int height, string colorSpace, bool sourceProject = false)
+    [TestCase("gamma", 128), TestCase("linear", 188)]
+    public void OpacityRotationGlassFadeAndCoincidentSdfShapesRender(string colorSpace, int halfGray)
+    {
+        var pixels = Render("TransformScopesParityScene", 128, 96, colorSpace);
+        AssertPixel(pixels, 128, 96, 16, 16, halfGray, halfGray, halfGray, 255, 2);
+        AssertPixel(pixels, 128, 96, 68, 28, 255, 0, 0, 255, 1);   // inside the turned bar
+        AssertPixel(pixels, 128, 96, 52, 16, 0, 0, 0, 255, 1);     // where the unturned bar was
+        AssertPixel(pixels, 128, 96, 100, 16, 255, 255, 255, 255, 0);
+        AssertPixel(pixels, 128, 96, 108, 16, 0, 0, 0, 255, 0);
+        AssertPixel(pixels, 128, 96, 92, 68, 0, 255, 0, 255, 1);   // coincident discs: later wins
+
+        int red = 0, green = 0;
+        for (int y = 40; y < 96; y++) for (int x = 0; x < 64; x++)
+        {
+            int i = ((95 - y) * 128 + x) * 4;
+            if (pixels[i] > 200 && pixels[i + 1] < 60) red++;
+            if (pixels[i + 1] > 200 && pixels[i] < 60) green++;
+        }
+        Assert.That(green, Is.GreaterThan(300), "The later ring must cover the shared band.");
+        Assert.That(red, Is.Zero, "Coincident rings must not flicker between fills.");
+    }
+
+    [TestCase("gamma"), TestCase("linear")]
+    public void CenteredTextAndAlignedSdfTextShareOneLayout(string colorSpace)
+    {
+        var pixels = Render("AlignedTextParityScene", 128, 96, colorSpace);
+        var top = InkCentroid(pixels, 0, 48);
+        var bottom = InkCentroid(pixels, 48, 96);
+        Assert.That(top.x, Is.EqualTo(64f).Within(1.5f), "Centered text");
+        Assert.That(top.y, Is.EqualTo(24f).Within(1.5f), "Cap-centered text");
+        Assert.That(bottom.x, Is.EqualTo(top.x).Within(1f), "SDF text uses the same horizontal layout");
+        Assert.That(bottom.y - 48f, Is.EqualTo(top.y).Within(1f), "SDF text uses the same vertical layout");
+    }
+
+    static (float x, float y) InkCentroid(byte[] pixels, int yMin, int yMax)
+    {
+        double sx = 0, sy = 0, w = 0;
+        for (int y = yMin; y < yMax; y++) for (int x = 0; x < 128; x++)
+        {
+            int i = ((95 - y) * 128 + x) * 4;
+            double ink = pixels[i] / 255.0;
+            sx += (x + 0.5) * ink; sy += (y + 0.5) * ink; w += ink;
+        }
+        Assert.That(w, Is.GreaterThan(20), "Expected rendered text.");
+        return ((float)(sx / w), (float)(sy / w));
+    }
+
+    static byte[] Render(string scene, int width, int height, string colorSpace, bool sourceProject = false, double? time = null)
     {
         if (Environment.GetEnvironmentVariable("NOWUI_TEST_NATIVE_GRAPHICS") != "1")
             Assert.Ignore("Set NOWUI_TEST_NATIVE_GRAPHICS=1 in a desktop graphics session.");
@@ -115,6 +198,7 @@ public sealed class RendererParityTests
                 "--output", output, "--width", width.ToString(), "--height", height.ToString(),
                 "--color-space", colorSpace, "--unity-project", sourceProject ? Path.GetDirectoryName(standalone)! : directory,
                 "--configuration", configuration, "--no-build" }) start.ArgumentList.Add(argument);
+            if (time.HasValue) { start.ArgumentList.Add("--time"); start.ArgumentList.Add(time.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();
             var stderr = process.StandardError.ReadToEndAsync();

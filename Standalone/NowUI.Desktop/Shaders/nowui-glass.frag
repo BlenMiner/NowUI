@@ -241,8 +241,8 @@ void main()
         : smoothstep(-outlineWidth - aa, -outlineWidth + aa, dist);
 
     // UIGlass.shader:159-168. extras.z/.w are the backdrop's saturation and
-    // brightness; extras.x is the blur RADIUS, which is a CPU-side batch-key
-    // input (NowGlass.cs:301) and is never read by this shader.
+    // brightness; extras.x is the ambient Now.Opacity/Now.Tint alpha, applied
+    // once to the whole pane below (the blur radius travels in the batch key).
     highp float saturation = vExtras.z;
     highp float brightness = vExtras.w;
     highp vec4 tint = vColor;
@@ -329,7 +329,7 @@ void main()
     // already-premultiplied float4 by the mask coverage. This shader applies
     // it to ALPHA ONLY, because its rgb is straight. Both are correct for
     // their own shader; do not unify them.
-    highp vec4 col = vec4(rgb, coverage * graphicAlpha);
+    highp vec4 col = vec4(rgb, coverage * graphicAlpha * vExtras.x);
     col.a *= NowUIMaskCoverage(uiPosition);
 
     // UIGlass.shader:261 -- clip(col.a - 0.001). HLSL clip discards on

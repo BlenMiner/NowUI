@@ -137,6 +137,15 @@
     <Compile Include="../../Assets/NowUITests/NowNodeGraphTests.cs" LinkBase="UnityTests" />
     <Compile Include="../../Assets/NowUITests/NowTextShapingTests.cs" LinkBase="UnityTests" />
     <Compile Include="../../Assets/NowUITests/NowControlsTests.cs" LinkBase="UnityTests" />
+    <!-- Added after M1 and not part of the 782 above: CPU-only coverage for NowEase, the Now.Opacity/Now.Tint/Now.Rotate scopes, the effects API and text layout. -->
+    <Compile Include="../../Assets/NowUITests/NowEaseTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowOpacityTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowRotateTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowEffectsApiTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowTextLayoutTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowFontTierTests.cs" LinkBase="UnityTests" />
+    <!-- Stroke builder geometry reads a NowDrawList mesh back through the shim's Mesh getters; no device needed. -->
+    <Compile Include="../../Assets/NowUITests/NowStrokeTests.cs" LinkBase="UnityTests" />
     <!-- Tier C: CPU-only, [Category("NowUI.Overview")], which the gate command's filter "Category!=NowUI.Overview"
          excludes. It runs green without that filter (18 cases) as a sanity check on the PerformanceTesting stub. -->
     <Compile Include="../../Assets/NowUITests/NowGraphEvaluationPerformanceTests.cs" LinkBase="UnityTests" />

@@ -125,9 +125,10 @@ Translation and mirroring alone can reuse coverage when the local content and
 physical size stay the same. Shape/effect/tint/mask changes and
 `Texture2D.Apply()` rerasterize it. Changing the resolution scale enough to
 change the rounded target dimensions resizes and rerasterizes it, so keep the
-scale stable for each stable id. A nonzero-speed warp or a
-`RenderTexture`-backed fill remains live and rerasterizes on every
-`BeginMask()` call.
+scale stable for each stable id. A nonzero-speed warp driven by the shader
+clock or a `RenderTexture`-backed fill remains live and rerasterizes on every
+`BeginMask()` call. A warp given a caller time with `SetTime(seconds)` is
+static for that time and rerasterizes only when its phase changes.
 
 SDF caches are not evicted automatically because retained batches may still
 sample their targets. Do not generate a fresh id every frame. When an item with
@@ -299,7 +300,7 @@ rect and animate shapes inside it. `SetMaskResolutionScale(0.5f)` reduces each
 target axis by half, yielding roughly one quarter of the cached pixels and SDF
 capture fragments. Child rendering still performs one mask sample per output
 fragment, and static masks already skip repeat captures, so the recurring gain
-is largest for animated warp, `RenderTexture` fills, frequently changing scenes,
+is largest for shader-clock warp, `RenderTexture` fills, frequently changing scenes,
 and large masks. Retained hosts must still call `MarkDirty()` before changed mask
 code can run. Warm representative content before measuring, and measure GPU
 time on target hardware for large/full-screen masks.

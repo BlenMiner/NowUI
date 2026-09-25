@@ -126,6 +126,13 @@ namespace NowUI.Sdf
         float _smoothing;
         float _nextRotationDegrees;
         int _textPixelRange;
+        // The largest text size in the graph. All of its text resolves in that size's
+        // glyph resolution tier, because a scene binds a single glyph atlas.
+        float _textTierFontSize;
+        // Set when text added after the bound glyph atlas needs a different atlas
+        // (a larger resolution tier); the next range reconciliation re-resolves all
+        // text into one atlas instead of dropping the new glyphs.
+        bool _textAtlasPending;
         int _failedTextPixelRange;
         int _failedTextFontVersion = -1;
         int _contentRevision;
@@ -141,6 +148,23 @@ namespace NowUI.Sdf
         internal bool hasNodes => _nodes.Count > 0;
 
         internal bool hasText => _glyphSources.Count > 0;
+
+        internal float textTierFontSize => _textTierFontSize;
+
+        /// <summary>
+        /// Moves this graph's text into a larger shared resolution tier, so every text
+        /// graph of one scene resolves into the same glyph atlas.
+        /// </summary>
+        internal void RaiseTextTier(float fontSize)
+        {
+            if (!(fontSize > _textTierFontSize))
+                return;
+
+            _textTierFontSize = fontSize;
+
+            if (hasText)
+                _textAtlasPending = true;
+        }
 
         internal bool hasImages => _imageSources.Count > 0;
 
@@ -170,6 +194,8 @@ namespace NowUI.Sdf
             _smoothing = 0f;
             _nextRotationDegrees = 0f;
             _textPixelRange = 0;
+            _textTierFontSize = 0f;
+            _textAtlasPending = false;
             _failedTextPixelRange = 0;
             _failedTextFontVersion = -1;
             _rotationStack.Clear();
@@ -648,6 +674,55 @@ namespace NowUI.Sdf
         }
 
         /// <summary>
+        /// Adds text laid out inside <paramref name="rect"/> with the same alignment
+        /// rules as <c>Now.Text(...).SetAlign(...)</c>: each line is placed within the
+        /// rect's width and the block within its height. Single-line text is one
+        /// <c>Text</c> call, so a pending <see cref="RotateNext"/> turns it around its
+        /// center. Each line of multi-line text is added separately; rotate such a
+        /// block as a whole with <c>Now.Rotate</c> around the scene.
+        /// </summary>
+        public NowSdfGraph Text(
+            NowRect rect,
+            string value,
+            float fontSize,
+            NowFontStyle fontStyle,
+            NowTextAlign align,
+            NowTextVerticalAlign verticalAlign = NowTextVerticalAlign.Top,
+            int tabSpaces = 4)
+        {
+            return Text(rect, value, Now.font, fontSize, fontStyle, align, verticalAlign, tabSpaces);
+        }
+
+        /// <inheritdoc cref="Text(NowRect, string, float, NowFontStyle, NowTextAlign, NowTextVerticalAlign, int)"/>
+        public NowSdfGraph Text(
+            NowRect rect,
+            string value,
+            NowFontAsset font,
+            float fontSize,
+            NowFontStyle fontStyle,
+            NowTextAlign align,
+            NowTextVerticalAlign verticalAlign = NowTextVerticalAlign.Top,
+            int tabSpaces = 4)
+        {
+            font = font != null ? font : Now.font;
+
+            if (string.IsNullOrEmpty(value) || font == null)
+                return this;
+
+            var layout = NowSdfTextAlignment.Begin(rect, value, font, fontSize, fontStyle, align, verticalAlign, out var lines);
+
+            for (int i = 0; i < layout.lineCount; ++i)
+            {
+                string line = lines != null ? lines[i] : value;
+
+                if (!string.IsNullOrEmpty(line))
+                    AddText(layout.LinePosition(line, i), line, font, fontSize, fontStyle, tabSpaces);
+            }
+
+            return this;
+        }
+
+        /// <summary>
         /// Adds a texture as a shape whose silhouette is the alpha channel at
         /// <paramref name="threshold"/>. Outlines, shadows, glows, emboss, and
         /// boolean operations follow that silhouette; the fill samples the image
@@ -836,6 +911,8 @@ namespace NowUI.Sdf
             _smoothing = source._smoothing;
             _nextRotationDegrees = source._nextRotationDegrees;
             _textPixelRange = source._textPixelRange;
+            _textTierFontSize = source._textTierFontSize;
+            _textAtlasPending = source._textAtlasPending;
             _failedTextPixelRange = source._failedTextPixelRange;
             _failedTextFontVersion = source._failedTextFontVersion;
             _contentRevision = source._contentRevision;
@@ -894,6 +971,8 @@ namespace NowUI.Sdf
             Texture previousTexture = _texture;
             bool previousTextureFromGlyph = _textureFromGlyph;
             int previousTextPixelRange = _textPixelRange;
+            float previousTextTierFontSize = _textTierFontSize;
+            bool previousTextAtlasPending = _textAtlasPending;
             int previousFailedTextPixelRange = _failedTextPixelRange;
             int previousFailedTextFontVersion = _failedTextFontVersion;
             int previousContentRevision = _contentRevision;
@@ -970,7 +1049,7 @@ namespace NowUI.Sdf
                         !Mathf.Approximately(glyph.atlasBounds.left, glyph.atlasBounds.right) &&
                         material != null &&
                         material.mainTexture != null &&
-                        TryBindTexture(material.mainTexture))
+                        TryBindTextTexture(material.mainTexture))
                     {
                         var rect = GlyphRect(x, y, baseline, fontSize, glyph);
                         var uv = new Vector4(
@@ -1010,9 +1089,10 @@ namespace NowUI.Sdf
                             baseline = baseline,
                             rotation = textRotation
                         });
+                        _textTierFontSize = Mathf.Max(_textTierFontSize, fontSize);
                         _textPixelRange = Mathf.Max(
                             _textPixelRange,
-                            resolvedFont.GetDynamicPixelRange(0f, fontSize));
+                            resolvedFont.GetDynamicPixelRange(0f, fontSize, Mathf.Max(fontSize, _textTierFontSize)));
 
                         var node = _nodes[_nodes.Count - 1];
                         double halfWidth = Math.Abs((double)node.data1.z) * 0.5d;
@@ -1085,6 +1165,8 @@ namespace NowUI.Sdf
                 _texture = previousTexture;
                 _textureFromGlyph = previousTextureFromGlyph;
                 _textPixelRange = previousTextPixelRange;
+                _textTierFontSize = previousTextTierFontSize;
+                _textAtlasPending = previousTextAtlasPending;
                 _failedTextPixelRange = previousFailedTextPixelRange;
                 _failedTextFontVersion = previousFailedTextFontVersion;
                 _contentRevision = previousContentRevision;
@@ -1184,7 +1266,7 @@ namespace NowUI.Sdf
                     }
                 }
 
-                if (requiredTexture != null && !TryBindTexture(requiredTexture))
+                if (requiredTexture != null && !TryBindTextTexture(requiredTexture))
                     return false;
 
                 float lineHeight = fontAsset.GetLineHeight(fontStyle) * fontSize;
@@ -1384,9 +1466,10 @@ namespace NowUI.Sdf
                         baseline = baseline,
                         rotation = textRotation
                     });
+                    _textTierFontSize = Mathf.Max(_textTierFontSize, fontSize);
                     _textPixelRange = Mathf.Max(
                         _textPixelRange,
-                        owner.GetDynamicPixelRange(0f, fontSize));
+                        owner.GetDynamicPixelRange(0f, fontSize, Mathf.Max(fontSize, _textTierFontSize)));
 
                     var node = _nodes[_nodes.Count - 1];
                     double halfWidth = Math.Abs((double)node.data1.z) * 0.5d;
@@ -1443,9 +1526,7 @@ namespace NowUI.Sdf
                 {
                     pixelRange = Mathf.Max(
                         pixelRange,
-                        source.owner.GetDynamicPixelRange(
-                            effectBudget / source.fontSize,
-                            source.fontSize));
+                        source.owner.GetDynamicPixelRange(effectBudget / source.fontSize, source.fontSize, Mathf.Max(source.fontSize, _textTierFontSize)));
                 }
             }
 
@@ -1464,7 +1545,7 @@ namespace NowUI.Sdf
                 {
                     pixelRange = Mathf.Max(
                         pixelRange,
-                        source.owner.GetDynamicPixelRange(0f, source.fontSize));
+                        source.owner.GetDynamicPixelRange(0f, source.fontSize, Mathf.Max(source.fontSize, _textTierFontSize)));
                 }
             }
 
@@ -1518,6 +1599,7 @@ namespace NowUI.Sdf
                         source.codepoint,
                         source.fontSize,
                         pixelRange,
+                        Mathf.Max(source.fontSize, _textTierFontSize),
                         out var glyph,
                         out var material,
                         out float screenPixelRange) ||
@@ -1559,6 +1641,7 @@ namespace NowUI.Sdf
             }
 
             _texture = resolvedTexture;
+            _textAtlasPending = false;
 
             for (int i = 0; i < _glyphSources.Count; ++i)
             {
@@ -1629,7 +1712,8 @@ namespace NowUI.Sdf
                     !source.owner.HasGlyphForExactPixelRange(
                         source.codepoint,
                         source.fontSize,
-                        pixelRange))
+                        pixelRange,
+                        Mathf.Max(source.fontSize, _textTierFontSize)))
                 {
                     return false;
                 }
@@ -1669,7 +1753,7 @@ namespace NowUI.Sdf
             if (_glyphSources.Count == 0)
                 return true;
 
-            if (!_textureFromGlyph || _texture == null)
+            if (!_textureFromGlyph || _texture == null || _textAtlasPending)
                 return false;
 
             for (int i = 0; i < _glyphSources.Count; ++i)
@@ -1775,6 +1859,23 @@ namespace NowUI.Sdf
                 (float)((double)pivot.y + (double)rotation.y * x + (double)rotation.x * y));
             ValidateFinite(result, parameterName);
             return result;
+        }
+
+        /// <summary>
+        /// Binds a text glyph's atlas. Text of a different resolution tier than the
+        /// text already bound is accepted and marked for reconciliation, which then
+        /// resolves every glyph of the graph into one shared atlas.
+        /// </summary>
+        bool TryBindTextTexture(Texture texture)
+        {
+            if (TryBindTexture(texture))
+                return true;
+
+            if (texture == null || !_textureFromGlyph)
+                return false;
+
+            _textAtlasPending = true;
+            return true;
         }
 
         bool TryBindTexture(Texture texture)
@@ -2802,9 +2903,35 @@ namespace NowUI.Sdf
             return this;
         }
 
+        /// <summary>
+        /// Displaces the scene's sample position with smooth value noise.
+        /// </summary>
+        /// <param name="amplitude">Maximum displacement in scene units; zero disables the warp.</param>
+        /// <param name="scale">Noise feature size in scene units.</param>
+        /// <param name="speed">
+        /// Noise phase advance per second. Without <see cref="SetTime"/>, the phase
+        /// follows the shader/host clock (Unity <c>_Time.y</c>); after
+        /// <see cref="SetTime"/>, it follows the supplied caller-owned time.
+        /// </param>
+        /// <param name="seed">Constant noise phase offset.</param>
         public NowSdfBuilder SetWarp(float amplitude, float scale, float speed = 0f, float seed = 0f)
         {
             _cache.SetWarp(amplitude, scale, speed, seed);
+            return this;
+        }
+
+        /// <summary>
+        /// Samples time-dependent SDF effects at an absolute caller-owned time in
+        /// seconds. The warp phase becomes <c>seed + seconds * speed</c>, computed on
+        /// the CPU, so a given time renders identically in Unity, the native host
+        /// and the browser, and <see cref="BeginMask"/> coverage is reused until the
+        /// resulting phase changes. Without it, a nonzero warp speed uses the
+        /// shader clock. Applies to the current scene; it may be called before or
+        /// after <see cref="SetWarp"/>.
+        /// </summary>
+        public NowSdfBuilder SetTime(float seconds)
+        {
+            _cache.SetTime(seconds);
             return this;
         }
 
@@ -3066,6 +3193,52 @@ namespace NowUI.Sdf
         public NowSdfBuilder Text(NowRect rect, string value, NowFontAsset font, float fontSize, NowFontStyle fontStyle = NowFontStyle.Regular, int tabSpaces = 4)
         {
             return Text(rect.position, value, font, fontSize, fontStyle, tabSpaces);
+        }
+
+        /// <summary>
+        /// Adds text laid out inside <paramref name="rect"/> (scene-local) with the same
+        /// alignment rules as <c>Now.Text(...).SetAlign(...)</c>. See
+        /// <see cref="NowSdfGraph.Text(NowRect, string, float, NowFontStyle, NowTextAlign, NowTextVerticalAlign, int)"/>.
+        /// </summary>
+        public NowSdfBuilder Text(
+            NowRect rect,
+            string value,
+            float fontSize,
+            NowFontStyle fontStyle,
+            NowTextAlign align,
+            NowTextVerticalAlign verticalAlign = NowTextVerticalAlign.Top,
+            int tabSpaces = 4)
+        {
+            return Text(rect, value, Now.font, fontSize, fontStyle, align, verticalAlign, tabSpaces);
+        }
+
+        /// <inheritdoc cref="Text(NowRect, string, float, NowFontStyle, NowTextAlign, NowTextVerticalAlign, int)"/>
+        public NowSdfBuilder Text(
+            NowRect rect,
+            string value,
+            NowFontAsset font,
+            float fontSize,
+            NowFontStyle fontStyle,
+            NowTextAlign align,
+            NowTextVerticalAlign verticalAlign = NowTextVerticalAlign.Top,
+            int tabSpaces = 4)
+        {
+            font = font != null ? font : Now.font;
+
+            if (string.IsNullOrEmpty(value) || font == null)
+                return this;
+
+            var layout = NowSdfTextAlignment.Begin(rect, value, font, fontSize, fontStyle, align, verticalAlign, out var lines);
+
+            for (int i = 0; i < layout.lineCount; ++i)
+            {
+                string line = lines != null ? lines[i] : value;
+
+                if (!string.IsNullOrEmpty(line))
+                    _cache.Text(layout.LinePosition(line, i), line, font, fontSize, fontStyle, tabSpaces);
+            }
+
+            return this;
         }
 
         /// <summary>
@@ -3338,6 +3511,12 @@ namespace NowUI.Sdf
         readonly List<float> _rotationStack = new List<float>(4);
         readonly Dictionary<NowSdfGraph, GraphUpload> _graphUploads =
             new Dictionary<NowSdfGraph, GraphUpload>(8);
+        float _sceneTextTierFontSize;
+        // The scene's largest authored text size, and the glyph cell its text was
+        // prepared in for the render scale of that preparation.
+        float _sceneAuthoredTextTierFontSize;
+        int _preparedTextCell;
+
         readonly Dictionary<NowSdfGraph, NowSdfGraph> _preparedTextGraphs =
             new Dictionary<NowSdfGraph, NowSdfGraph>(8);
         readonly List<OwnedMaterial> _ownedMaterials = new List<OwnedMaterial>(2);
@@ -3380,6 +3559,8 @@ namespace NowUI.Sdf
         Vector4 _contourColor;
         Vector4 _contourMask;
         Vector4 _warp;
+        float _time;
+        bool _hasTime;
         Texture _texture;
         NowSdfGraph _textureSourceGraph;
         bool _texturePinned;
@@ -3438,6 +3619,8 @@ namespace NowUI.Sdf
             _contourColor = default;
             _contourMask = default;
             _warp = default;
+            _time = 0f;
+            _hasTime = false;
             _texture = null;
             _textureSourceGraph = null;
             _texturePinned = false;
@@ -3664,6 +3847,19 @@ namespace NowUI.Sdf
         {
             _warp = new Vector4(Mathf.Max(0f, amplitude), Mathf.Max(0.0001f, scale), speed, seed);
         }
+
+        public void SetTime(float seconds)
+        {
+            _time = seconds;
+            _hasTime = true;
+        }
+
+        // The uploaded _SdfWarp. A caller clock folds speed into the phase on the
+        // CPU (shader speed 0), making the warp static for that time and matching
+        // the shader's `_Time.y * speed + seed` at _Time.y == seconds.
+        Vector4 effectiveWarp => _hasTime
+            ? new Vector4(_warp.x, _warp.y, 0f, _warp.w + _time * _warp.z)
+            : _warp;
 
         public void SetOperation(NowSdfOperation operation, float smoothing)
         {
@@ -3951,10 +4147,13 @@ namespace NowUI.Sdf
 
             // RenderTexture-backed fills can be updated by pending GPU work which
             // has not necessarily advanced Texture.updateCount yet. Animated warp
-            // reads shader _Time. Both cases must remain live rather than reusing
-            // an apparently identical coverage image.
+            // without a caller clock reads shader _Time. Both cases must remain
+            // live rather than reusing an apparently identical coverage image.
+            // SetTime folds the phase into the uploaded warp (and so the scene
+            // hash), which re-rasterizes only when that phase changes.
+            Vector4 warp = effectiveWarp;
             bool dynamicCoverage = sourceTexture is RenderTexture ||
-                (_warp.x > 0f && _warp.z != 0f) ||
+                (warp.x > 0f && warp.z != 0f) ||
                 (_materialTemplate != null && _syncMaterialTemplate);
             bool reuseCoverage = !dynamicCoverage &&
                 _hasMaskRenderSignature &&
@@ -4127,16 +4326,17 @@ namespace NowUI.Sdf
         internal void PrepareForTerminal()
         {
             float budget = GetTextEffectBudget();
+            float renderScale = Now.TextRenderScale();
 
             if (_terminalPrepared)
             {
-                if (PreparedTextGraphsAreCurrent(budget))
+                if (PreparedTextGraphsAreCurrent(budget) && TextCellIsCurrent(renderScale))
                     return;
 
                 InvalidateTerminalPreparation();
             }
 
-            PrepareTextGraphCopies();
+            PrepareTextGraphCopies(renderScale);
             PrepareImageFields(budget);
             BuildImageAtlas();
 
@@ -4290,9 +4490,65 @@ namespace NowUI.Sdf
             return Mathf.Max(baseRange, previous);
         }
 
-        void PrepareTextGraphCopies()
+        /// <summary>
+        /// Whether the scene's text is still in the glyph cell its current render
+        /// scale needs. A transform or UI scale change that crosses a resolution tier
+        /// re-resolves the text; changes within one tier cost nothing.
+        /// </summary>
+        bool TextCellIsCurrent(float renderScale)
+        {
+            if (_sceneAuthoredTextTierFontSize <= 0f)
+                return true;
+
+            NowFont owner = GetSceneTextOwner();
+
+            return owner == null ||
+                owner.GetDynamicGlyphSize(ScaledTextTier(_sceneAuthoredTextTierFontSize, renderScale)) == _preparedTextCell;
+        }
+
+        static float ScaledTextTier(float fontSize, float renderScale)
+        {
+            return renderScale > 1f && !float.IsInfinity(renderScale) ? fontSize * renderScale : fontSize;
+        }
+
+        void PrepareTextGraphCopies(float renderScale)
         {
             NowSdfGraph textureSource = _textureSourceGraph;
+
+            // One scene binds one glyph atlas, so all of its text graphs share the
+            // resolution tier of the scene's largest text.
+            _sceneTextTierFontSize = 0f;
+
+            for (int i = 0; i < _layers.Count; ++i)
+            {
+                NowSdfLayer layer = _layers[i];
+
+                if (layer.graph != null)
+                    _sceneTextTierFontSize = Mathf.Max(_sceneTextTierFontSize, layer.graph.textTierFontSize);
+
+                if (layer.targetGraph != null)
+                    _sceneTextTierFontSize = Mathf.Max(_sceneTextTierFontSize, layer.targetGraph.textTierFontSize);
+            }
+
+            if (_activeGraph != null)
+                _sceneTextTierFontSize = Mathf.Max(_sceneTextTierFontSize, _activeGraph.textTierFontSize);
+
+            // The tier follows the rendered size: a scene drawn under a transform or
+            // UI scale resolves its text in the cell for its on-screen size. Graphs
+            // are only raised when that needs a larger cell, so a scene whose scale
+            // stays within its authored tier keeps the glyphs it already resolved.
+            _sceneAuthoredTextTierFontSize = _sceneTextTierFontSize;
+            _preparedTextCell = 0;
+            NowFont textOwner = _sceneTextTierFontSize > 0f ? GetSceneTextOwner() : null;
+
+            if (textOwner != null)
+            {
+                float scaledTier = ScaledTextTier(_sceneTextTierFontSize, renderScale);
+                _preparedTextCell = textOwner.GetDynamicGlyphSize(scaledTier);
+
+                if (_preparedTextCell > textOwner.GetDynamicGlyphSize(_sceneTextTierFontSize))
+                    _sceneTextTierFontSize = scaledTier;
+            }
 
             for (int i = 0; i < _layers.Count; ++i)
             {
@@ -4321,6 +4577,7 @@ namespace NowUI.Sdf
 
             prepared = RentInlineGraph();
             prepared.CopyFrom(graph);
+            prepared.RaiseTextTier(_sceneTextTierFontSize);
             _preparedTextGraphs.Add(graph, prepared);
             return prepared;
         }
@@ -4902,7 +5159,7 @@ namespace NowUI.Sdf
             material.SetVector(_contourProp, _contour);
             material.SetVector(_contourColorProp, _contourColor);
             material.SetVector(_contourMaskProp, _contourMask);
-            material.SetVector(_warpProp, _warp);
+            material.SetVector(_warpProp, effectiveWarp);
             return contentHash;
         }
 
@@ -5001,7 +5258,7 @@ namespace NowUI.Sdf
             hash = HashValue(hash, _contour);
             hash = HashValue(hash, _contourColor);
             hash = HashValue(hash, _contourMask);
-            hash = HashValue(hash, _warp);
+            hash = HashValue(hash, effectiveWarp);
             return hash;
         }
 
