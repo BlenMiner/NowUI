@@ -319,6 +319,39 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// A circular radial paint placed in UI units: <paramref name="center"/> is a
+        /// point in the same space as the gradient's rect and <paramref name="radius"/>
+        /// is where the ramp ends. Saves converting to normalized rect coordinates:
+        /// <c>Now.Gradient(stage).SetRadialAt(glowCenter, 180f).SetColors(glow, glow.WithAlpha(0f))</c>.
+        /// </summary>
+        public NowGradient SetRadialAt(Vector2 center, float radius)
+        {
+            float reference = Mathf.Max(0.0001f, Mathf.Min(rect.width, rect.height));
+            return SetRadial(NormalizedPoint(center), radius / reference);
+        }
+
+        /// <summary>An elliptical radial paint placed in UI units, with separate horizontal and vertical radii.</summary>
+        public NowGradient SetRadialAt(Vector2 center, Vector2 radii)
+        {
+            return SetRadial(
+                NormalizedPoint(center),
+                new Vector2(radii.x / Mathf.Max(0.0001f, rect.width), radii.y / Mathf.Max(0.0001f, rect.height)));
+        }
+
+        /// <summary>A clockwise conic sweep around a point in UI units, starting <paramref name="startAngle"/> degrees clockwise from the top.</summary>
+        public NowGradient SetConicAt(Vector2 center, float startAngle = 0f)
+        {
+            return SetConic(NormalizedPoint(center), startAngle);
+        }
+
+        readonly Vector2 NormalizedPoint(Vector2 point)
+        {
+            return new Vector2(
+                (point.x - rect.x) / Mathf.Max(0.0001f, rect.width),
+                (point.y - rect.y) / Mathf.Max(0.0001f, rect.height));
+        }
+
         /// <summary>Uses a clockwise sweep around the rectangle center, starting at the top.</summary>
         public NowGradient SetConic()
         {

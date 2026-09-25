@@ -144,7 +144,7 @@ namespace NowUI.Editor
             // A tight contact shadow so the disc sits on the track rather than
             // floating above it.
             Now.Circle(MonthDialCenter + new Vector2(0f, 2f), MonthDiscRadius + 2f)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetOutline(2f, new Color(0f, 0f, 0f, 0.05f))
                 .Draw();
         }
@@ -171,29 +171,29 @@ namespace NowUI.Editor
             }
 
             const float slideFrames = 6f;
-            float t = Smooth((age - 1) / slideFrames);
+            float t = NowEase.Smoothstep((age - 1) / slideFrames);
             Vector2 numberOrigin = MonthDialCenter + new Vector2(0f, -30f);
             Vector2 unitOrigin = MonthDialCenter + new Vector2(0f, 44f);
 
             if (t < 1f)
             {
                 float leave = 1f - t;
-                DrawMonthCenteredText(numberOrigin + new Vector2(0f, -22f * t), previous.ToString(), 92f, WithAlpha(MonthInk, leave), true);
-                DrawMonthCenteredText(unitOrigin + new Vector2(0f, -10f * t), previous == 1 ? "month" : "months", 22f, WithAlpha(MonthInk, leave), true);
+                DrawMonthCenteredText(numberOrigin + new Vector2(0f, -22f * t), previous.ToString(), 92f, MonthInk.WithAlpha(leave), true);
+                DrawMonthCenteredText(unitOrigin + new Vector2(0f, -10f * t), previous == 1 ? "month" : "months", 22f, MonthInk.WithAlpha(leave), true);
             }
 
-            DrawMonthCenteredText(numberOrigin + new Vector2(0f, 22f * (1f - t)), month.ToString(), 92f, WithAlpha(MonthInk, t), true);
-            DrawMonthCenteredText(unitOrigin + new Vector2(0f, 10f * (1f - t)), month == 1 ? "month" : "months", 22f, WithAlpha(MonthInk, t), true);
+            DrawMonthCenteredText(numberOrigin + new Vector2(0f, 22f * (1f - t)), month.ToString(), 92f, MonthInk.WithAlpha(t), true);
+            DrawMonthCenteredText(unitOrigin + new Vector2(0f, 10f * (1f - t)), month == 1 ? "month" : "months", 22f, MonthInk.WithAlpha(t), true);
         }
 
         static void DrawMonthCenteredText(Vector2 center, string value, float size, Color color, bool bold)
         {
-            var probe = Now.Text(new NowRect(0f, 0f, 400f, size * 1.4f)).SetFontSize(size);
-            if (bold)
-                probe = probe.SetBold();
-            Vector2 measured = probe.Measure(value);
-            var rect = new NowRect(center.x - measured.x * 0.5f, center.y - measured.y * 0.5f, measured.x + 4f, measured.y + 4f);
-            DrawText(rect, value, size, color, bold);
+            Now.Text(NowRect.FromCenter(center, 400f, size * 2f))
+                .SetFontSize(size)
+                .SetColor(color)
+                .SetBold(bold)
+                .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
+                .Draw(value);
         }
 
         /// <summary>
@@ -242,21 +242,21 @@ namespace NowUI.Editor
             if (frame < 18f)
                 return 120f;
             if (frame < 52f)
-                return Mathf.Lerp(120f, 270f, Smooth(Mathf.InverseLerp(18f, 52f, frame)));
+                return Mathf.Lerp(120f, 270f, NowEase.Smoothstep(Mathf.InverseLerp(18f, 52f, frame)));
             if (frame < 62f)
                 return 270f;
             if (frame < 96f)
-                return Mathf.Lerp(270f, 60f, Smooth(Mathf.InverseLerp(62f, 96f, frame)));
+                return Mathf.Lerp(270f, 60f, NowEase.Smoothstep(Mathf.InverseLerp(62f, 96f, frame)));
             if (frame < 102f)
                 return 60f;
             if (frame < 114f)
-                return Mathf.Lerp(60f, 120f, Smooth(Mathf.InverseLerp(102f, 114f, frame)));
+                return Mathf.Lerp(60f, 120f, NowEase.Smoothstep(Mathf.InverseLerp(102f, 114f, frame)));
             return 120f;
         }
 
         static float MonthHeld(float frame)
         {
-            return SmoothPulse(frame, 14f, 17f, 114f, 118f);
+            return NowEase.Window(frame, 14f, 17f, 114f, 118f, NowEasing.Smoothstep);
         }
 
         static Vector2 MonthCursorPath(float frame, float angleDegrees)
@@ -267,10 +267,10 @@ namespace NowUI.Editor
             Vector2 grip = MonthPointOnRing(angleDegrees) + new Vector2(-4f, -3f);
 
             if (frame < 14f)
-                return Vector2.Lerp(start, MonthPointOnRing(120f) + new Vector2(-4f, -3f), Smooth(Mathf.InverseLerp(0f, 14f, frame)));
+                return Vector2.Lerp(start, MonthPointOnRing(120f) + new Vector2(-4f, -3f), NowEase.Smoothstep(Mathf.InverseLerp(0f, 14f, frame)));
             if (frame < 116f)
                 return grip;
-            return Vector2.Lerp(MonthPointOnRing(120f) + new Vector2(-4f, -3f), start, Smooth(Mathf.InverseLerp(116f, MonthFrames, frame)));
+            return Vector2.Lerp(MonthPointOnRing(120f) + new Vector2(-4f, -3f), start, NowEase.Smoothstep(Mathf.InverseLerp(116f, MonthFrames, frame)));
         }
 
         /// <summary>

@@ -223,6 +223,14 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 The rectangle API covers fill color, radius, padding, outline, outline color,
 blur, mask, position, textures, sprites, and custom materials.
 
+`SetFill(false)` draws only the outline, whatever color is set:
+`Now.Rectangle(r).SetFill(false).SetOutline(1f, line).Draw()`.
+
+`Now.GridLines(rect, spacing)` draws the hairline grid of editors, charts and
+scene views: lines sit inside the rect, `SetOffset` shifts them with a pan or
+scroll (wrapping by the spacing), `SetSpacing(x, y)`, `SetThickness` and
+`SetAxes` cover the rest.
+
 `Now.Shadow(rect)` draws a soft drop shadow for any surface, whether it is a
 rectangle, a glass pane, an SDF scene or an image. Draw it first, so it sits
 beneath the surface. Set the offset, blur, spread, radius and color yourself,

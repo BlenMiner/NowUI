@@ -6,8 +6,8 @@
 
 Now-UI is an immediate-mode UI renderer for Unity. You call the drawing API
 each frame and flush — no GameObject hierarchy, no retained UI tree — but the
-toolbox is complete: batched rectangles, MSDF text with runtime font
-compilation, CSS-inspired gradients, a flexbox-style layout system,
+toolbox is complete: batched rectangles, distance-field text baked on demand
+from font files, CSS-inspired gradients, a flexbox-style layout system,
 pointer/touch/gamepad interaction, themes, and Lottie vector animation.
 
 It renders through the built-in pipeline (`GL`/`Graphics.DrawMeshNow`), URP,

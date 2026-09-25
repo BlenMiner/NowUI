@@ -308,6 +308,123 @@ public class NowUsabilityApiTests
         Assert.AreEqual(expected, extent.x, 0.5f);
     }
 
+    // ---------------------------------------------------------------- small builders
+
+    static List<Vector4> VertexColors(NowDrawList drawList)
+    {
+        var colors = new List<Vector4>();
+        drawList.mesh.GetUVs(3, colors);
+        return colors;
+    }
+
+    [Test]
+    public void HollowRectangleDrawsOnlyItsOutline()
+    {
+        using (_drawList.Begin(Surface))
+            Now.Rectangle(Card).SetFill(false).SetColor(Color.red).SetOutline(2f, Color.white).Draw();
+
+        Assert.IsTrue(_drawList.hasGeometry);
+        foreach (var color in VertexColors(_drawList))
+            Assert.AreEqual(0f, color.w, "The fill is transparent, whatever color was set after SetFill(false).");
+
+        using (_drawList.Begin(Surface))
+            Now.Rectangle(Card).SetFill(false).SetColor(Color.red).Draw();
+
+        Assert.IsFalse(_drawList.hasGeometry, "A hollow rectangle without an outline draws nothing.");
+    }
+
+    enum Quality { Low, Medium, High }
+
+    bool DrawRadioFrame(ref Quality quality, Vector2 pointer, bool press)
+    {
+        _provider.snapshot = new NowInputSnapshot(pointer, press, press, false);
+        bool changed;
+
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            changed = Now.Radio(new NowRect(0f, 0f, 120f, 24f), "Low").SetId("low").Draw(ref quality, Quality.Low);
+            changed |= Now.Radio(new NowRect(0f, 30f, 120f, 24f), "High").SetId("high").Draw(ref quality, Quality.High);
+        }
+
+        return changed;
+    }
+
+    [Test]
+    public void RadioGroupBindsToASelectedValue()
+    {
+        var quality = Quality.Low;
+
+        // A click fires when a press is released over the option.
+        DrawRadioFrame(ref quality, new Vector2(20f, 42f), true);
+        _provider.snapshot = default;
+        bool changed = false;
+
+        _provider.snapshot = new NowInputSnapshot(new Vector2(20f, 42f), false, false, true);
+        using (NowInput.Begin(_provider, Surface))
+        using (_drawList.Begin(Surface))
+        {
+            changed |= Now.Radio(new NowRect(0f, 0f, 120f, 24f), "Low").SetId("low").Draw(ref quality, Quality.Low);
+            changed |= Now.Radio(new NowRect(0f, 30f, 120f, 24f), "High").SetId("high").Draw(ref quality, Quality.High);
+        }
+
+        Assert.IsTrue(changed);
+        Assert.AreEqual(Quality.High, quality);
+    }
+
+    [Test]
+    public void BadgeTakesCustomColors()
+    {
+        var accent = new Color(0.2f, 0.8f, 1f, 1f);
+
+        using (_drawList.Begin(Surface))
+            Now.Badge(new NowRect(10f, 10f, 80f, 22f), "LIVE").SetColors(accent.WithAlpha(0.12f), accent, 1f, accent.WithAlpha(0.4f)).Draw();
+
+        Assert.IsTrue(_drawList.hasGeometry);
+        bool foundFill = false;
+        foreach (var color in VertexColors(_drawList))
+            foundFill |= Mathf.Abs(color.w - 0.12f) < 0.01f;
+
+        Assert.IsTrue(foundFill, "The pill uses the custom fill.");
+    }
+
+    [Test]
+    public void GridLinesSitInsideTheRectAndFollowTheirOffset()
+    {
+        using (_drawList.Begin(Surface))
+            Now.GridLines(new NowRect(0f, 0f, 100f, 50f), 20f).Draw();
+
+        Assert.AreEqual(6 * 4, _drawList.mesh.vertexCount, "Four vertical and two horizontal lines, none on the edges.");
+
+        using (_drawList.Begin(Surface))
+            Now.GridLines(new NowRect(0f, 0f, 100f, 50f), 20f).SetOffset(new Vector2(5f, 0f)).SetAxes(true, false).Draw();
+
+        Assert.AreEqual(5 * 4, _drawList.mesh.vertexCount, "An offset of 5 puts lines at 5, 25, 45, 65 and 85.");
+
+        using (_drawList.Begin(Surface))
+            Now.GridLines(new NowRect(0f, 0f, 100f, 50f), 0f).Draw();
+
+        Assert.IsFalse(_drawList.hasGeometry);
+    }
+
+    [Test]
+    public void GradientsCanBePlacedInUiUnits()
+    {
+        var rect = new NowRect(100f, 50f, 400f, 200f);
+
+        var circle = Now.Gradient(rect).SetRadialAt(new Vector2(300f, 150f), 100f);
+        Assert.AreEqual(new Vector4(0.5f, 0.5f, 0.5f, 0.5f), circle.parameters, "100 px over a 200 px smaller side is 0.5.");
+
+        var ellipse = Now.Gradient(rect).SetRadialAt(new Vector2(100f, 250f), new Vector2(200f, 50f));
+        Assert.AreEqual(new Vector4(0f, 1f, 0.5f, 0.25f), ellipse.parameters);
+
+        var conic = Now.Gradient(rect).SetConicAt(new Vector2(200f, 100f), 90f);
+        Assert.AreEqual(0.25f, conic.parameters.x, 1e-6f);
+        Assert.AreEqual(0.25f, conic.parameters.y, 1e-6f);
+
+        Assert.AreEqual(new NowRect(40f, 20f, 20f, 60f), NowRect.FromCenter(new Vector2(50f, 50f), 20f, 60f));
+    }
+
     // ---------------------------------------------------------------- wrap
 
     static NowRect[] DrawWrappedRow(float width, NowLayoutAlign align, params Vector2[] sizes)

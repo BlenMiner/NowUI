@@ -80,6 +80,9 @@ when enabled. No manual NowUI input define is required.
   [Feature Usage](Features.md#rectangles).
 - `NowColor`: `WithAlpha`, `MultiplyAlpha`, `Lighten`, `Darken`, `MixRgb`, and
   `Luminance` extension methods for authored colors.
+- `NowGridLines` (`Now.GridLines(rect, spacing)`): hairline grids with spacing,
+  offset, thickness and axis selection. `NowRectangle.SetFill(false)` draws
+  outline-only rectangles.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
 - `NowLine`, `NowPolyline`, `NowArc`, `NowLineCap`, and `NowLineArrow`:

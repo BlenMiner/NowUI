@@ -31,7 +31,7 @@ namespace NowUI.Editor
 
             Now.Rectangle(rect).SetColor(background).Draw();
             DrawAnimatedBackdrop(rect, u, cyan, violet, orange);
-            DrawGrid(rect, 48f, new Color(0.60f, 0.72f, 1f, 0.045f));
+            Now.GridLines(rect, 48f).SetColor(new Color(0.60f, 0.72f, 1f, 0.045f)).Draw();
 
             Now.Text(new NowRect(40f, 28f, rect.width - 80f, 54f))
                 .SetFontSize(40f)

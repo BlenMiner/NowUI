@@ -39,7 +39,8 @@ NowRect field = remaining.TakeTop(40, out remaining);
 
 `TakeTop`, `TakeBottom`, `TakeLeft`, and `TakeRight` clamp to the available
 size, never produce negative extents, and are alias-safe in this form. Use
-`Centered`, `Align`, `Inset`, and `Outset` for placement within a region.
+`Centered`, `Align`, `Inset`, and `Outset` for placement within a region, and
+`NowRect.FromCenter(center, size)` to build a rect around a point.
 
 ## Preferred layout API
 

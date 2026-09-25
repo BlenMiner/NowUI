@@ -37,14 +37,14 @@ namespace NowUI.Editor
 
             // Beats. Track A plays, the heart is clicked, skip morphs to track B,
             // pause then play, and a final skip morphs back to A at the wrap.
-            float like = Smooth(Mathf.InverseLerp(18f, 23f, f));
-            float trackB = Smooth(Mathf.InverseLerp(50f, 64f, f)) * (1f - Smooth(Mathf.InverseLerp(108f, PlayerFrames, f)));
-            float paused = Smooth(Mathf.InverseLerp(80f, 85f, f)) * (1f - Smooth(Mathf.InverseLerp(100f, 105f, f)));
-            float heartPress = SmoothPulse(f, 16f, 18f, 19f, 22f);
-            float nextPress = Mathf.Max(SmoothPulse(f, 48f, 50f, 51f, 54f), SmoothPulse(f, 106f, 108f, 109f, 112f));
-            float playPress = Mathf.Max(SmoothPulse(f, 78f, 80f, 81f, 84f), SmoothPulse(f, 98f, 100f, 101f, 104f));
-            float heartBurst = SmoothPulse(f, 18f, 21f, 24f, 34f);
-            float likedNow = like * (1f - Smooth(Mathf.InverseLerp(50f, 54f, f)));
+            float like = NowEase.Smoothstep(Mathf.InverseLerp(18f, 23f, f));
+            float trackB = NowEase.Smoothstep(Mathf.InverseLerp(50f, 64f, f)) * (1f - NowEase.Smoothstep(Mathf.InverseLerp(108f, PlayerFrames, f)));
+            float paused = NowEase.Smoothstep(Mathf.InverseLerp(80f, 85f, f)) * (1f - NowEase.Smoothstep(Mathf.InverseLerp(100f, 105f, f)));
+            float heartPress = NowEase.Window(f, 16f, 18f, 19f, 22f, NowEasing.Smoothstep);
+            float nextPress = Mathf.Max(NowEase.Window(f, 48f, 50f, 51f, 54f, NowEasing.Smoothstep), NowEase.Window(f, 106f, 108f, 109f, 112f, NowEasing.Smoothstep));
+            float playPress = Mathf.Max(NowEase.Window(f, 78f, 80f, 81f, 84f, NowEasing.Smoothstep), NowEase.Window(f, 98f, 100f, 101f, 104f, NowEasing.Smoothstep));
+            float heartBurst = NowEase.Window(f, 18f, 21f, 24f, 34f, NowEasing.Smoothstep);
+            float likedNow = like * (1f - NowEase.Smoothstep(Mathf.InverseLerp(50f, 54f, f)));
             Color accent = Color.Lerp(PlayerAccentA, PlayerAccentB, trackB);
             Vector2 cursor = PlayerCursorPath(f);
 
@@ -55,7 +55,7 @@ namespace NowUI.Editor
             var background = new Color(0.020f, 0.022f, 0.045f, 1f);
             Now.Rectangle(rect).SetColor(background).Draw();
             DrawAnimatedBackdrop(rect, u, accent, new Color(0.46f, 0.30f, 1f, 1f), PlayerAccentA);
-            DrawGrid(rect, 48f, new Color(0.60f, 0.72f, 1f, 0.035f));
+            Now.GridLines(rect, 48f).SetColor(new Color(0.60f, 0.72f, 1f, 0.035f)).Draw();
 
             var card = new NowRect(100f, 92f, 760f, 356f);
             Now.Rectangle(new NowRect(card.x - 14f, card.y + 18f, card.width + 28f, card.height + 14f))
@@ -66,10 +66,10 @@ namespace NowUI.Editor
             Now.Rectangle(card)
                 .SetColor(new Color(0.055f, 0.055f, 0.10f, 0.94f))
                 .SetRadius(28f)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.22f))
+                .SetOutline(1f, accent.WithAlpha(0.22f))
                 .Draw();
             // Ambient color bleed from the artwork, like a blurred cover behind the card.
-            Now.Gradient(card, new Color(accent.r, accent.g, accent.b, 0.22f), new Color(accent.r, accent.g, accent.b, 0f))
+            Now.Gradient(card, accent.WithAlpha(0.22f), accent.WithAlpha(0f))
                 .SetRadial(new Vector2(0.24f, 0.42f), 0.62f)
                 .SetRadius(28f)
                 .Draw();
@@ -106,7 +106,7 @@ namespace NowUI.Editor
             NowSdf.Scene(scene, "readme-player-art")
                 .SetFeather(1f)
                 .SetShadow(new Vector2(0f, 14f), 22f, new Color(0f, 0f, 0f, 0.55f), 2f)
-                .SetGlow(26f, new Color(accent.r, accent.g, accent.b, 0.34f), 1.4f)
+                .SetGlow(26f, accent.WithAlpha(0.34f), 1.4f)
                 .SetOutline(1.5f, new Color(1f, 1f, 1f, 0.55f), 0.6f)
                 .SetEmboss(new Vector2(-0.5f, -0.85f), 0.12f, 6f)
                 .Morph(artA, artB, trackB)
@@ -163,10 +163,10 @@ namespace NowUI.Editor
             float aRise = (1f - a) * -10f;
             float bRise = (1f - b) * 10f;
             var subtle = new Color(0.70f, 0.76f, 0.92f, 1f);
-            DrawText(new NowRect(rect.x, rect.y + aRise, rect.width, 32f), "Petal Drift", 24f, WithAlpha(Color.white, a), true);
-            DrawText(new NowRect(rect.x, rect.y + bRise, rect.width, 32f), "Purrfect Storm", 24f, WithAlpha(Color.white, b), true);
-            DrawText(new NowRect(rect.x, rect.y + 34f + aRise, rect.width, 20f), "Nyx & the Pixels  ·  Bloom", 13f, WithAlpha(subtle, a));
-            DrawText(new NowRect(rect.x, rect.y + 34f + bRise, rect.width, 20f), "Mochi  ·  Night Shift", 13f, WithAlpha(subtle, b));
+            DrawText(new NowRect(rect.x, rect.y + aRise, rect.width, 32f), "Petal Drift", 24f, Color.white.WithAlpha(a), true);
+            DrawText(new NowRect(rect.x, rect.y + bRise, rect.width, 32f), "Purrfect Storm", 24f, Color.white.WithAlpha(b), true);
+            DrawText(new NowRect(rect.x, rect.y + 34f + aRise, rect.width, 20f), "Nyx & the Pixels  ·  Bloom", 13f, subtle.WithAlpha(a));
+            DrawText(new NowRect(rect.x, rect.y + 34f + bRise, rect.width, 20f), "Mochi  ·  Night Shift", 13f, subtle.WithAlpha(b));
             DrawMetricChip(new NowRect(rect.xMax - 96f, rect.y + 4f, 78f, 24f), liked > 0.5f ? "LIKED" : "LOSSLESS", liked > 0.5f ? PlayerHeart : accent);
         }
 
@@ -180,7 +180,7 @@ namespace NowUI.Editor
             float step = rect.width / bars;
             var builder = NowSdf.Scene(rect, "readme-player-eq")
                 .SetFeather(1f)
-                .SetGlow(9f, new Color(accent.r, accent.g, accent.b, 0.22f), 1.4f)
+                .SetGlow(9f, accent.WithAlpha(0.22f), 1.4f)
                 .SetShadow(new Vector2(0f, 3f), 6f, new Color(0f, 0f, 0f, 0.35f));
 
             for (int i = 0; i < bars; ++i)
@@ -216,7 +216,7 @@ namespace NowUI.Editor
                 .SetRadius(3f)
                 .Draw();
             var knob = new Vector2(track.x + track.width * progress, track.center.y);
-            Now.Circle(knob, 9f).SetColor(new Color(accent.r, accent.g, accent.b, 0.25f)).Draw();
+            Now.Circle(knob, 9f).SetColor(accent.WithAlpha(0.25f)).Draw();
             Now.Circle(knob, 5f).SetColor(Color.white).Draw();
 
             int seconds = Mathf.FloorToInt(progress * trackLength);
@@ -252,7 +252,7 @@ namespace NowUI.Editor
             NowSdf.Scene(buttonScene, "readme-player-play")
                 .SetFeather(1f)
                 .SetShadow(new Vector2(0f, 5f), 12f, new Color(0f, 0f, 0f, 0.45f), 1f)
-                .SetGlow(10f + (1f - paused) * 6f, new Color(accent.r, accent.g, accent.b, 0.35f), 1.3f)
+                .SetGlow(10f + (1f - paused) * 6f, accent.WithAlpha(0.35f), 1.3f)
                 .SetColor(Color.Lerp(Color.white, accent, 0.18f)).UseColor()
                 .Circle(c, buttonRadius)
                 .Subtract()
@@ -267,7 +267,7 @@ namespace NowUI.Editor
             Color heartFill = Color.Lerp(new Color(0.30f, 0.32f, 0.42f, 1f), PlayerHeart, liked);
             NowSdf.Scene(heartScene, "readme-player-heart")
                 .SetFeather(1f)
-                .SetGlow(4f + burst * 26f + liked * 6f, new Color(PlayerHeart.r, PlayerHeart.g, PlayerHeart.b, 0.12f + burst * 0.5f + liked * 0.18f), 1.3f)
+                .SetGlow(4f + burst * 26f + liked * 6f, PlayerHeart.WithAlpha(0.12f + burst * 0.5f + liked * 0.18f), 1.3f)
                 .SetShadow(new Vector2(0f, 3f), 6f, new Color(0f, 0f, 0f, 0.35f))
                 .SetColor(heartFill).UseColor()
                 .Circle(h + new Vector2(-7f, -6f) * heartScale, 8.5f * heartScale)
@@ -307,7 +307,7 @@ namespace NowUI.Editor
 
             for (int i = 0; i < PlayerFrames; ++i)
             {
-                float speed = 1f - Smooth(Mathf.InverseLerp(80f, 85f, i)) * (1f - Smooth(Mathf.InverseLerp(100f, 105f, i)));
+                float speed = 1f - NowEase.Smoothstep(Mathf.InverseLerp(80f, 85f, i)) * (1f - NowEase.Smoothstep(Mathf.InverseLerp(100f, 105f, i)));
                 total += speed;
                 if (i < frame)
                     untilNow += speed;
@@ -339,22 +339,22 @@ namespace NowUI.Editor
             var start = new Vector2(700f, 300f);
 
             if (frame < 14f)
-                return Vector2.Lerp(start, heart, Smooth(Mathf.InverseLerp(0f, 14f, frame)));
+                return Vector2.Lerp(start, heart, NowEase.Smoothstep(Mathf.InverseLerp(0f, 14f, frame)));
             if (frame < 26f)
                 return heart;
             if (frame < 44f)
-                return Vector2.Lerp(heart, next, Smooth(Mathf.InverseLerp(26f, 44f, frame)));
+                return Vector2.Lerp(heart, next, NowEase.Smoothstep(Mathf.InverseLerp(26f, 44f, frame)));
             if (frame < 60f)
                 return next;
             if (frame < 74f)
-                return Vector2.Lerp(next, play, Smooth(Mathf.InverseLerp(60f, 74f, frame)));
+                return Vector2.Lerp(next, play, NowEase.Smoothstep(Mathf.InverseLerp(60f, 74f, frame)));
             if (frame < 102f)
                 return play;
             if (frame < 106f)
-                return Vector2.Lerp(play, next, Smooth(Mathf.InverseLerp(102f, 106f, frame)));
+                return Vector2.Lerp(play, next, NowEase.Smoothstep(Mathf.InverseLerp(102f, 106f, frame)));
             if (frame < 112f)
                 return next;
-            return Vector2.Lerp(next, start, Smooth(Mathf.InverseLerp(112f, PlayerFrames, frame)));
+            return Vector2.Lerp(next, start, NowEase.Smoothstep(Mathf.InverseLerp(112f, PlayerFrames, frame)));
         }
     }
 }

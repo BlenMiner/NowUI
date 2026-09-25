@@ -53,6 +53,13 @@ namespace NowUI
         public readonly NowRectangleStyle style;
         public readonly NowTextStyle textStyle;
 
+        /// <summary>True when the caller supplied its own colors instead of the style preset's.</summary>
+        public readonly bool hasCustomColors;
+        public readonly Color fillColor;
+        public readonly Color textColor;
+        public readonly float outline;
+        public readonly Color outlineColor;
+
         public NowBadgeRenderContext(NowThemeAsset themeAsset, NowRect rect, string label, NowRectangleStyle style, NowTextStyle textStyle)
         {
             this.themeAsset = themeAsset;
@@ -60,6 +67,35 @@ namespace NowUI
             this.label = label;
             this.style = style;
             this.textStyle = textStyle;
+            hasCustomColors = false;
+            fillColor = default;
+            textColor = default;
+            outline = 0f;
+            outlineColor = default;
+        }
+
+        /// <summary>A badge drawn with caller colors; <paramref name="style"/> still names the preset a custom renderer may fall back to.</summary>
+        public NowBadgeRenderContext(
+            NowThemeAsset themeAsset,
+            NowRect rect,
+            string label,
+            NowRectangleStyle style,
+            NowTextStyle textStyle,
+            Color fillColor,
+            Color textColor,
+            float outline,
+            Color outlineColor)
+        {
+            this.themeAsset = themeAsset;
+            this.rect = rect;
+            this.label = label;
+            this.style = style;
+            this.textStyle = textStyle;
+            hasCustomColors = true;
+            this.fillColor = fillColor;
+            this.textColor = textColor;
+            this.outline = outline;
+            this.outlineColor = outlineColor;
         }
     }
 
@@ -414,9 +450,23 @@ namespace NowUI
 
         public virtual void DrawBadge(in NowBadgeRenderContext context)
         {
-            var rectangle = context.themeAsset.Rectangle(context.rect, context.style);
-            rectangle.radius = Circle(context.rect);
-            rectangle.Draw();
+            if (context.hasCustomColors)
+            {
+                var pill = Now.Rectangle(context.rect)
+                    .SetRadius(Circle(context.rect))
+                    .SetColor(context.fillColor);
+
+                if (context.outline > 0f)
+                    pill = pill.SetOutline(context.outline, context.outlineColor);
+
+                pill.Draw();
+            }
+            else
+            {
+                var rectangle = context.themeAsset.Rectangle(context.rect, context.style);
+                rectangle.radius = Circle(context.rect);
+                rectangle.Draw();
+            }
 
             if (!string.IsNullOrEmpty(context.label))
                 NowControls.DrawCenteredLabel(
@@ -425,7 +475,9 @@ namespace NowUI
                     context.label,
                     context.textStyle,
                     context.rect,
-                    ResolveDefaultButtonTextColor(context.themeAsset, context.style));
+                    context.hasCustomColors
+                        ? context.textColor
+                        : ResolveDefaultButtonTextColor(context.themeAsset, context.style));
         }
 
         public virtual Vector2 MeasureChip(NowThemeAsset themeAsset, string label, NowTextStyle textStyle, bool removable)

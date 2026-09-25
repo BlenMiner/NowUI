@@ -47,6 +47,19 @@ Now.Gradient(rect, glow, Color.clear)
     .Draw();
 ```
 
+When a glow or spotlight is placed by a point in the scene rather than by a
+fraction of the rect, use the `At` overloads, which take the center (and
+radius) in UI units, in the same space as the gradient's rect:
+
+```csharp
+Now.Gradient(stage, glow, glow.WithAlpha(0f))
+    .SetRadialAt(cursor, 180f)
+    .Draw();
+```
+
+`SetRadialAt(center, radii)` draws an ellipse and `SetConicAt(center, startAngle)`
+a conic sweep around a point.
+
 Conic gradients sweep clockwise around their center. The start angle uses the
 same CSS convention as linear gradients.
 

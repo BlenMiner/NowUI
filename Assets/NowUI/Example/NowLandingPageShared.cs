@@ -88,7 +88,7 @@ internal static class NowLandingPageShared
     {
         var center = new Vector2(search.x + 25f, search.center.y - 1f);
         Now.Circle(center, 7f)
-            .SetColor(Color.clear)
+            .SetFill(false)
             .SetOutline(1.8f, MutedText)
             .Draw();
         Now.Line(center + new Vector2(5f, 5f), center + new Vector2(10f, 10f))
@@ -117,22 +117,11 @@ internal static class NowLandingPageShared
         Color color,
         NowFontStyle style = NowFontStyle.Regular)
     {
-        Vector2 size = Now.font.MeasureText(value, fontSize, style);
-        Vector4 bounds = Now.font.MeasureTextBounds(value, fontSize, style);
-        NowRect textRect = rect.Centered(size);
-        NowRect mask = bounds.z > 0f && bounds.w > 0f
-            ? textRect.Union(new NowRect(
-                textRect.x + bounds.x,
-                textRect.y + bounds.y,
-                bounds.z,
-                bounds.w)).Outset(4f)
-            : textRect.Outset(4f);
-
-        Now.Text(textRect)
-            .SetMask(mask)
+        Now.Text(rect)
             .SetFontSize(fontSize)
             .SetFontStyle(style)
             .SetColor(color)
+            .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
             .Draw(value);
     }
 }

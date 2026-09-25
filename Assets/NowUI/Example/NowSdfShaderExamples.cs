@@ -177,7 +177,7 @@ public static class NowSdfShaderExamples
         Now.Rectangle(preview)
             .SetRadius(11f)
             .SetColor(new Color(0.018f, 0.027f, 0.055f, 0.94f))
-            .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.20f))
+            .SetOutline(1f, accent.WithAlpha(0.20f))
             .Draw();
 
         if (material == null)

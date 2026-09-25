@@ -324,7 +324,7 @@ public class NowZooExample : NowLayoutGraphic
             .Draw();
 
         Now.Polygon(_shapePolygon)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.72f))
+            .SetColor(accent.WithAlpha(0.72f))
             .SetOutline(2f)
             .SetOutlineColor(themeAsset.GetColor(NowColorToken.Text, Color.white))
             .Draw();

@@ -28,6 +28,18 @@ namespace NowUI
             this.height = height;
         }
 
+        /// <summary>A rect of <paramref name="size"/> centered on <paramref name="center"/>.</summary>
+        public static NowRect FromCenter(Vector2 center, Vector2 size)
+        {
+            return new NowRect(center.x - size.x * 0.5f, center.y - size.y * 0.5f, size.x, size.y);
+        }
+
+        /// <summary>A rect of the given size centered on <paramref name="center"/>.</summary>
+        public static NowRect FromCenter(Vector2 center, float width, float height)
+        {
+            return FromCenter(center, new Vector2(width, height));
+        }
+
         public NowRect(Vector2 position, Vector2 size)
         {
             x = position.x;

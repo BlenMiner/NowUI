@@ -498,7 +498,7 @@ namespace NowUI
         readonly int _site;
         NowControlIdentity _id;
         NowFocusNavigation _navigation;
-        readonly bool _isOn;
+        bool _isOn;
         NowLayoutOptions _options;
         readonly NowRect _rect;
         readonly bool _hasRect;
@@ -613,6 +613,29 @@ namespace NowUI
             renderer.DrawRadio(new NowToggleRenderContext(theme, rect, circleRect, _isOn, interaction, focused, hoverT));
             NowControls.DrawLeftLabel(theme, renderer.ToggleContentRect(theme, rect, circle), _label, _textPreset);
             return interaction.clicked || submitted;
+        }
+
+        /// <summary>
+        /// Draws one option of a radio group bound to <paramref name="selected"/>: it
+        /// shows as on when <paramref name="selected"/> equals <paramref name="value"/>,
+        /// and choosing it assigns <paramref name="value"/>. Returns true when the
+        /// selection changed. Works with ints, enums, strings or any value type:
+        /// <code>
+        /// NowLayout.Radio("Low").Draw(ref quality, Quality.Low);
+        /// NowLayout.Radio("High").Draw(ref quality, Quality.High);
+        /// </code>
+        /// The builder's own on/off argument is ignored.
+        /// </summary>
+        public bool Draw<TValue>(ref TValue selected, TValue value)
+        {
+            var option = this;
+            option._isOn = EqualityComparer<TValue>.Default.Equals(selected, value);
+
+            if (!option.Draw() || option._isOn)
+                return false;
+
+            selected = value;
+            return true;
         }
     }
 

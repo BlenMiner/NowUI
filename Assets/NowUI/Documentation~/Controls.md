@@ -53,8 +53,8 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
 
     NowLayout.Checkbox("Enable shadows").Draw(ref shadows);
 
-    if (NowLayout.Radio("Low", quality == 0).Draw()) quality = 0;
-    if (NowLayout.Radio("High", quality == 1).Draw()) quality = 1;
+    NowLayout.Radio("Low").Draw(ref quality, 0);
+    NowLayout.Radio("High").Draw(ref quality, 1);
 
     NowLayout.Slider(0f, 1f).SetStretchWidth().Draw(ref volume);
 
@@ -234,8 +234,13 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
   With `using UnityEngine.InputSystem`, call
   `NowLayout.KeyBindingField().Draw(ref jumpKey)` or its explicit-rect
   `Now.KeyBindingField(...)` twin.
-- `Radio(label, isOn).Draw()` returns true when clicked; set your selection in
-  response.
+- `Radio(label).Draw(ref selected, value)` binds a radio group to one value:
+  the option shows as on when `selected` equals `value`, choosing it assigns
+  `value`, and the call returns true when the selection changed. It works with
+  ints, enums and strings. `Radio(label, isOn).Draw()` still draws an option
+  whose state you manage yourself; it returns true when clicked.
+- `Badge(text).SetColors(fill, text[, outline, outlineColor])` draws an accent
+  tag in your own colors instead of the style preset's.
 - `TextField` supports click/drag selection (shaped-text cluster aware),
   shift-click to extend the selection, standard editing keys with repeat,
   copy/cut/paste/select-all, undo/redo (Ctrl/Cmd+Z, Ctrl+Y/Cmd+Shift+Z),

@@ -54,7 +54,7 @@ namespace NowUI.Editor
 
             Now.Rectangle(rect).SetColor(background).Draw();
             DrawAnimatedBackdrop(rect, u, orange, violet, pink);
-            DrawGrid(rect, 48f, new Color(1f, 0.72f, 0.40f, 0.045f));
+            Now.GridLines(rect, 48f).SetColor(new Color(1f, 0.72f, 0.40f, 0.045f)).Draw();
 
             Now.Text(new NowRect(40f, 28f, rect.width - 80f, 54f))
                 .SetFontSize(40f)
@@ -139,7 +139,7 @@ namespace NowUI.Editor
 
             // Hold the logo, morph into the paw, hold, and morph back.
             float phase = Mathf.Repeat(u * 2f, 1f);
-            float morph = Smooth(Mathf.Clamp01((phase - 0.35f) / 0.35f));
+            float morph = NowEase.Smoothstep(Mathf.Clamp01((phase - 0.35f) / 0.35f));
             bool toPaw = u < 0.5f;
             NowSdfGraph from = toPaw ? logoGraph : paw;
             NowSdfGraph to = toPaw ? paw : logoGraph;

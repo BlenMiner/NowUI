@@ -46,6 +46,15 @@ namespace NowUI
             return new NowRadio(rect, string.Empty, isOn, NowControls.SiteToken(file, line));
         }
 
+        /// <summary>
+        /// Labeled radio option at an explicit rect whose state comes from
+        /// <see cref="NowRadio.Draw{TValue}(ref TValue, TValue)"/>.
+        /// </summary>
+        public static NowRadio Radio(NowRect rect, string label, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowRadio(rect, label, false, NowControls.SiteToken(file, line));
+        }
+
         /// <summary>Horizontal slider over a min/max range at an explicit rect.</summary>
         public static NowSlider Slider(NowRect rect, float min, float max, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
@@ -220,6 +229,15 @@ namespace NowUI
         public static NowRadio Radio(bool isOn, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
         {
             return new NowRadio(string.Empty, isOn, NowControls.SiteToken(file, line));
+        }
+
+        /// <summary>
+        /// Labeled radio option in layout flow whose state comes from
+        /// <see cref="NowRadio.Draw{TValue}(ref TValue, TValue)"/>.
+        /// </summary>
+        public static NowRadio Radio(string label, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0)
+        {
+            return new NowRadio(label, false, NowControls.SiteToken(file, line));
         }
 
         /// <summary>Horizontal slider over a min/max range in layout flow.</summary>

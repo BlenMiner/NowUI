@@ -134,7 +134,7 @@ namespace NowUI.Editor
 
             Now.Rectangle(rect).SetColor(background).Draw();
             DrawAnimatedBackdrop(rect, u, cyan, violet, pink);
-            DrawGrid(rect, 48f, new Color(0.40f, 0.65f, 1f, 0.045f));
+            Now.GridLines(rect, 48f).SetColor(new Color(0.40f, 0.65f, 1f, 0.045f)).Draw();
 
             Now.Text(new NowRect(40f, 28f, rect.width - 80f, 54f))
                 .SetFontSize(40f)
@@ -255,7 +255,7 @@ namespace NowUI.Editor
             float cycle = normalizedTime * 3f;
             int segment = Mathf.Min(2, Mathf.FloorToInt(cycle));
             float local = cycle - segment;
-            morph = Smooth(local);
+            morph = NowEase.Smoothstep(local);
 
             if (segment == 0)
             {
@@ -292,7 +292,7 @@ namespace NowUI.Editor
 
             Now.Rectangle(rect).SetColor(background).Draw();
             DrawAnimatedBackdrop(rect, 0.15f, cyan, violet, amber);
-            DrawGrid(rect, 48f, new Color(0.34f, 0.64f, 0.82f, 0.040f));
+            Now.GridLines(rect, 48f).SetColor(new Color(0.34f, 0.64f, 0.82f, 0.040f)).Draw();
 
             Now.Text(new NowRect(40f, 26f, 610f, 52f))
                 .SetFontSize(38f)
@@ -328,7 +328,7 @@ namespace NowUI.Editor
                 scene.center.y + Mathf.Sin(angle) * scan * 62f);
             float lensRadius = 101f + 14f * scan;
             float lensFeather = 24f + 6f * scan;
-            float lensAlpha = SmoothPulse(u, 0.02f, 0.11f, 0.89f, 0.98f);
+            float lensAlpha = NowEase.Window(u, 0.02f, 0.11f, 0.89f, 0.98f, NowEasing.Smoothstep);
             const float warpSeed = 0.22f;
 
             using (Now.Mask(stageMask))
@@ -348,7 +348,7 @@ namespace NowUI.Editor
             }
 
             Now.Rectangle(stage)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetRadius(24f)
                 .SetOutline(1f, new Color(0.52f, 0.82f, 1f, 0.24f))
                 .Draw();
@@ -435,12 +435,12 @@ namespace NowUI.Editor
         static void DrawXRayLens(Vector2 center, float radius, Color accent, float alpha)
         {
             Now.Circle(center, radius + 5f)
-                .SetColor(Color.clear)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.24f * alpha))
+                .SetFill(false)
+                .SetOutline(1f, accent.WithAlpha(0.24f * alpha))
                 .Draw();
             Now.Circle(center, radius)
-                .SetColor(Color.clear)
-                .SetOutline(2f, new Color(accent.r, accent.g, accent.b, 0.92f * alpha))
+                .SetFill(false)
+                .SetOutline(2f, accent.WithAlpha(0.92f * alpha))
                 .Draw();
 
             Vector2 handleDirection = new Vector2(0.72f, 0.69f).normalized;
@@ -452,7 +452,7 @@ namespace NowUI.Editor
                 .Draw();
             Now.Line(handleStart, handleEnd)
                 .SetWidth(2.5f)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.92f * alpha))
+                .SetColor(accent.WithAlpha(0.92f * alpha))
                 .Draw();
             Now.Circle(center, 3f).SetColor(new Color(0.88f, 1f, 0.98f, 0.92f * alpha)).Draw();
         }
@@ -470,8 +470,8 @@ namespace NowUI.Editor
             float u = frame.normalizedTime;
             float frameIndex = frame.index;
             Vector2 cursor = DesktopCursorPath(frameIndex);
-            float minimizePress = SmoothPulse(frameIndex, 38f, 40f, 41f, 43f);
-            float restorePress = SmoothPulse(frameIndex, 60f, 62f, 64f, 66f);
+            float minimizePress = NowEase.Window(frameIndex, 38f, 40f, 41f, 43f, NowEasing.Smoothstep);
+            float restorePress = NowEase.Window(frameIndex, 60f, 62f, 64f, 66f, NowEasing.Smoothstep);
 
             DrawDesktopWallpaper(rect, u);
             DrawMenuBar(rect);
@@ -489,7 +489,7 @@ namespace NowUI.Editor
                 DrawDesktopWindow(window, u, cursor, minimizePress);
             }
 
-            float controlCenter = SmoothPulse(frameIndex, 8f, 12f, 24f, 29f);
+            float controlCenter = NowEase.Window(frameIndex, 8f, 12f, 24f, 29f, NowEasing.Smoothstep);
             DrawControlCenter(new NowRect(710f, Mathf.Lerp(18f, 38f, controlCenter), 220f, 238f), controlCenter, u);
             DrawDesktopDock(rect, cursor, u, restorePress);
             DrawCursor(cursor);
@@ -601,7 +601,7 @@ namespace NowUI.Editor
             Now.Circle(origin, 6f).SetColor(new Color(1f, 0.36f, 0.34f, 1f)).Draw();
             Vector2 minimize = origin + new Vector2(20f, 0f);
             Now.Circle(minimize, 9f + minimizePress * 2f)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetOutline(1.5f, new Color(1f, 0.82f, 0.28f, 0.42f * minimizePress))
                 .Draw();
             Now.Circle(minimize, 6f + minimizePress * 1.5f).SetColor(new Color(1f, 0.75f, 0.20f, 1f)).Draw();
@@ -625,7 +625,7 @@ namespace NowUI.Editor
                 .SetOutline(1f, new Color(1f, 1f, 1f, 0.11f))
                 .Draw();
             Now.Circle(new Vector2(search.x + 15f, search.y + 13f), 5f)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetOutline(1.5f, new Color(1f, 1f, 1f, 0.55f))
                 .Draw();
             Now.Line(new Vector2(search.x + 19f, search.y + 17f), new Vector2(search.x + 23f, search.y + 21f))
@@ -644,7 +644,7 @@ namespace NowUI.Editor
                 true);
 
             float selection = Mathf.Sin(u * FullTurn - Mathf.PI * 0.5f) * 0.5f + 0.5f;
-            float selectionY = Mathf.Lerp(sidebar.y + 44f, sidebar.y + 80f, Smooth(selection));
+            float selectionY = Mathf.Lerp(sidebar.y + 44f, sidebar.y + 80f, NowEase.Smoothstep(selection));
             Now.Rectangle(new NowRect(sidebar.x + 9f, selectionY, sidebar.width - 18f, 30f))
                 .SetColor(new Color(0.36f, 0.58f, 1f, 0.20f))
                 .SetRadius(7f)
@@ -728,7 +728,7 @@ namespace NowUI.Editor
             Now.Rectangle(card)
                 .SetColor(new Color(0.08f + accent.r * 0.04f, 0.09f + accent.g * 0.04f, 0.14f + accent.b * 0.04f, 0.72f))
                 .SetRadius(12f)
-                .SetOutline(1f + hover, new Color(accent.r, accent.g, accent.b, 0.18f + hover * 0.55f))
+                .SetOutline(1f + hover, accent.WithAlpha(0.18f + hover * 0.55f))
                 .Draw();
 
             var folder = new NowRect(card.x + 30f, card.y + 18f - hover * 3f, 66f, 48f + hover * 3f);
@@ -783,60 +783,66 @@ namespace NowUI.Editor
             if (visibility <= 0.001f)
                 return;
 
-            float alpha = Smooth(visibility);
-            Now.Rectangle(new NowRect(panel.x - 10f, panel.y + 10f, panel.width + 20f, panel.height + 16f))
-                .SetColor(new Color(0f, 0f, 0f, 0.28f * alpha))
-                .SetRadius(24f)
-                .SetBlur(20f)
-                .Draw();
-            Now.Glass(panel)
-                .SetBlurRadius(30f * alpha)
-                .SetTint(new Color(0.11f, 0.13f, 0.20f, 0.82f * alpha))
-                .SetVibrancy(Mathf.Lerp(1f, 1.25f, alpha), Mathf.Lerp(1f, 0.98f, alpha))
-                .SetRadius(18f)
-                .SetOutline(1f, new Color(1f, 1f, 1f, 0.24f * alpha))
-                .Draw();
+            float alpha = NowEase.Smoothstep(visibility);
 
-            DrawText(new NowRect(panel.x + 16f, panel.y + 14f, panel.width - 32f, 22f), "Control Center", 14f, WithAlpha(Color.white, alpha), true);
-            DrawControlToggle(new NowRect(panel.x + 14f, panel.y + 46f, 92f, 58f), "Wi-Fi", new Color(0.24f, 0.62f, 1f, alpha), alpha);
-            DrawControlToggle(new NowRect(panel.x + 114f, panel.y + 46f, 92f, 58f), "Focus", new Color(0.68f, 0.38f, 1f, alpha), alpha);
+            // One opacity scope fades the whole panel; only the glass blur and
+            // vibrancy ramp in on their own.
+            using (Now.Opacity(alpha))
+            {
+                Now.Rectangle(new NowRect(panel.x - 10f, panel.y + 10f, panel.width + 20f, panel.height + 16f))
+                    .SetColor(new Color(0f, 0f, 0f, 0.28f))
+                    .SetRadius(24f)
+                    .SetBlur(20f)
+                    .Draw();
+                Now.Glass(panel)
+                    .SetBlurRadius(30f * alpha)
+                    .SetTint(new Color(0.11f, 0.13f, 0.20f, 0.82f))
+                    .SetVibrancy(Mathf.Lerp(1f, 1.25f, alpha), Mathf.Lerp(1f, 0.98f, alpha))
+                    .SetRadius(18f)
+                    .SetOutline(1f, new Color(1f, 1f, 1f, 0.24f))
+                    .Draw();
 
-            DrawText(new NowRect(panel.x + 16f, panel.y + 119f, 100f, 17f), "Display", 11f, WithAlpha(Color.white, alpha * 0.76f), true);
-            var slider = new NowRect(panel.x + 16f, panel.y + 143f, panel.width - 32f, 9f);
-            Now.Rectangle(slider).SetColor(new Color(1f, 1f, 1f, 0.16f * alpha)).SetRadius(5f).Draw();
-            float level = 0.42f + (Mathf.Sin(u * FullTurn) * 0.5f + 0.5f) * 0.38f;
-            Now.Rectangle(new NowRect(slider.x, slider.y, slider.width * level, slider.height))
-                .SetColor(new Color(1f, 1f, 1f, 0.86f * alpha))
-                .SetRadius(5f)
-                .Draw();
-            Now.Circle(new Vector2(slider.x + slider.width * level, slider.center.y), 8f)
-                .SetColor(new Color(1f, 1f, 1f, alpha))
-                .Draw();
+                DrawText(new NowRect(panel.x + 16f, panel.y + 14f, panel.width - 32f, 22f), "Control Center", 14f, Color.white, true);
+                DrawControlToggle(new NowRect(panel.x + 14f, panel.y + 46f, 92f, 58f), "Wi-Fi", new Color(0.24f, 0.62f, 1f, 1f));
+                DrawControlToggle(new NowRect(panel.x + 114f, panel.y + 46f, 92f, 58f), "Focus", new Color(0.68f, 0.38f, 1f, 1f));
 
-            DrawText(new NowRect(panel.x + 16f, panel.y + 176f, 100f, 17f), "Now playing", 11f, WithAlpha(Color.white, alpha * 0.76f), true);
-            DrawText(new NowRect(panel.x + 16f, panel.y + 198f, 142f, 18f), "Immediate Motion", 12f, WithAlpha(Color.white, alpha), true);
-            Now.Circle(new Vector2(panel.xMax - 34f, panel.y + 199f), 16f)
-                .SetColor(new Color(1f, 1f, 1f, 0.14f * alpha))
-                .Draw();
-            Now.Triangle(
-                    new Vector2(panel.xMax - 38f, panel.y + 191f),
-                    new Vector2(panel.xMax - 38f, panel.y + 207f),
-                    new Vector2(panel.xMax - 26f, panel.y + 199f))
-                .SetColor(new Color(1f, 1f, 1f, 0.90f * alpha))
-                .Draw();
+                DrawText(new NowRect(panel.x + 16f, panel.y + 119f, 100f, 17f), "Display", 11f, Color.white.WithAlpha(0.76f), true);
+                var slider = new NowRect(panel.x + 16f, panel.y + 143f, panel.width - 32f, 9f);
+                Now.Rectangle(slider).SetColor(new Color(1f, 1f, 1f, 0.16f)).SetRadius(5f).Draw();
+                float level = 0.42f + (Mathf.Sin(u * FullTurn) * 0.5f + 0.5f) * 0.38f;
+                Now.Rectangle(new NowRect(slider.x, slider.y, slider.width * level, slider.height))
+                    .SetColor(new Color(1f, 1f, 1f, 0.86f))
+                    .SetRadius(5f)
+                    .Draw();
+                Now.Circle(new Vector2(slider.x + slider.width * level, slider.center.y), 8f)
+                    .SetColor(Color.white)
+                    .Draw();
+
+                DrawText(new NowRect(panel.x + 16f, panel.y + 176f, 100f, 17f), "Now playing", 11f, Color.white.WithAlpha(0.76f), true);
+                DrawText(new NowRect(panel.x + 16f, panel.y + 198f, 142f, 18f), "Immediate Motion", 12f, Color.white, true);
+                Now.Circle(new Vector2(panel.xMax - 34f, panel.y + 199f), 16f)
+                    .SetColor(new Color(1f, 1f, 1f, 0.14f))
+                    .Draw();
+                Now.Triangle(
+                        new Vector2(panel.xMax - 38f, panel.y + 191f),
+                        new Vector2(panel.xMax - 38f, panel.y + 207f),
+                        new Vector2(panel.xMax - 26f, panel.y + 199f))
+                    .SetColor(new Color(1f, 1f, 1f, 0.90f))
+                    .Draw();
+            }
         }
 
-        static void DrawControlToggle(NowRect rect, string label, Color accent, float alpha)
+        static void DrawControlToggle(NowRect rect, string label, Color accent)
         {
             Now.Rectangle(rect)
-                .SetColor(new Color(1f, 1f, 1f, 0.09f * alpha))
+                .SetColor(new Color(1f, 1f, 1f, 0.09f))
                 .SetRadius(12f)
-                .SetOutline(1f, new Color(1f, 1f, 1f, 0.10f * alpha))
+                .SetOutline(1f, new Color(1f, 1f, 1f, 0.10f))
                 .Draw();
             Now.Circle(new Vector2(rect.x + 22f, rect.y + 22f), 13f).SetColor(accent).Draw();
-            Now.Circle(new Vector2(rect.x + 22f, rect.y + 22f), 4f).SetColor(new Color(1f, 1f, 1f, alpha)).Draw();
-            DrawText(new NowRect(rect.x + 42f, rect.y + 14f, rect.width - 48f, 18f), label, 11f, WithAlpha(Color.white, alpha), true);
-            DrawText(new NowRect(rect.x + 42f, rect.y + 31f, rect.width - 48f, 14f), "On", 9f, WithAlpha(Color.white, alpha * 0.52f));
+            Now.Circle(new Vector2(rect.x + 22f, rect.y + 22f), 4f).SetColor(Color.white).Draw();
+            DrawText(new NowRect(rect.x + 42f, rect.y + 14f, rect.width - 48f, 18f), label, 11f, Color.white, true);
+            DrawText(new NowRect(rect.x + 42f, rect.y + 31f, rect.width - 48f, 14f), "On", 9f, Color.white.WithAlpha(0.52f));
         }
 
         static void DrawDesktopDock(NowRect rect, Vector2 cursor, float u, float restorePress)
@@ -863,7 +869,7 @@ namespace NowUI.Editor
                 if (i == 3 && restorePress > 0.001f)
                 {
                     Now.Circle(icon.center, size * 0.62f + restorePress * 5f)
-                        .SetColor(Color.clear)
+                        .SetFill(false)
                         .SetOutline(2f, new Color(0.52f, 1f, 0.88f, 0.52f * restorePress))
                         .Draw();
                 }
@@ -922,18 +928,18 @@ namespace NowUI.Editor
             var dock = new Vector2(482f, 490f);
 
             if (frame < 10f)
-                return Vector2.Lerp(start, controlCenter, Smooth(Mathf.InverseLerp(0f, 10f, frame)));
+                return Vector2.Lerp(start, controlCenter, NowEase.Smoothstep(Mathf.InverseLerp(0f, 10f, frame)));
             if (frame < 26f)
                 return controlCenter;
             if (frame < 38f)
-                return Vector2.Lerp(controlCenter, minimize, Smooth(Mathf.InverseLerp(26f, 38f, frame)));
+                return Vector2.Lerp(controlCenter, minimize, NowEase.Smoothstep(Mathf.InverseLerp(26f, 38f, frame)));
             if (frame < 43f)
                 return minimize;
             if (frame < 58f)
-                return Vector2.Lerp(minimize, dock, Smooth(Mathf.InverseLerp(43f, 58f, frame)));
+                return Vector2.Lerp(minimize, dock, NowEase.Smoothstep(Mathf.InverseLerp(43f, 58f, frame)));
             if (frame < 66f)
                 return dock;
-            return Vector2.Lerp(dock, start, Smooth(Mathf.InverseLerp(66f, 96f, frame)));
+            return Vector2.Lerp(dock, start, NowEase.Smoothstep(Mathf.InverseLerp(66f, 96f, frame)));
         }
 
         static void DrawCursor(Vector2 position)
@@ -957,12 +963,12 @@ namespace NowUI.Editor
         {
             if ((index & 1) == 0)
             {
-                Now.Circle(rect.center, rect.width * 0.48f).SetColor(new Color(color.r, color.g, color.b, 0.22f)).Draw();
+                Now.Circle(rect.center, rect.width * 0.48f).SetColor(color.WithAlpha(0.22f)).Draw();
                 Now.Circle(rect.center, rect.width * 0.22f).SetColor(color).Draw();
             }
             else
             {
-                Now.Rectangle(rect).SetColor(new Color(color.r, color.g, color.b, 0.22f)).SetRadius(4f).Draw();
+                Now.Rectangle(rect).SetColor(color.WithAlpha(0.22f)).SetRadius(4f).Draw();
                 Now.Rectangle(rect.Inset(5f)).SetColor(color).SetRadius(2f).Draw();
             }
         }
@@ -1001,30 +1007,30 @@ namespace NowUI.Editor
 
         static void DrawBattery(NowRect rect, Color color)
         {
-            Now.Rectangle(rect).SetColor(Color.clear).SetRadius(3f).SetOutline(1f, color).Draw();
+            Now.Rectangle(rect).SetFill(false).SetRadius(3f).SetOutline(1f, color).Draw();
             Now.Rectangle(new NowRect(rect.xMax + 2f, rect.y + 3f, 2f, rect.height - 6f)).SetColor(color).SetRadius(1f).Draw();
-            Now.Rectangle(rect.Inset(2.5f)).SetColor(new Color(color.r, color.g, color.b, 0.82f)).SetRadius(1.5f).Draw();
+            Now.Rectangle(rect.Inset(2.5f)).SetColor(color.WithAlpha(0.82f)).SetRadius(1.5f).Draw();
         }
 
         static void DrawAnimatedBackdrop(NowRect rect, float u, Color cyan, Color violet, Color pink)
         {
             float angle = u * FullTurn;
             float radialUnit = Mathf.Min(rect.width, rect.height);
-            Now.Gradient(rect, new Color(cyan.r, cyan.g, cyan.b, 0.16f), new Color(cyan.r, cyan.g, cyan.b, 0f))
+            Now.Gradient(rect, cyan.WithAlpha(0.16f), cyan.WithAlpha(0f))
                 .SetRadial(
                     new Vector2(
                         (160f + Mathf.Cos(angle) * 60f) / rect.width,
                         (180f + Mathf.Sin(angle) * 40f) / rect.height),
                     360f / radialUnit)
                 .Draw();
-            Now.Gradient(rect, new Color(violet.r, violet.g, violet.b, 0.18f), new Color(violet.r, violet.g, violet.b, 0f))
+            Now.Gradient(rect, violet.WithAlpha(0.18f), violet.WithAlpha(0f))
                 .SetRadial(
                     new Vector2(
                         (800f + Mathf.Sin(angle) * 70f) / rect.width,
                         (400f + Mathf.Cos(angle) * 40f) / rect.height),
                     390f / radialUnit)
                 .Draw();
-            Now.Gradient(rect, new Color(pink.r, pink.g, pink.b, 0.10f), new Color(pink.r, pink.g, pink.b, 0f))
+            Now.Gradient(rect, pink.WithAlpha(0.10f), pink.WithAlpha(0f))
                 .SetRadial(
                     new Vector2(
                         520f / rect.width,
@@ -1033,20 +1039,12 @@ namespace NowUI.Editor
                 .Draw();
         }
 
-        static void DrawGrid(NowRect rect, float spacing, Color color)
-        {
-            for (float x = spacing; x < rect.width; x += spacing)
-                Now.Rectangle(new NowRect(x, 0f, 1f, rect.height)).SetColor(color).Draw();
-            for (float y = spacing; y < rect.height; y += spacing)
-                Now.Rectangle(new NowRect(0f, y, rect.width, 1f)).SetColor(color).Draw();
-        }
-
         static void DrawMetricChip(NowRect rect, string label, Color accent)
         {
             Now.Rectangle(rect)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.10f))
+                .SetColor(accent.WithAlpha(0.10f))
                 .SetRadius(rect.height * 0.5f)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.42f))
+                .SetOutline(1f, accent.WithAlpha(0.42f))
                 .Draw();
             DrawText(new NowRect(rect.x + 10f, rect.y + 7f, rect.width - 20f, 15f), label, 9f, accent, true);
         }
@@ -1068,29 +1066,7 @@ namespace NowUI.Editor
 
         static void DrawText(NowRect rect, string value, float size, Color color, bool bold = false)
         {
-            var text = Now.Text(rect).SetFontSize(size).SetColor(color);
-            if (bold)
-                text = text.SetBold();
-            text.Draw(value);
-        }
-
-        static float Smooth(float value)
-        {
-            value = Mathf.Clamp01(value);
-            return value * value * (3f - 2f * value);
-        }
-
-        static float SmoothPulse(float value, float inStart, float inEnd, float outStart, float outEnd)
-        {
-            float fadeIn = Smooth(Mathf.InverseLerp(inStart, inEnd, value));
-            float fadeOut = 1f - Smooth(Mathf.InverseLerp(outStart, outEnd, value));
-            return Mathf.Min(fadeIn, fadeOut);
-        }
-
-        static Color WithAlpha(Color color, float alpha)
-        {
-            color.a = alpha;
-            return color;
+            Now.Text(rect).SetFontSize(size).SetColor(color).SetBold(bold).Draw(value);
         }
     }
 }

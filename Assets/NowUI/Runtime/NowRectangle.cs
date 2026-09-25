@@ -129,6 +129,13 @@ namespace NowUI
         /// </summary>
         public bool staticMaterial;
 
+        /// <summary>
+        /// Draws only the outline: the fill (color, texture or sprite) is skipped.
+        /// Set through <see cref="SetFill(bool)"/>; it holds whatever color is set
+        /// later, so the outline can keep using the rectangle's color settings.
+        /// </summary>
+        public bool hollow;
+
         public NowRectangle(NowRect rect)
         {
             mask = rect;
@@ -149,6 +156,18 @@ namespace NowUI
             material = null;
             canvasMaterial = null;
             staticMaterial = false;
+            hollow = false;
+        }
+
+        /// <summary>
+        /// <c>SetFill(false)</c> draws only the outline, replacing the
+        /// <c>SetColor(Color.clear)</c> idiom: <c>Now.Rectangle(r).SetFill(false).SetOutline(1f, line).Draw()</c>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NowRectangle SetFill(bool fill = true)
+        {
+            hollow = !fill;
+            return this;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -428,6 +447,17 @@ namespace NowUI
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NowRectangle Draw()
         {
+            if (hollow)
+            {
+                var outlineOnly = this;
+                outlineOnly.color.w = 0f;
+
+                if (outlineOnly.outline > 0f && outlineOnly.outlineColor.w > 0f)
+                    Now.DrawRect(outlineOnly);
+
+                return this;
+            }
+
             Now.DrawRect(this);
             return this;
         }

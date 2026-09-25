@@ -16,6 +16,11 @@ namespace NowUI
         readonly bool _hasRect;
         NowRectangleStyle _rectPreset;
         NowTextStyle _textPreset;
+        bool _hasColors;
+        Color _fill;
+        Color _text;
+        float _outline;
+        Color _outlineColor;
 
         internal NowBadge(string label, int site)
         {
@@ -26,6 +31,11 @@ namespace NowUI
             _hasRect = false;
             _rectPreset = NowRectangleStyle.Accent;
             _textPreset = NowTextStyle.Caption;
+            _hasColors = false;
+            _fill = default;
+            _text = default;
+            _outline = 0f;
+            _outlineColor = default;
         }
 
         internal NowBadge(NowRect rect, string label, int site) : this(label, site)
@@ -52,13 +62,41 @@ namespace NowUI
         /// <summary>Themed text style for the label.</summary>
         public NowBadge SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
+        /// <summary>
+        /// Pill fill and label colors instead of the style preset's, for accent tags
+        /// such as <c>Now.Badge(rect, "LIVE").SetColors(accent.WithAlpha(0.12f), accent)</c>.
+        /// </summary>
+        public NowBadge SetColors(Color fill, Color text)
+        {
+            _hasColors = true;
+            _fill = fill;
+            _text = text;
+            return this;
+        }
+
+        /// <summary>
+        /// Pill fill, label and outline colors instead of the style preset's.
+        /// <paramref name="outline"/> is the stroke width in UI units.
+        /// </summary>
+        public NowBadge SetColors(Color fill, Color text, float outline, Color outlineColor)
+        {
+            _hasColors = true;
+            _fill = fill;
+            _text = text;
+            _outline = Mathf.Max(0f, outline);
+            _outlineColor = outlineColor;
+            return this;
+        }
+
         public void Draw()
         {
             var theme = NowTheme.themeAsset;
             var renderer = theme.controlRenderer;
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureBadge(theme, _label, _textPreset));
-            renderer.DrawBadge(new NowBadgeRenderContext(theme, rect, _label, _rectPreset, _textPreset));
+            renderer.DrawBadge(_hasColors
+                ? new NowBadgeRenderContext(theme, rect, _label, _rectPreset, _textPreset, _fill, _text, _outline, _outlineColor)
+                : new NowBadgeRenderContext(theme, rect, _label, _rectPreset, _textPreset));
         }
     }
 

@@ -111,7 +111,7 @@ namespace NowUI.Editor
             Now.Rectangle(rect).SetColor(new Color(0.067f, 0.067f, 0.071f, 1f)).Draw();
 
             Color fill = ShapesFillColor(step, t);
-            Now.Gradient(rect, WithAlpha(fill, 0.10f), WithAlpha(fill, 0f))
+            Now.Gradient(rect, fill.WithAlpha(0.10f), fill.WithAlpha(0f))
                 .SetRadial(new Vector2(ShapesOrigin.x / rect.width, ShapesOrigin.y / rect.height), 0.42f)
                 .Draw();
 
@@ -191,9 +191,9 @@ namespace NowUI.Editor
 
             var ghost = new Color(0.55f, 0.55f, 0.58f, 1f);
             if (a > 0f)
-                Now.Circle(ShapesWorld(-60f, 0f), 100f * ShapesUnit).SetColor(Color.clear).SetOutline(1f, WithAlpha(ghost, 0.6f * a)).Draw();
+                Now.Circle(ShapesWorld(-60f, 0f), 100f * ShapesUnit).SetFill(false).SetOutline(1f, ghost.WithAlpha(0.6f * a)).Draw();
             if (b > 0f)
-                Now.Circle(ShapesWorld(60f, 0f), 100f * ShapesUnit).SetColor(Color.clear).SetOutline(1f, WithAlpha(ghost, 0.6f * b)).Draw();
+                Now.Circle(ShapesWorld(60f, 0f), 100f * ShapesUnit).SetFill(false).SetOutline(1f, ghost.WithAlpha(0.6f * b)).Draw();
         }
 
         static NowSdfBuilder ShapesSceneBuilder(Color fill, Vector2 cursor, float hover)
@@ -218,7 +218,7 @@ namespace NowUI.Editor
                 .SetColor(fill)
                 .UseColor();
             if (hover > 0f)
-                scene = scene.SetGlow(hover * 22f, WithAlpha(new Color(1f, 0.45f, 0.42f, 1f), 0.35f * hover), 1.5f);
+                scene = scene.SetGlow(hover * 22f, new Color(1f, 0.45f, 0.42f, 1f).WithAlpha(0.35f * hover), 1.5f);
             return scene;
         }
 
@@ -228,7 +228,7 @@ namespace NowUI.Editor
             if (step == 15 && cursor.x > 0f)
             {
                 float distance = Vector2.Distance(cursor, ShapesOrigin + new Vector2(0f, 20f * ShapesUnit));
-                hover = 1f - Smooth(Mathf.InverseLerp(70f, 150f, distance));
+                hover = 1f - NowEase.Smoothstep(Mathf.InverseLerp(70f, 150f, distance));
             }
 
             ComposeShapesField(ShapesSceneBuilder(fill, cursor, hover), step, previous, t, holdSeconds, fill).Draw();
@@ -275,7 +275,7 @@ namespace NowUI.Editor
                 {
                     // heart.Scale(1 + Sin(t * PI) * 0.2f): the pulse starts once the
                     // transition has settled and the color has turned red.
-                    float scale = 1f + Mathf.Sin(holdSeconds * Mathf.PI) * 0.2f * Smooth(Mathf.InverseLerp(0f, 0.25f, holdSeconds));
+                    float scale = 1f + Mathf.Sin(holdSeconds * Mathf.PI) * 0.2f * NowEase.Smoothstep(Mathf.InverseLerp(0f, 0.25f, holdSeconds));
                     BuildShapesHeart(ShapesGraphA, fill, 1f);
                     BuildShapesHeart(ShapesGraphB, fill, scale);
                     return scene.Morph(ShapesGraphA, ShapesGraphB, t);
@@ -288,7 +288,7 @@ namespace NowUI.Editor
                     // is a still heart.
                     int frames = ShapesSteps[15].Frames;
                     float remaining = (frames - ShapesTransitionFrames) / ShapesFps - holdSeconds;
-                    float mix = 0.1f * t * Smooth(Mathf.InverseLerp(0f, 0.5f, remaining));
+                    float mix = 0.1f * t * NowEase.Smoothstep(Mathf.InverseLerp(0f, 0.5f, remaining));
                     float angle = holdSeconds * 4f;
                     BuildShapesHeart(ShapesGraphA, fill, 1f);
                     BuildShapesCircleAt(ShapesGraphOrbit, fill, new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 60f, 100f);
@@ -427,7 +427,7 @@ namespace NowUI.Editor
             if (f < 12f)
                 return new Vector2(-100f, -100f);
             if (f < 30f)
-                return Vector2.Lerp(enter, rest, Smooth(Mathf.InverseLerp(12f, 30f, f)));
+                return Vector2.Lerp(enter, rest, NowEase.Smoothstep(Mathf.InverseLerp(12f, 30f, f)));
             if (f < hold - 22f)
             {
                 float wander = (f - 30f) / ShapesFps;
@@ -437,7 +437,7 @@ namespace NowUI.Editor
             {
                 float wander = (hold - 22f - 30f) / ShapesFps;
                 Vector2 last = rest + new Vector2(Mathf.Sin(wander * 1.7f) * 26f, Mathf.Cos(wander * 1.3f) * 16f);
-                return Vector2.Lerp(last, enter, Smooth(Mathf.InverseLerp(hold - 22f, hold - 6f, f)));
+                return Vector2.Lerp(last, enter, NowEase.Smoothstep(Mathf.InverseLerp(hold - 22f, hold - 6f, f)));
             }
             return new Vector2(-100f, -100f);
         }
@@ -459,9 +459,9 @@ namespace NowUI.Editor
 
             float size = ShapesCodeSize(current, 21f, 880f);
             float advance = ShapesCodeAdvance(size);
-            float slide = Smooth(Mathf.InverseLerp(0f, ShapesTransitionFrames, local));
+            float slide = NowEase.Smoothstep(Mathf.InverseLerp(0f, ShapesTransitionFrames, local));
             float left = Mathf.Lerp(480f - old.Length * advance * 0.5f, 480f - current.Length * advance * 0.5f, slide);
-            float leave = 1f - Smooth(Mathf.InverseLerp(0f, 5f, local));
+            float leave = 1f - NowEase.Smoothstep(Mathf.InverseLerp(0f, 5f, local));
 
             DrawShapesCode(current, 0, shared, left, y, advance, size, 1f, -1f);
             if (leave > 0f && shared < old.Length)
@@ -479,8 +479,8 @@ namespace NowUI.Editor
             }
             else
             {
-                DrawShapesSetup(oldSetup, 1f - Smooth(Mathf.InverseLerp(0f, 4f, local)));
-                DrawShapesSetup(setup, Smooth(Mathf.InverseLerp(4f, 12f, local)));
+                DrawShapesSetup(oldSetup, 1f - NowEase.Smoothstep(Mathf.InverseLerp(0f, 4f, local)));
+                DrawShapesSetup(setup, NowEase.Smoothstep(Mathf.InverseLerp(4f, 12f, local)));
             }
         }
 
@@ -536,7 +536,7 @@ namespace NowUI.Editor
                 {
                     string piece = text.Substring(start - index, end - start);
                     var rect = new NowRect(left + start * advance, y - size * 0.7f, piece.Length * advance + 6f, size * 1.6f);
-                    var label = Now.Text(rect).SetFont(mono).SetFontSize(size).SetColor(WithAlpha(color, alpha));
+                    var label = Now.Text(rect).SetFont(mono).SetFontSize(size).SetColor(color.WithAlpha(alpha));
                     if (animationTime >= 0f)
                     {
                         label = label
@@ -607,11 +607,12 @@ namespace NowUI.Editor
 
         static void DrawShapesCenteredText(Vector2 center, string value, float size, Color color, bool bold)
         {
-            var probe = Now.Text(new NowRect(0f, 0f, 960f, size * 1.5f)).SetFontSize(size);
-            if (bold)
-                probe = probe.SetBold();
-            Vector2 measured = probe.Measure(value);
-            DrawText(new NowRect(center.x - measured.x * 0.5f, center.y - measured.y * 0.5f, measured.x + 4f, measured.y + 4f), value, size, color, bold);
+            Now.Text(NowRect.FromCenter(center, 960f, size * 2f))
+                .SetFontSize(size)
+                .SetColor(color)
+                .SetBold(bold)
+                .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
+                .Draw(value);
         }
 
         static NowFontAsset GetShapesMonoFont()

@@ -579,20 +579,12 @@ public class NowDocsExample : NowLayoutGraphic
     /// <summary>Draws a single string centered inside a rect, outside any layout group.</summary>
     static void DrawCenteredText(NowThemeAsset theme, NowRect rect, string value, float fontSize, Color color, bool bold = false)
     {
-        var text = theme.Text(default, NowTextStyle.Body)
+        theme.Text(rect, NowTextStyle.Body)
             .SetFontSize(fontSize)
-            .SetColor(color);
-
-        if (bold)
-            text = text.SetBold();
-
-        Vector2 size = text.Measure(value);
-        text.rect = new NowRect(
-            rect.x + (rect.width - size.x) * 0.5f,
-            rect.y + (rect.height - size.y) * 0.5f,
-            size.x + 1f,
-            size.y + 1f);
-        text.Draw(value);
+            .SetColor(color)
+            .SetBold(bold)
+            .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
+            .Draw(value);
     }
 
     void DrawDocsNavigation(NowThemeAsset theme, NowRect rect)
@@ -674,7 +666,7 @@ public class NowDocsExample : NowLayoutGraphic
 
             NowRect rule = NowLayout.ReserveRect(height: 1f, stretchWidth: true);
             Now.Rectangle(rule)
-                .SetColor(new Color(muted.r, muted.g, muted.b, 0.16f))
+                .SetColor(muted.WithAlpha(0.16f))
                 .Draw();
         }
     }
@@ -708,7 +700,7 @@ public class NowDocsExample : NowLayoutGraphic
             Now.Rectangle(row)
                 .SetColor(editorChrome
                     ? accent
-                    : theme.GetColor(NowColorToken.AccentMuted, new Color(accent.r, accent.g, accent.b, 0.18f)))
+                    : theme.GetColor(NowColorToken.AccentMuted, accent.WithAlpha(0.18f)))
                 .SetRadius(editorChrome ? 1f : 7f)
                 .Draw();
 
@@ -725,7 +717,7 @@ public class NowDocsExample : NowLayoutGraphic
             Now.Rectangle(row)
                 .SetColor(editorChrome
                     ? editorHover
-                    : new Color(accent.r, accent.g, accent.b, 0.09f * hoverT))
+                    : accent.WithAlpha(0.09f * hoverT))
                 .SetRadius(editorChrome ? 1f : 7f)
                 .Draw();
         }
@@ -736,7 +728,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         if (!editorChrome && entry.depth > 0)
         {
-            Color branch = new Color(muted.r, muted.g, muted.b, selected ? 0.38f : 0.26f);
+            Color branch = muted.WithAlpha(selected ? 0.38f : 0.26f);
             float lineX = row.x + indent - 11f;
             Now.Line(new Vector2(lineX, row.y + 4f), new Vector2(lineX, row.yMax - 4f))
                 .SetColor(branch)
@@ -869,7 +861,7 @@ public class NowDocsExample : NowLayoutGraphic
         Now.Rectangle(new NowRect(menuInner.x, menuTitleRect.yMax + (editorChrome ? 3f : 4f), menuInner.width, 1f))
             .SetColor(editorChrome
                 ? theme.GetColor(NowColorToken.BorderStrong, separator)
-                : new Color(separator.r, separator.g, separator.b, 0.45f))
+                : separator.WithAlpha(0.45f))
             .Draw();
 
         DrawDocsSidebarHeader(theme, menuTitleRect);
@@ -1026,7 +1018,7 @@ public class NowDocsExample : NowLayoutGraphic
 
             NowLayout.Label("/")
                 .SetFontSize(10f)
-                .SetColor(new Color(muted.r, muted.g, muted.b, 0.55f))
+                .SetColor(muted.WithAlpha(0.55f))
                 .Draw();
 
             NowLayout.Label(Pages[_selected].title.ToUpperInvariant())
@@ -1057,7 +1049,7 @@ public class NowDocsExample : NowLayoutGraphic
         NowLayout.Space(editorChrome ? 20f : 28f);
         NowRect rule = NowLayout.ReserveRect(height: 1f, stretchWidth: true);
         Now.Rectangle(rule)
-            .SetColor(editorChrome ? border : new Color(border.r, border.g, border.b, 0.45f))
+            .SetColor(editorChrome ? border : border.WithAlpha(0.45f))
             .Draw();
         NowLayout.Space(editorChrome ? 8f : 12f);
 
@@ -1096,12 +1088,12 @@ public class NowDocsExample : NowLayoutGraphic
         Now.Rectangle(rect)
             .SetColor(editorChrome
                 ? editorFill
-                : new Color(accent.r, accent.g, accent.b, 0.04f + hoverT * 0.07f))
+                : accent.WithAlpha(0.04f + hoverT * 0.07f))
             .SetOutline(1f)
             .SetOutlineColor(Color.Lerp(
                 editorChrome
                     ? theme.GetColor(NowColorToken.BorderStrong, border)
-                    : new Color(border.r, border.g, border.b, 0.8f),
+                    : border.WithAlpha(0.8f),
                 accent,
                 hoverT))
             .SetRadius(editorChrome ? 1f : 9f)
@@ -1891,7 +1883,7 @@ public class NowDocsExample : NowLayoutGraphic
         {
             NowSdf.Scene(transformPreview, "docs-animated-sdf-text")
                 .SetColor(Color.white)
-                .SetGlow(12f, new Color(transformAccent.r, transformAccent.g, transformAccent.b, 0.18f), 1.4f)
+                .SetGlow(12f, transformAccent.WithAlpha(0.18f), 1.4f)
                 .SetOutline(3f, transformAccent, 0.75f)
                 .RotateNext(transformAngle)
                 .Text(
@@ -2215,7 +2207,7 @@ public class NowDocsExample : NowLayoutGraphic
                 .Draw();
 
             Now.Polygon(_shapeDemoPolygon)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.78f))
+                .SetColor(accent.WithAlpha(0.78f))
                 .SetOutline(3f)
                 .SetOutlineColor(text)
                 .Draw();
@@ -2311,7 +2303,7 @@ public class NowDocsExample : NowLayoutGraphic
             float y = area.y + 38f + Mathf.Sin(t * Mathf.PI * 2f + Time.time * 0.25f) * 10f;
 
             Now.Rectangle(new NowRect(x, y, 132f, 26f))
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f + t * 0.08f))
+                .SetColor(accent.WithAlpha(0.08f + t * 0.08f))
                 .SetRadius(13f)
                 .Draw();
         }
@@ -2322,7 +2314,7 @@ public class NowDocsExample : NowLayoutGraphic
             Now.Line(new Vector2(x, area.y + 42f), new Vector2(x + 84f, area.yMax - 72f))
                 .SetWidth(2f)
                 .SetDash(10f, 8f, Time.time * 20f)
-                .SetColor(new Color(muted.r, muted.g, muted.b, 0.22f))
+                .SetColor(muted.WithAlpha(0.22f))
                 .Draw();
         }
 
@@ -2339,7 +2331,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         Now.Text(new NowRect(area.x + 18f, area.y + 10f, area.width - 36f, 24f))
             .SetFontSize(12f)
-            .SetColor(new Color(text.r, text.g, text.b, 0.72f))
+            .SetColor(text.WithAlpha(0.72f))
             .Draw("The shader runs on the foreground rectangle; everything behind it is normal NowUI.");
     }
 
@@ -2500,7 +2492,7 @@ public class NowDocsExample : NowLayoutGraphic
             .Draw();
 
         Now.Circle(new Vector2(glass.x + 62f, glass.y + 64f), 21f)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.72f))
+            .SetColor(accent.WithAlpha(0.72f))
             .Draw();
 
         Now.Text(new NowRect(glass.x + 124f, glass.y + 34f, glass.width - 152f, 44f))
@@ -2511,7 +2503,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         Now.Text(new NowRect(glass.x + 126f, glass.y + 86f, glass.width - 154f, 54f))
             .SetFontSize(13f)
-            .SetColor(new Color(text.r, text.g, text.b, 0.78f))
+            .SetColor(text.WithAlpha(0.78f))
             .Draw("Backdrop replay is blurred behind this pane.");
 
         var meter = new NowRect(glass.x + 126f, glass.yMax - 42f, glass.width - 170f, 8f);
@@ -2520,7 +2512,7 @@ public class NowDocsExample : NowLayoutGraphic
             .SetRadius(4f)
             .Draw();
         Now.Rectangle(new NowRect(meter.x, meter.y, meter.width * Mathf.InverseLerp(0f, 36f, _glassDemoBlur), meter.height))
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.80f))
+            .SetColor(accent.WithAlpha(0.80f))
             .SetRadius(4f)
             .Draw();
     }
@@ -2585,13 +2577,13 @@ public class NowDocsExample : NowLayoutGraphic
             "Source should show sharp backdrop content. Blurred should show the same content softened. If both are gray, replay/blur is wrong; if these look right but the pane is wrong, composite binding is wrong.";
 
         Now.Rectangle(infoRect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.08f))
+            .SetColor(accent.WithAlpha(0.08f))
             .SetRadius(6f)
             .Draw();
 
         Now.Text(infoRect.Inset(10f, 8f))
             .SetFontSize(11f)
-            .SetColor(new Color(text.r, text.g, text.b, 0.84f))
+            .SetColor(text.WithAlpha(0.84f))
             .Draw(details);
     }
 
@@ -2644,7 +2636,7 @@ public class NowDocsExample : NowLayoutGraphic
             Color color = i % 3 == 0 ? accent : i % 3 == 1 ? warm : teal;
 
             Now.Rectangle(new NowRect(x, rect.y + 24f, 28f, rect.height - 48f))
-                .SetColor(new Color(color.r, color.g, color.b, 0.86f))
+                .SetColor(color.WithAlpha(0.86f))
                 .SetRadius(14f)
                 .Draw();
         }
@@ -2655,16 +2647,16 @@ public class NowDocsExample : NowLayoutGraphic
             Now.Line(new Vector2(rect.x + 18f, y), new Vector2(rect.xMax - 18f, y + Mathf.Sin(time + i) * 10f))
                 .SetWidth(2f)
                 .SetDash(16f, 12f, time * 24f + i * 7f)
-                .SetColor(new Color(muted.r, muted.g, muted.b, 0.55f))
+                .SetColor(muted.WithAlpha(0.55f))
                 .Draw();
         }
 
         Now.Circle(new Vector2(glass.x + 88f, glass.y + 92f), 86f)
-            .SetColor(new Color(teal.r, teal.g, teal.b, 0.92f))
+            .SetColor(teal.WithAlpha(0.92f))
             .Draw();
 
         Now.Circle(new Vector2(glass.xMax - 74f, glass.y + 88f), 94f)
-            .SetColor(new Color(warm.r, warm.g, warm.b, 0.90f))
+            .SetColor(warm.WithAlpha(0.90f))
             .Draw();
 
         Now.Rectangle(new NowRect(glass.x + 44f, glass.y + 74f, glass.width - 88f, 42f))
@@ -2684,14 +2676,14 @@ public class NowDocsExample : NowLayoutGraphic
             .Draw("Sharp backdrop content");
 
         Now.Circle(new Vector2(rect.xMax - 92f, rect.y + 82f), 42f)
-            .SetColor(new Color(pink.r, pink.g, pink.b, 0.80f))
+            .SetColor(pink.WithAlpha(0.80f))
             .Draw();
 
         Now.Triangle(
                 new Vector2(rect.x + 64f, rect.yMax - 62f),
                 new Vector2(rect.x + 166f, rect.yMax - 48f),
                 new Vector2(rect.x + 110f, rect.yMax - 146f))
-            .SetColor(new Color(warm.r, warm.g, warm.b, 0.78f))
+            .SetColor(warm.WithAlpha(0.78f))
             .Draw();
     }
 
@@ -2785,14 +2777,14 @@ public class NowDocsExample : NowLayoutGraphic
             float y = area.y + 44f + i * 42f;
             Now.Line(new Vector2(area.x + 8f, y), new Vector2(area.xMax - 8f, y))
                 .SetWidth(1f)
-                .SetColor(new Color(muted.r, muted.g, muted.b, 0.18f))
+                .SetColor(muted.WithAlpha(0.18f))
                 .Draw();
         }
 
         Now.Rectangle(targetRect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.18f + progress * 0.16f))
+            .SetColor(accent.WithAlpha(0.18f + progress * 0.16f))
             .SetOutline(1f)
-            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.7f))
+            .SetOutlineColor(accent.WithAlpha(0.7f))
             .SetRadius(8f)
             .Draw();
 
@@ -2852,7 +2844,7 @@ public class NowDocsExample : NowLayoutGraphic
         var left = new NowRect(body.x, body.y + 86f, cardWidth, 52f);
         var right = new NowRect(left.xMax + 18f, left.y, cardWidth, 52f);
 
-        Now.Rectangle(left).SetColor(new Color(accent.r, accent.g, accent.b, 0.22f)).SetRadius(8f).Draw();
+        Now.Rectangle(left).SetColor(accent.WithAlpha(0.22f)).SetRadius(8f).Draw();
         Now.Rectangle(right).SetColor(new Color(0.05f, 0.86f, 0.67f, 0.18f)).SetRadius(8f).Draw();
 
         Now.Text(left.Inset(10f, 9f)).SetFontSize(12f).SetColor(text).Draw("Mesh: crisp glyph quads");
@@ -3090,7 +3082,7 @@ public class NowDocsExample : NowLayoutGraphic
 
         themeAsset.Rectangle(cardRect, NowRectangleStyle.Surface)
             .SetRadius(16f)
-            .SetOutline(1f, new Color(border.r, border.g, border.b, 0.6f))
+            .SetOutline(1f, border.WithAlpha(0.6f))
             .Draw();
         Now.Circle(new Vector2(cardRect.x + 20f, cardRect.y + 22f), 4f)
             .SetColor(accent)
@@ -3135,7 +3127,7 @@ public class NowDocsExample : NowLayoutGraphic
                 model = model
                     .SetColor(new Color(0.82f, 0.94f, 1f, 1f))
                     .SetRadius(28f)
-                    .SetOutline(1.5f, new Color(accent.r, accent.g, accent.b, 0.82f));
+                    .SetOutline(1.5f, accent.WithAlpha(0.82f));
             }
 
             model.Draw();
@@ -3277,11 +3269,11 @@ public class NowDocsExample : NowLayoutGraphic
         Now.Rectangle(rect)
             .SetColor(editorChrome
                 ? theme.GetColor(NowColorToken.Background, new Color(0.22f, 0.22f, 0.22f, 1f))
-                : new Color(accent.r, accent.g, accent.b, 0.10f))
+                : accent.WithAlpha(0.10f))
             .SetOutline(1f)
             .SetOutlineColor(editorChrome
                 ? theme.GetColor(NowColorToken.BorderStrong, Color.black)
-                : new Color(accent.r, accent.g, accent.b, 0.36f))
+                : accent.WithAlpha(0.36f))
             .SetRadius(editorChrome ? 1f : 7f)
             .Draw();
 
@@ -3584,9 +3576,9 @@ public class NowDocsExample : NowLayoutGraphic
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
 
         Now.Rectangle(rect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.13f))
+            .SetColor(accent.WithAlpha(0.13f))
             .SetOutline(1f)
-            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.46f))
+            .SetOutlineColor(accent.WithAlpha(0.46f))
             .SetRadius(8f)
             .Draw();
 
@@ -3609,9 +3601,9 @@ public class NowDocsExample : NowLayoutGraphic
         Color muted = theme.GetColor(NowColorToken.TextMuted, Color.gray);
 
         Now.Rectangle(rect)
-            .SetColor(new Color(accent.r, accent.g, accent.b, 0.10f))
+            .SetColor(accent.WithAlpha(0.10f))
             .SetOutline(1f)
-            .SetOutlineColor(new Color(accent.r, accent.g, accent.b, 0.42f))
+            .SetOutlineColor(accent.WithAlpha(0.42f))
             .SetRadius(8f)
             .Draw();
 

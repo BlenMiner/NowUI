@@ -1064,7 +1064,7 @@ namespace NowUI.Editor
                     .SetRadius(28f)
                     .Draw();
                 Now.Circle(modelRect.center, 70f)
-                    .SetColor(new Color(accent.r, accent.g, accent.b, 0.12f))
+                    .SetColor(accent.WithAlpha(0.12f))
                     .Draw();
 
                 using (Now.Mask(cardRect.Inset(12f)))
@@ -2535,9 +2535,9 @@ namespace NowUI.Editor
 
                 using (NowLayout.HorizontalScope(spacing: 8f))
                 {
-                    NowLayout.Radio("Low", quality == 0).Draw();
-                    NowLayout.Radio("Medium", quality == 1).Draw();
-                    NowLayout.Radio("High", quality == 2).Draw();
+                    NowLayout.Radio("Low").Draw(ref quality, 0);
+                    NowLayout.Radio("Medium").Draw(ref quality, 1);
+                    NowLayout.Radio("High").Draw(ref quality, 2);
                 }
 
                 Section("Sliders");
@@ -2860,7 +2860,7 @@ namespace NowUI.Editor
             }
 
             Now.Circle(circleRect.center, circleRadius)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetOutline(2f, new Color(0.22f, 0.86f, 1f, 0.82f))
                 .Draw();
         }
@@ -3318,8 +3318,7 @@ namespace NowUI.Editor
             var grid = new Color(0.30f, 0.58f, 0.82f, 0.055f);
             Now.Rectangle(rect).SetColor(background).Draw();
 
-            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
-                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+            Now.GridLines(rect, 48f).SetOffset(new Vector2(24f, 0f)).SetAxes(true, false).SetColor(grid).Draw();
 
             Now.Text(new NowRect(26f, 15f, rect.width - 52f, 30f))
                 .SetFontSize(23f)
@@ -3416,7 +3415,7 @@ namespace NowUI.Editor
             Now.Rectangle(rect)
                 .SetColor(new Color(0.044f, 0.055f, 0.086f, 0.98f))
                 .SetRadius(17f)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.26f))
+                .SetOutline(1f, accent.WithAlpha(0.26f))
                 .Draw();
             Now.Text(new NowRect(rect.x + 15f, rect.y + 16f, rect.width - 112f, 21f))
                 .SetFontSize(13f)
@@ -3426,9 +3425,9 @@ namespace NowUI.Editor
 
             var tagRect = new NowRect(rect.xMax - 90f, rect.y + 13f, 74f, 22f);
             Now.Rectangle(tagRect)
-                .SetColor(new Color(accent.r, accent.g, accent.b, 0.12f))
+                .SetColor(accent.WithAlpha(0.12f))
                 .SetRadius(7f)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.30f))
+                .SetOutline(1f, accent.WithAlpha(0.30f))
                 .Draw();
             Now.Text(new NowRect(tagRect.x + 7f, tagRect.y + 4f, tagRect.width - 14f, 14f))
                 .SetFontSize(9f)
@@ -3448,7 +3447,7 @@ namespace NowUI.Editor
                 .SetRadius(12f)
                 .Draw();
             Now.Rectangle(rect)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetRadius(12f)
                 .SetOutline(1f, new Color(0.55f, 0.76f, 1f, 0.16f))
                 .Draw();
@@ -3608,22 +3607,21 @@ namespace NowUI.Editor
 
             Now.Rectangle(rect).SetColor(background).Draw();
 
-            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
-                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+            Now.GridLines(rect, 48f).SetOffset(new Vector2(24f, 0f)).SetAxes(true, false).SetColor(grid).Draw();
 
             var tile = new NowRect(rect.width * 0.5f - 188f, rect.height * 0.5f - 60f, 120f, 120f);
             var halo = new NowRect(tile.x - 70f, tile.y - 70f, tile.width + 140f, tile.height + 140f);
 
             Now.Gradient(
                     halo,
-                    new Color(indigo.r, indigo.g, indigo.b, 0.34f),
-                    new Color(indigo.r, indigo.g, indigo.b, 0f))
+                    indigo.WithAlpha(0.34f),
+                    indigo.WithAlpha(0f))
                 .SetRadial(halo.center, halo.width * 0.5f)
                 .Draw();
 
             Now.Gradient(tile, indigo, violet).SetLinear(135f).SetRadius(30f).Draw();
             Now.Rectangle(tile)
-                .SetColor(Color.clear)
+                .SetFill(false)
                 .SetRadius(30f)
                 .SetOutline(1.5f, new Color(1f, 1f, 1f, 0.28f))
                 .Draw();
@@ -3661,8 +3659,7 @@ namespace NowUI.Editor
             var grid = new Color(0.30f, 0.58f, 0.82f, 0.055f);
             Now.Rectangle(rect).SetColor(background).Draw();
 
-            for (float x = rect.x + 24f; x < rect.xMax; x += 48f)
-                Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(grid).Draw();
+            Now.GridLines(rect, 48f).SetOffset(new Vector2(24f, 0f)).SetAxes(true, false).SetColor(grid).Draw();
 
             Now.Text(new NowRect(26f, 15f, rect.width - 52f, 30f))
                 .SetFontSize(23f)
@@ -3680,7 +3677,7 @@ namespace NowUI.Editor
             Now.Rectangle(rect)
                 .SetColor(new Color(0.044f, 0.055f, 0.086f, 0.98f))
                 .SetRadius(17f)
-                .SetOutline(1f, new Color(accent.r, accent.g, accent.b, 0.26f))
+                .SetOutline(1f, accent.WithAlpha(0.26f))
                 .Draw();
         }
 
@@ -3746,10 +3743,7 @@ namespace NowUI.Editor
                     .SetRadius(3f)
                     .Draw();
 
-                for (float x = rect.x + 24f; x < rect.xMax; x += 28f)
-                    Now.Rectangle(new NowRect(x, rect.y, 1f, rect.height)).SetColor(new Color(0.55f, 0.76f, 1f, 0.07f)).Draw();
-                for (float y = rect.y + 24f; y < rect.yMax; y += 28f)
-                    Now.Rectangle(new NowRect(rect.x, y, rect.width, 1f)).SetColor(new Color(0.55f, 0.76f, 1f, 0.07f)).Draw();
+                Now.GridLines(rect, 28f).SetOffset(new Vector2(24f, 24f)).SetColor(new Color(0.55f, 0.76f, 1f, 0.07f)).Draw();
 
                 var focus = new Vector2(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.52f);
                 Now.Circle(focus, 52f).SetColor(new Color(0.18f, 0.94f, 1f, 0.10f)).Draw();
