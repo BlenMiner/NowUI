@@ -1,3 +1,10 @@
+## [1.19.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.3...nowui-v1.19.4) (2026-09-25)
+
+
+### Bug Fixes
+
+* font artifacts ([80d87b6](https://github.com/BlenMiner/NowUI/commit/80d87b662b78768d86c9b979970b8d322de81e4a))
+
 ## [1.19.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.2...nowui-v1.19.3) (2026-09-25)
 
 
