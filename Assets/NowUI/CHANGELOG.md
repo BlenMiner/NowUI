@@ -1,3 +1,10 @@
+## [1.19.5](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.4...nowui-v1.19.5) (2026-09-25)
+
+
+### Performance Improvements
+
+* faster glyph baking (culled SDF field, direct page writes, row-band uploads) ([06bdd7a](https://github.com/BlenMiner/NowUI/commit/06bdd7aeb7db2c78feb07e76dd349785d816262e))
+
 ## [1.19.4](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.3...nowui-v1.19.4) (2026-09-25)
 
 
