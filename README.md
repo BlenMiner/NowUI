@@ -20,9 +20,23 @@ Every image in this README — the logo above included — was drawn by NowUI
 itself. The repository's deterministic visual harness renders still scenes
 into an offscreen `RenderTexture` (`Tools/NowUI-Harness.ps1 -Mode Visual`),
 while its animation mode steps an explicit caller-owned clock and encodes the
-resulting frame sequence (`-Mode Animation`). No editor screenshots or
-hand-composited UI layers; the only imported artwork is the PurrNet logo used
-as input for the image-effects loop below.
+resulting frame sequence (`-Mode Animation`). The opening reel was rendered
+the same way outside Unity by the native C# CLI
+(`Tools/NowUI-Native.ps1 animate`, see [Native Preview](Assets/NowUI/Documentation~/NativePreview.md#stills-and-animations)).
+No editor screenshots or hand-composited UI layers; the only imported artwork
+is the PurrNet logo used as input for the image-effects loop below.
+
+![A 15-second motion reel: a spring-loaded title ident, an iris opening onto glossy liquid blobs that smooth-union and split, kinetic type that slams, slices and bounces in letter by letter, a grid of tiles rippling between squares and circles, a dashboard of flip cards with a live sparkline, a progress ring and toggles, a spiral of dots imploding, and the embossed NowUI logo landing with glow and sparkles](Docs/media/readme/showreel.webp)
+
+*A 15-second motion reel drawn with ordinary immediate-mode calls every frame.
+Smooth-unioned SDF blobs flow behind an iris mask; kinetic type drives each
+letter with custom glyph animators, letter spacing and per-letter rotation;
+a tile grid staggers its shapes on shared easing curves; the interface cards
+flip in perspective with a live sparkline, progress arc and toggles; a spiral
+of dots implodes into the embossed, glowing logo. The cuts between scenes are
+masks, wipes, flashes, fades and transforms drawn in the same pass, not a
+compositor.
+[Transforms](Assets/NowUI/Documentation~/Transforms.md), [Easing](Assets/NowUI/Documentation~/Easing.md), [Custom Glyph Animations](Assets/NowUI/Documentation~/TextStyling.md#custom-glyph-animations), [SDF Shapes](Assets/NowUI/Documentation~/SDF.md).*
 
 ![macOS-inspired native desktop application shell rendered and animated entirely with NowUI](Docs/media/readme/desktop-fidelity.webp)
 
