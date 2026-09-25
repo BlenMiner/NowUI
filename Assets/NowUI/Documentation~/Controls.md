@@ -564,6 +564,18 @@ Now.AnimationCurveField(new NowRect(20, 220, 180, 34)).Draw(ref falloff);
 Now.OpenFileField(new NowRect(20, 264, 260, 30)).SetFilter("Text", "txt", "md").Draw(ref loadPath);
 ```
 
+To size those rects from their content instead of guessing, ask a builder
+for `Measure()` before drawing it. It returns the size the control would take
+in layout flow with its current label, text style and size options; buttons,
+checkboxes, radios, selectable rows, sliders, switches, badges and chips
+support it:
+
+```csharp
+var docs = Now.Button(default, "Docs").SetStyle(NowRectangleStyle.Ghost);
+NowRect link = header.TakeRight(docs.Measure().x, 12f, out header);
+Now.Button(link, "Docs").SetStyle(NowRectangleStyle.Ghost).Draw();
+```
+
 Use `NowCornerRadius` or the four-float `SetRadius(topLeft, topRight,
 bottomRight, bottomLeft)` overload when only some corners should be rounded:
 

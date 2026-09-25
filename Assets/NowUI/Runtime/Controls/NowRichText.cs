@@ -88,6 +88,8 @@ namespace NowUI
         float _lineHeight;
         bool _wrap;
         bool _selectable;
+        NowTextAlign _textAlign;
+        NowTextVerticalAlign _textVerticalAlign;
         bool _plainText;
 
         static readonly NowRichTextLayout SharedLayout = new NowRichTextLayout();
@@ -101,6 +103,8 @@ namespace NowUI
             public Vector4 color;
             public float lineHeight;
             public bool wrap;
+            public NowTextAlign align;
+            public NowTextVerticalAlign verticalAlign;
 
             public bool Matches(in LayoutInputs other)
             {
@@ -110,7 +114,9 @@ namespace NowUI
                     fontStyle == other.fontStyle &&
                     color == other.color &&
                     lineHeight == other.lineHeight &&
-                    wrap == other.wrap;
+                    wrap == other.wrap &&
+                    align == other.align &&
+                    verticalAlign == other.verticalAlign;
             }
         }
 
@@ -154,6 +160,8 @@ namespace NowUI
             _lineHeight = 0f;
             _wrap = true;
             _selectable = false;
+            _textAlign = NowTextAlign.Left;
+            _textVerticalAlign = NowTextVerticalAlign.Top;
             _plainText = false;
         }
 
@@ -280,6 +288,20 @@ namespace NowUI
 
         public NowRichText SetWrap(bool wrap = true) { _wrap = wrap; return this; }
 
+        /// <summary>
+        /// Aligns each line horizontally, and the block vertically, inside the rich
+        /// text's rect, like <see cref="NowText.SetAlign(NowTextAlign, NowTextVerticalAlign)"/>
+        /// does for plain text. Mixed styles, sizes and colors stay on one line:
+        /// <c>Now.RichText(logo, "&lt;color=#4285F4&gt;N&lt;/color&gt;&lt;color=#EA4335&gt;ow&lt;/color&gt;").ParseDefaultTags().SetTextAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle).Draw()</c>.
+        /// Selection and hit testing follow the aligned text.
+        /// </summary>
+        public NowRichText SetTextAlign(NowTextAlign horizontal, NowTextVerticalAlign vertical = NowTextVerticalAlign.Top)
+        {
+            _textAlign = horizontal;
+            _textVerticalAlign = vertical;
+            return this;
+        }
+
         public NowRichText SetLineHeight(float lineHeight) { _lineHeight = lineHeight; return this; }
 
         public NowRichText SetSelectable(bool selectable = true) { _selectable = selectable; return this; }
@@ -311,7 +333,9 @@ namespace NowUI
                 fontStyle = _style.fontStyle,
                 color = _style.color,
                 lineHeight = lineHeight,
-                wrap = _wrap
+                wrap = _wrap,
+                align = _textAlign,
+                verticalAlign = _textVerticalAlign
             };
             NowRect rect = Reserve(lineHeight, document, ref state, inputs);
             var interaction = _selectable ? default : NowInput.Interact(id, rect);
@@ -327,6 +351,7 @@ namespace NowUI
                 state.layout.Clear();
                 BuildLayout(state.layout, rect, lineHeight, document);
                 state.layout.CompleteLines();
+                state.layout.Align(rect, _textAlign, _textVerticalAlign);
                 state.hasLayout = true;
                 state.layoutInputs = inputs;
                 state.layoutRect = rect;

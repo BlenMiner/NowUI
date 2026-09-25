@@ -377,6 +377,102 @@ namespace NowUI
             bounds = NowRichTextFlow.Bounds(runs);
         }
 
+        /// <summary>
+        /// Moves completed lines inside <paramref name="rect"/>: each line by its own
+        /// free width (trailing spaces excluded) for <paramref name="horizontal"/>, and
+        /// the whole block by the free height for <paramref name="vertical"/>
+        /// (<see cref="NowTextVerticalAlign.CapMiddle"/> centers like Middle). Runs,
+        /// line summaries, selection geometry and bounds move together, so hit
+        /// testing and selection follow the aligned text. Call after
+        /// <see cref="CompleteLines"/>.
+        /// </summary>
+        public void Align(NowRect rect, NowTextAlign horizontal, NowTextVerticalAlign vertical)
+        {
+            if (runs.Count == 0 || (horizontal == NowTextAlign.Left && vertical == NowTextVerticalAlign.Top))
+                return;
+
+            float blockHeight = bounds.yMax - rect.y;
+            float dy = vertical switch
+            {
+                NowTextVerticalAlign.Bottom => rect.height - blockHeight,
+                NowTextVerticalAlign.Middle or NowTextVerticalAlign.CapMiddle => (rect.height - blockHeight) * 0.5f,
+                _ => 0f
+            };
+
+            float factor = horizontal switch
+            {
+                NowTextAlign.Center => 0.5f,
+                NowTextAlign.Right => 1f,
+                _ => 0f
+            };
+
+            for (int l = 0; l < lines.Count; ++l)
+            {
+                var line = lines[l];
+                float dx = 0f;
+
+                if (factor > 0f && line.runCount > 0)
+                {
+                    int last = line.firstRun + line.runCount - 1;
+                    float right = rect.x;
+
+                    for (int r = line.firstRun; r <= last; ++r)
+                        right = Mathf.Max(right, runs[r].rect.xMax - TrailingSpaceWidth(runs[r], r == last));
+
+                    dx = (rect.width - (right - rect.x)) * factor;
+                }
+
+                if (dx == 0f && dy == 0f)
+                    continue;
+
+                float lineTop = line.y;
+                float lineBottom = line.y + line.height;
+
+                for (int r = line.firstRun; r < line.firstRun + line.runCount; ++r)
+                {
+                    var run = runs[r];
+                    run.rect.x += dx;
+                    run.rect.y += dy;
+                    runs[r] = run;
+                }
+
+                for (int s = 0; s < selectionLines.Count; ++s)
+                {
+                    var selection = selectionLines[s];
+                    float center = selection.rect.y + selection.rect.height * 0.5f;
+
+                    if (center < lineTop || center >= lineBottom)
+                        continue;
+
+                    selection.rect.x += dx;
+                    selection.rect.y += dy;
+                    selectionLines[s] = selection;
+                }
+
+                line.y += dy;
+                lines[l] = line;
+            }
+
+            bounds = NowRichTextFlow.Bounds(runs);
+        }
+
+        float TrailingSpaceWidth(in NowRichTextRun run, bool lastOnLine)
+        {
+            if (!lastOnLine || run.isInline || run.length <= 0 || run.start < 0 || run.font == null)
+                return 0f;
+
+            string source = text;
+            int spaces = 0;
+
+            for (int i = run.start + run.length - 1; i >= run.start && source[i] == ' '; --i)
+                ++spaces;
+
+            if (spaces == 0)
+                return 0f;
+
+            return run.font.MeasureText(" ", run.fontSize, run.fontStyle).x * spaces;
+        }
+
         public bool TryHit(Vector2 point, out NowRichTextHit hit)
         {
             return NowRichTextFlow.TryHit(text, runs, lines, point, false, out hit);

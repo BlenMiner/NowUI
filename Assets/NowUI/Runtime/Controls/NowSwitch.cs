@@ -63,6 +63,18 @@ namespace NowUI
         /// <summary>Themed text style for the label.</summary>
         public NowSwitch SetTextStyle(NowTextStyle style) { _textPreset = style; return this; }
 
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureSwitch(theme, _label, _textPreset));
+        }
+
         public bool Draw(ref bool value)
         {
             var theme = NowTheme.themeAsset;

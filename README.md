@@ -63,8 +63,8 @@ The track and the progress arc are each one SDF arc primitive with a texture
 fill: a conic ramp paints the rose-to-crimson sweep across the arc no matter
 how far it is dragged, while the inner shadow, emboss, and drop shadow follow
 the round-capped geometry. The knob lifts and glows while held, and the count
-slides over on every month boundary.
-[SDF Shapes](Assets/NowUI/Documentation~/SDF.md), [Gradients](Assets/NowUI/Documentation~/Gradients.md).*
+slides over on every month boundary with a text value transition.
+[SDF Shapes](Assets/NowUI/Documentation~/SDF.md), [Gradients](Assets/NowUI/Documentation~/Gradients.md), [Value Transitions](Assets/NowUI/Documentation~/TextStyling.md#value-transitions).*
 
 ![A shape-algebra walkthrough: two circles and a triangle are combined step by step through union, intersection, shell, difference, smooth union, and subtraction into a heart, each step named by a syntax-colored code caption, then the heart pulses, wobbles by mixing with an orbiting circle, reacts to a hovering cursor, and morphs back into the opening circle](Docs/media/readme/shape-algebra.webp)
 

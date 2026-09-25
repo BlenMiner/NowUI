@@ -139,7 +139,7 @@ namespace NowUI
     }
 
     [NowBuilder]
-    public struct NowText
+    public partial struct NowText
     {
         public NowRect rect;
 

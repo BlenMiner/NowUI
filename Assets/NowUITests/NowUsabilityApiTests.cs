@@ -425,6 +425,130 @@ public class NowUsabilityApiTests
         Assert.AreEqual(new NowRect(40f, 20f, 20f, 60f), NowRect.FromCenter(new Vector2(50f, 50f), 20f, 60f));
     }
 
+    // ---------------------------------------------------------------- measuring and rects
+
+    [Test]
+    public void ControlsMeasureWhatTheyReserve()
+    {
+        var theme = NowTheme.themeAsset;
+        Vector2 natural = theme.controlRenderer.MeasureButton(theme, "Privacy", NowTextStyle.Button);
+
+        Assert.AreEqual(natural, Now.Button(default, "Privacy").Measure());
+        Assert.AreEqual(new Vector2(120f, natural.y), NowLayout.Button("Privacy").SetWidth(120f).Measure());
+        Assert.AreEqual(300f, NowLayout.Slider(0f, 1f).SetMinWidth(300f).Measure().x);
+        Assert.Greater(NowLayout.Slider(0f, 1f).SetLabel("Volume").Measure().x, NowLayout.Slider(0f, 1f).Measure().x);
+        Assert.Greater(Now.Badge(default, "LIVE").Measure().x, 0f);
+        Assert.Greater(NowLayout.Checkbox("Enable").Measure().x, 0f);
+    }
+
+    [Test]
+    public void RectsSplitIntoColumnsRowsAndGappedSlices()
+    {
+        var rect = new NowRect(10f, 20f, 320f, 100f);
+        System.Span<NowRect> columns = stackalloc NowRect[3];
+        rect.SplitColumns(columns, 10f);
+        Assert.AreEqual(new NowRect(10f, 20f, 100f, 100f), columns[0]);
+        Assert.AreEqual(new NowRect(120f, 20f, 100f, 100f), columns[1]);
+        Assert.AreEqual(new NowRect(230f, 20f, 100f, 100f), columns[2]);
+
+        System.Span<NowRect> weighted = stackalloc NowRect[2];
+        rect.SplitColumns(weighted, stackalloc float[] { 1f, 3f }, 20f);
+        Assert.AreEqual(75f, weighted[0].width, 1e-4f);
+        Assert.AreEqual(225f, weighted[1].width, 1e-4f);
+        Assert.AreEqual(105f, weighted[1].x, 1e-4f);
+
+        System.Span<NowRect> rows = stackalloc NowRect[2];
+        rect.SplitRows(rows, 10f);
+        Assert.AreEqual(new NowRect(10f, 20f, 320f, 45f), rows[0]);
+        Assert.AreEqual(new NowRect(10f, 75f, 320f, 45f), rows[1]);
+
+        var rest = rect;
+        var title = rest.TakeTop(30f, 8f, out rest);
+        Assert.AreEqual(new NowRect(10f, 20f, 320f, 30f), title);
+        Assert.AreEqual(new NowRect(10f, 58f, 320f, 62f), rest);
+        var side = rect.TakeLeft(100f, 12f, out var content);
+        Assert.AreEqual(112f + 10f, content.x, 1e-4f);
+        Assert.AreEqual(100f, side.width);
+    }
+
+    // ---------------------------------------------------------------- rich text alignment
+
+    static NowRichTextLayout DrawAlignedRichText(NowDrawList drawList, NowTextAlign horizontal, NowTextVerticalAlign vertical)
+    {
+        NowRichTextResult result;
+
+        using (drawList.Begin(Surface))
+            result = Now.RichText(new NowRect(40f, 30f, 400f, 120f), "<b>Now</b><color=#ff0000>UI</color>")
+                .ParseDefaultTags()
+                .SetId("aligned-rich-text")
+                .SetTextAlign(horizontal, vertical)
+                .Draw();
+
+        return result.layout;
+    }
+
+    [Test]
+    public void RichTextAlignsItsLinesInsideTheRect()
+    {
+        var left = DrawAlignedRichText(_drawList, NowTextAlign.Left, NowTextVerticalAlign.Top);
+        float width = left.bounds.width;
+        Assert.AreEqual(40f, left.bounds.x, 0.5f);
+
+        var centered = DrawAlignedRichText(_drawList, NowTextAlign.Center, NowTextVerticalAlign.Middle);
+        Assert.AreEqual(240f, centered.bounds.center.x, 1f, "Centered runs share the rect's center.");
+        Assert.AreEqual(90f, centered.bounds.center.y, 1f, "The block is centered vertically.");
+        Assert.AreEqual(width, centered.bounds.width, 0.01f, "Styled runs keep their widths and order.");
+
+        var right = DrawAlignedRichText(_drawList, NowTextAlign.Right, NowTextVerticalAlign.Bottom);
+        Assert.AreEqual(440f, right.bounds.xMax, 1f);
+        Assert.AreEqual(150f, right.bounds.yMax, 1f);
+    }
+
+    // ---------------------------------------------------------------- text transitions
+
+    int DrawGlyphs(System.Func<int> draw)
+    {
+        using (_drawList.Begin(Surface))
+            draw();
+
+        return _drawList.mesh.vertexCount / 4;
+    }
+
+    [Test]
+    public void TransitionsDrawBothValuesMidwayAndRollOnlyChangedDigits()
+    {
+        var rect = new NowRect(20f, 20f, 200f, 40f);
+        int settled = DrawGlyphs(() => { Now.Text(rect).SetFontSize(24f).Draw("110"); return 0; });
+        Assert.AreEqual(3, settled);
+
+        int sliding = DrawGlyphs(() => { Now.Text(rect).SetFontSize(24f).DrawTransition("109", "110", 0.5f, NowTextTransition.SlideUp()); return 0; });
+        Assert.AreEqual(6, sliding, "A slide draws the outgoing and incoming values.");
+
+        int rolling = DrawGlyphs(() => { Now.Text(rect).SetFontSize(24f).DrawTransition("109", "110", 0.5f, NowTextTransition.Roll()); return 0; });
+        Assert.AreEqual(5, rolling, "A roll keeps the unchanged 1 and moves the two digits that changed.");
+
+        int done = DrawGlyphs(() => { Now.Text(rect).SetFontSize(24f).DrawTransition("109", "110", 1f, NowTextTransition.Roll()); return 0; });
+        Assert.AreEqual(3, done);
+    }
+
+    int DrawCounter(string value, float time)
+    {
+        using (_drawList.Begin(Surface))
+            Now.Text(new NowRect(20f, 20f, 200f, 40f)).SetFontSize(24f).DrawValue(new NowId("counter"), value, NowTextTransition.SlideUp(0.4f), time);
+
+        return _drawList.mesh.vertexCount / 4;
+    }
+
+    [Test]
+    public void DrawValueAnimatesWhenTheValueChangesThenSettles()
+    {
+        Assert.AreEqual(2, DrawCounter("41", 0f), "The first value appears without a transition.");
+        Assert.AreEqual(2, DrawCounter("41", 1f));
+        DrawCounter("42", 2f); // the change starts here
+        Assert.AreEqual(4, DrawCounter("42", 2.2f), "Midway both values are drawn.");
+        Assert.AreEqual(2, DrawCounter("42", 2.5f), "After the duration only the new value remains.");
+    }
+
     // ---------------------------------------------------------------- wrap
 
     static NowRect[] DrawWrappedRow(float width, NowLayoutAlign align, params Vector2[] sizes)

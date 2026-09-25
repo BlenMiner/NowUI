@@ -129,6 +129,18 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
         }
 
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureButton(theme, _label, _textPreset));
+        }
+
         public bool Draw()
         {
             var theme = NowTheme.themeAsset;
@@ -233,6 +245,20 @@ namespace NowUI
             _paddingX = Mathf.Max(0f, horizontal);
             _paddingY = Mathf.Max(0f, vertical);
             return this;
+        }
+
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            Vector2 textSize = NowControls.Text(NowTheme.themeAsset, _textPreset).Measure(_label);
+            return NowControls.MeasuredSize(_options, new Vector2(
+                textSize.x + _paddingX * 2f,
+                Mathf.Max(DefaultMinHeight, textSize.y + _paddingY * 2f)));
         }
 
         public bool Draw()
@@ -459,6 +485,18 @@ namespace NowUI
             return new NowControlScope(mask, area, row, rect, interaction, focused, clicked);
         }
 
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureToggle(theme, _label, _textPreset));
+        }
+
         public bool Draw(ref bool value)
         {
             var theme = NowTheme.themeAsset;
@@ -591,6 +629,18 @@ namespace NowUI
             var row = NowLayout.HorizontalScope(spacing: theme.controlStyles.buttonContentGap, alignItems: _alignItems);
 
             return new NowControlScope(mask, area, row, rect, interaction, focused, interaction.clicked || submitted);
+        }
+
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureToggle(theme, _label, _textPreset));
         }
 
         public bool Draw()
@@ -729,20 +779,20 @@ namespace NowUI
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowSlider SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
 
-        public bool Draw(ref float value)
+        readonly Vector2 ContentSize(
+            NowThemeAsset theme,
+            out Vector2 trackSize,
+            out NowText textStyle,
+            out float labelWidth,
+            out float valueWidth)
         {
-            var theme = NowTheme.themeAsset;
-            var renderer = theme.controlRenderer;
-            NowResolvedId id = _id.Resolve(_site);
-
-            float knobSize = theme.controlStyles.sliderKnobSize;
             float min = Mathf.Min(_min, _max);
             float max = Mathf.Max(_min, _max);
-            Vector2 trackSize = renderer.MeasureSlider(theme);
+            trackSize = theme.controlRenderer.MeasureSlider(theme);
             bool decorated = _label != null || _valueFormat != null;
-            NowText textStyle = decorated ? NowLayout.labelStyle : default;
-            float labelWidth = 0f;
-            float valueWidth = 0f;
+            textStyle = decorated ? NowLayout.labelStyle : default;
+            labelWidth = 0f;
+            valueWidth = 0f;
             float textHeight = 0f;
 
             if (_label != null)
@@ -760,11 +810,35 @@ namespace NowUI
                 textHeight = Mathf.Max(textHeight, Mathf.Max(lower.y, upper.y));
             }
 
-            var measured = decorated
+            return decorated
                 ? new Vector2(
                     labelWidth + (_label != null ? LabelGap : 0f) + trackSize.x + (_valueFormat != null ? LabelGap : 0f) + valueWidth,
                     Mathf.Max(trackSize.y, textHeight))
                 : trackSize;
+        }
+
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            return NowControls.MeasuredSize(_options, ContentSize(NowTheme.themeAsset, out _, out _, out _, out _));
+        }
+
+        public bool Draw(ref float value)
+        {
+            var theme = NowTheme.themeAsset;
+            var renderer = theme.controlRenderer;
+            NowResolvedId id = _id.Resolve(_site);
+
+            float knobSize = theme.controlStyles.sliderKnobSize;
+            float min = Mathf.Min(_min, _max);
+            float max = Mathf.Max(_min, _max);
+            bool decorated = _label != null || _valueFormat != null;
+            var measured = ContentSize(theme, out Vector2 trackSize, out NowText textStyle, out float labelWidth, out float valueWidth);
 
             NowRect outer = NowControls.ReserveRect(_hasRect, _rect, _options, measured);
             NowRect rect = outer;

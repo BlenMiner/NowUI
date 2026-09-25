@@ -203,6 +203,18 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Returns a slice from the top edge and the part below it, skipping
+        /// <paramref name="gapAfter"/> between them: the usual step of a vertical
+        /// stack, <c>var title = rest.TakeTop(28f, 8f, out rest)</c>.
+        /// </summary>
+        public readonly NowRect TakeTop(float height, float gapAfter, out NowRect remainder)
+        {
+            var slice = TakeTop(height, out remainder);
+            remainder.TakeTop(Mathf.Max(0f, gapAfter), out remainder);
+            return slice;
+        }
+
+        /// <summary>
         /// Returns a slice from the bottom edge. The requested height is clamped to
         /// this rect, so the returned slice never extends beyond it.
         /// </summary>
@@ -223,6 +235,14 @@ namespace NowUI
             float remaining = available - taken;
             var slice = new NowRect(x, y + remaining, width, taken);
             remainder = new NowRect(x, y, width, remaining);
+            return slice;
+        }
+
+        /// <summary>Returns a slice from the bottom edge and the part above it, skipping <paramref name="gapAfter"/> between them.</summary>
+        public readonly NowRect TakeBottom(float height, float gapAfter, out NowRect remainder)
+        {
+            var slice = TakeBottom(height, out remainder);
+            remainder.TakeBottom(Mathf.Max(0f, gapAfter), out remainder);
             return slice;
         }
 
@@ -249,6 +269,14 @@ namespace NowUI
             return slice;
         }
 
+        /// <summary>Returns a slice from the left edge and the part to its right, skipping <paramref name="gapAfter"/> between them.</summary>
+        public readonly NowRect TakeLeft(float width, float gapAfter, out NowRect remainder)
+        {
+            var slice = TakeLeft(width, out remainder);
+            remainder.TakeLeft(Mathf.Max(0f, gapAfter), out remainder);
+            return slice;
+        }
+
         /// <summary>
         /// Returns a slice from the right edge. The requested width is clamped to this
         /// rect, so the returned slice never extends beyond it.
@@ -271,6 +299,89 @@ namespace NowUI
             var slice = new NowRect(x + remaining, y, taken, height);
             remainder = new NowRect(x, y, remaining, height);
             return slice;
+        }
+
+        /// <summary>Returns a slice from the right edge and the part to its left, skipping <paramref name="gapAfter"/> between them.</summary>
+        public readonly NowRect TakeRight(float width, float gapAfter, out NowRect remainder)
+        {
+            var slice = TakeRight(width, out remainder);
+            remainder.TakeRight(Mathf.Max(0f, gapAfter), out remainder);
+            return slice;
+        }
+
+        /// <summary>
+        /// Fills <paramref name="columns"/> with equal-width columns across this rect,
+        /// separated by <paramref name="gap"/>:
+        /// <c>Span&lt;NowRect&gt; cards = stackalloc NowRect[3]; content.SplitColumns(cards, 16f);</c>
+        /// </summary>
+        public readonly void SplitColumns(Span<NowRect> columns, float gap = 0f)
+        {
+            Split(columns, default, gap, horizontal: true);
+        }
+
+        /// <summary>Fills <paramref name="columns"/> with columns sized by <paramref name="weights"/> (one per column).</summary>
+        public readonly void SplitColumns(Span<NowRect> columns, ReadOnlySpan<float> weights, float gap = 0f)
+        {
+            RequireWeights(columns.Length, weights);
+            Split(columns, weights, gap, horizontal: true);
+        }
+
+        /// <summary>Fills <paramref name="rows"/> with equal-height rows down this rect, separated by <paramref name="gap"/>.</summary>
+        public readonly void SplitRows(Span<NowRect> rows, float gap = 0f)
+        {
+            Split(rows, default, gap, horizontal: false);
+        }
+
+        /// <summary>Fills <paramref name="rows"/> with rows sized by <paramref name="weights"/> (one per row).</summary>
+        public readonly void SplitRows(Span<NowRect> rows, ReadOnlySpan<float> weights, float gap = 0f)
+        {
+            RequireWeights(rows.Length, weights);
+            Split(rows, weights, gap, horizontal: false);
+        }
+
+        static void RequireWeights(int count, ReadOnlySpan<float> weights)
+        {
+            if (weights.Length != count)
+                throw new ArgumentException("Pass one weight per slot.", nameof(weights));
+
+            for (int i = 0; i < weights.Length; ++i)
+            {
+                if (weights[i] < 0f || float.IsNaN(weights[i]) || float.IsInfinity(weights[i]))
+                    throw new ArgumentOutOfRangeException(nameof(weights), "Weights must be non-negative finite values.");
+            }
+        }
+
+        readonly void Split(Span<NowRect> slots, ReadOnlySpan<float> weights, float gap, bool horizontal)
+        {
+            int count = slots.Length;
+
+            if (count == 0)
+                return;
+
+            gap = Mathf.Max(0f, gap);
+            float extent = Mathf.Max(0f, horizontal ? width : height);
+            float free = Mathf.Max(0f, extent - gap * (count - 1));
+            float totalWeight = 0f;
+
+            if (!weights.IsEmpty)
+            {
+                for (int i = 0; i < count; ++i)
+                    totalWeight += weights[i];
+            }
+
+            float cursor = horizontal ? x : y;
+
+            for (int i = 0; i < count; ++i)
+            {
+                float size = weights.IsEmpty
+                    ? free / count
+                    : totalWeight > 0f ? free * weights[i] / totalWeight : 0f;
+
+                slots[i] = horizontal
+                    ? new NowRect(cursor, y, size, height)
+                    : new NowRect(x, cursor, width, size);
+                cursor += size + gap;
+            }
         }
 
         static float AlignedPosition(float start, float available, float requested, NowLayoutAlign align)

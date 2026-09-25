@@ -88,6 +88,18 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureBadge(theme, _label, _textPreset));
+        }
+
         public void Draw()
         {
             var theme = NowTheme.themeAsset;
@@ -181,6 +193,18 @@ namespace NowUI
         public bool Draw()
         {
             return Draw(out _);
+        }
+
+        /// <summary>
+        /// The size this control takes in layout flow with its current settings: the
+        /// content size, replaced by a fixed <c>SetWidth</c>/<c>SetHeight</c> and
+        /// clamped by min/max options. Stretching axes report the content size. Use it
+        /// to size explicit rects without guessing, e.g. a row of links.
+        /// </summary>
+        public readonly Vector2 Measure()
+        {
+            var theme = NowTheme.themeAsset;
+            return NowControls.MeasuredSize(_options, theme.controlRenderer.MeasureChip(theme, _label, _textPreset, _removable));
         }
 
         /// <summary>

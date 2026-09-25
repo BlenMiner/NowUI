@@ -1,4 +1,5 @@
 #if NOWUI_UGUI
+using System;
 using NowUI;
 using UnityEngine;
 
@@ -212,20 +213,15 @@ public sealed class NowLandingPageExample : NowGraphic
         // Ghost buttons look like links but retain hover, focus and click affordances.
         if (rect.width >= 250f)
         {
-            float gap = compact ? 8f : 12f;
-            right -= 32f + gap;
-            if (NowLandingPageShared.DrawLink(
-                new NowRect(right - 64f, rect.y + 8f, 64f, rect.height - 16f),
-                "Images",
-                "landing-images",
-                NowTextStyle.Body))
+            // Links are laid out right to left, each as wide as its label; the ghost
+            // buttons' own padding spaces them from each other and the avatar.
+            NowRect links = new NowRect(rect.x, rect.y + 8f, right - 32f - rect.x, rect.height - 16f);
+            NowRect images = links.TakeRight(NowLandingPageShared.LinkWidth("Images", NowTextStyle.Body), out links);
+            NowRect docs = links.TakeRight(NowLandingPageShared.LinkWidth("Docs", NowTextStyle.Body));
+
+            if (NowLandingPageShared.DrawLink(images, "Images", "landing-images", NowTextStyle.Body))
                 SelectLink("Images");
-            right -= 64f + gap;
-            if (NowLandingPageShared.DrawLink(
-                new NowRect(right - 52f, rect.y + 8f, 52f, rect.height - 16f),
-                "Docs",
-                "landing-docs",
-                NowTextStyle.Body))
+            if (NowLandingPageShared.DrawLink(docs, "Docs", "landing-docs", NowTextStyle.Body))
                 SelectLink("Docs");
         }
     }
@@ -241,34 +237,39 @@ public sealed class NowLandingPageExample : NowGraphic
         if (compact)
         {
             NowRect remaining = rect.Inset(8f, 5f);
-            NowRect firstRow = remaining.TakeTop(30f, out remaining);
-            remaining.TakeTop(2f, out remaining);
+            NowRect firstRow = remaining.TakeTop(30f, 2f, out remaining);
             NowRect secondRow = remaining.TakeTop(30f);
             DrawFooterPair(firstRow, "About", "How it works");
             DrawFooterPair(secondRow, "Privacy", "Settings");
             return;
         }
 
-        if (NowLandingPageShared.DrawLink(new NowRect(rect.x + 22f, rect.y + 6f, 64f, rect.height - 12f), "About", "landing-about"))
+        // Two links from each edge, each as wide as its label.
+        const float LinkGap = 4f;
+        NowRect row = rect.Inset(22f, 6f);
+        NowRect about = row.TakeLeft(NowLandingPageShared.LinkWidth("About"), LinkGap, out row);
+        NowRect how = row.TakeLeft(NowLandingPageShared.LinkWidth("How it works"), LinkGap, out row);
+        NowRect settings = row.TakeRight(NowLandingPageShared.LinkWidth("Settings"), LinkGap, out row);
+        NowRect privacy = row.TakeRight(NowLandingPageShared.LinkWidth("Privacy"));
+
+        if (NowLandingPageShared.DrawLink(about, "About", "landing-about"))
             SelectLink("About");
-        if (NowLandingPageShared.DrawLink(new NowRect(rect.x + 90f, rect.y + 6f, 108f, rect.height - 12f), "How it works", "landing-how"))
+        if (NowLandingPageShared.DrawLink(how, "How it works", "landing-how"))
             SelectLink("How it works");
-        if (NowLandingPageShared.DrawLink(new NowRect(rect.xMax - 178f, rect.y + 6f, 74f, rect.height - 12f), "Privacy", "landing-privacy"))
+        if (NowLandingPageShared.DrawLink(privacy, "Privacy", "landing-privacy"))
             SelectLink("Privacy");
-        if (NowLandingPageShared.DrawLink(new NowRect(rect.xMax - 104f, rect.y + 6f, 82f, rect.height - 12f), "Settings", "landing-settings"))
+        if (NowLandingPageShared.DrawLink(settings, "Settings", "landing-settings"))
             SelectLink("Settings");
     }
 
     void DrawFooterPair(NowRect row, string leftLabel, string rightLabel)
     {
-        float half = Mathf.Max(0f, (row.width - 4f) * 0.5f);
-        NowRect left = row.TakeLeft(half, out NowRect remaining);
-        remaining.TakeLeft(Mathf.Min(4f, remaining.width), out remaining);
-        NowRect right = remaining.TakeLeft(half);
+        Span<NowRect> halves = stackalloc NowRect[2];
+        row.SplitColumns(halves, 4f);
 
-        if (NowLandingPageShared.DrawLink(left, leftLabel, $"landing-{leftLabel}"))
+        if (NowLandingPageShared.DrawLink(halves[0], leftLabel, $"landing-{leftLabel}"))
             SelectLink(leftLabel);
-        if (NowLandingPageShared.DrawLink(right, rightLabel, $"landing-{rightLabel}"))
+        if (NowLandingPageShared.DrawLink(halves[1], rightLabel, $"landing-{rightLabel}"))
             SelectLink(rightLabel);
     }
 

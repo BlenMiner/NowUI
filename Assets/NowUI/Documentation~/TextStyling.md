@@ -356,6 +356,35 @@ continuous motion. Unlike the presets, a finished custom animation keeps
 applying its final state rather than reverting to static text. `SetDelay`
 shifts the time passed to the animator; stagger and easing are up to it.
 
+## Value Transitions
+
+Counters, prices, clocks and titles often need the old value to leave as the
+new one arrives. `DrawValue` remembers the value drawn at its call site and
+animates whenever it changes:
+
+```csharp
+Now.Text(scoreRect)
+    .SetFontSize(48f)
+    .SetAlign(NowTextAlign.Right)
+    .DrawValue(score.ToString(), NowTextTransition.Roll(), Time.unscaledTime);
+```
+
+| Transition | Motion |
+| --- | --- |
+| `NowTextTransition.Fade()` | Crossfade in place. |
+| `NowTextTransition.SlideUp()` / `SlideDown()` | The old value leaves up (or down) and fades; the new one arrives from the other side. |
+| `NowTextTransition.Roll()` | An odometer: only the characters that changed move, so 109 → 110 leaves the 1 still. Values of different lengths slide as a whole. |
+
+Each factory takes a duration in seconds of your clock and, for sliding kinds,
+a travel distance in ems; `WithEasing` swaps the curve (OutCubic by default).
+Repaints are requested while a transition runs. Pass an explicit `NowId` when
+one call site draws several values, such as in a loop.
+
+When you own the timeline, such as a capture or a scrubbed preview, call
+`DrawTransition(from, to, progress, transition)` with a progress from 0 to 1
+instead; it keeps no state. Alignment, gradients, masks and scopes apply to
+both values.
+
 ## Hosts, Effects, And Performance
 
 Immediate frame owners such as `OnPostRender` naturally redraw while their

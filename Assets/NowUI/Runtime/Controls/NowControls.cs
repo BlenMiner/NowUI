@@ -994,6 +994,27 @@ namespace NowUI
             return color;
         }
 
+        /// <summary>The size <see cref="ReserveRect"/> would give a control in layout flow.</summary>
+        internal static Vector2 MeasuredSize(in NowLayoutOptions options, Vector2 contentSize)
+        {
+            float width = options.Has(NowLayoutOptions.Field.Width) ? options.width : contentSize.x;
+            float height = options.Has(NowLayoutOptions.Field.Height) ? options.height : contentSize.y;
+
+            if (options.Has(NowLayoutOptions.Field.MinWidth))
+                width = Mathf.Max(width, options.minWidth);
+
+            if (options.Has(NowLayoutOptions.Field.MaxWidth))
+                width = Mathf.Min(width, options.maxWidth);
+
+            if (options.Has(NowLayoutOptions.Field.MinHeight))
+                height = Mathf.Max(height, options.minHeight);
+
+            if (options.Has(NowLayoutOptions.Field.MaxHeight))
+                height = Mathf.Min(height, options.maxHeight);
+
+            return new Vector2(width, height);
+        }
+
         internal static NowRect ReserveRect(bool hasRect, NowRect rect, NowLayoutOptions options, Vector2 contentSize)
         {
             if (hasRect)

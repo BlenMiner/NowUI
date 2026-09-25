@@ -83,6 +83,13 @@ when enabled. No manual NowUI input define is required.
 - `NowGridLines` (`Now.GridLines(rect, spacing)`): hairline grids with spacing,
   offset, thickness and axis selection. `NowRectangle.SetFill(false)` draws
   outline-only rectangles.
+- `NowTextTransition` and `NowTextTransitionKind`: fade, slide and odometer
+  roll transitions for `NowText.DrawValue` and `NowText.DrawTransition`. See
+  [Text Layout, Gradients, And Animation](TextStyling.md#value-transitions).
+- Control builders' `Measure()` returns the size a button, toggle, slider,
+  switch, badge or chip takes, for sizing explicit rects. `NowRect.TakeTop`
+  (and siblings) accept a gap, and `SplitColumns`/`SplitRows` divide a rect
+  into equal or weighted cells.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
 - `NowLine`, `NowPolyline`, `NowArc`, `NowLineCap`, and `NowLineArrow`:

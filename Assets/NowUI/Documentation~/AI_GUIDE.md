@@ -109,6 +109,9 @@ Host lifecycle rules:
   alignment, and intrinsic measurement.
 - Use `NowLayout.ReserveRect(...)` to allocate a measured slot and draw a
   free-form `Now` primitive into the returned rectangle.
+- With explicit rects, size controls from `builder.Measure()` and cut regions
+  with `TakeTop(size, gap, out rest)` and `SplitColumns`/`SplitRows` rather
+  than hard-coding widths.
 - Keep state mutations out of the measure pass. If code must distinguish the
   pass, use `NowLayout.isMeasurePass` as documented in [Layout](Layout.md).
 
@@ -118,6 +121,7 @@ Host lifecycle rules:
 | --- | --- | --- |
 | Frame lifecycle, rectangles, input, text, fonts, renderer | `Now`, `NowInput`, `NowRenderer` | [Feature Usage](Features.md) |
 | Text alignment, letter spacing, font metrics, outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Layout, Gradients, And Animation](TextStyling.md) |
+| Animated value changes: counters, prices, odometer digits | `NowText.DrawValue`, `NowTextTransition` | [Value Transitions](TextStyling.md#value-transitions) |
 | Easing curves, fade windows, and keyframe tracks for caller-timed motion | `NowEase`, `NowEasing`, `NowKeyframes` | [Easing](Easing.md) |
 | Localization and shared text transformations | `Now.SetTextPreprocessor` | [Text Preprocessor](TextPreprocessor.md) |
 | Supported public assemblies and types | Runtime and extension namespaces | [Public API](API.md) |

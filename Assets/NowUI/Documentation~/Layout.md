@@ -32,10 +32,20 @@ For a sequential stack, the remainder can safely reuse the same variable:
 
 ```csharp
 NowRect remaining = content;
-NowRect title = remaining.TakeTop(48, out remaining);
-remaining.TakeTop(12, out remaining); // gap
+NowRect title = remaining.TakeTop(48, 12, out remaining); // 12 is the gap after it
 NowRect field = remaining.TakeTop(40, out remaining);
 ```
+
+To share a region between equal or weighted cells, fill a span:
+
+```csharp
+Span<NowRect> cards = stackalloc NowRect[3];
+content.SplitColumns(cards, 16f);                    // three equal columns, 16 apart
+content.SplitRows(cards, stackalloc float[] { 1f, 2f, 1f }, 8f); // weighted rows
+```
+
+Gaps come off first; the rest is shared by weight, and the last cell ends
+exactly on the region's edge.
 
 `TakeTop`, `TakeBottom`, `TakeLeft`, and `TakeRight` clamp to the available
 size, never produce negative extents, and are alias-safe in this form. Use

@@ -39,6 +39,18 @@ if (result.clicked && result.TryGetHitTag(out var tag) && tag.name == "link")
     Navigate(tag.value);
 ```
 
+`SetTextAlign(horizontal, vertical)` aligns each line, and the block, inside
+the rect the way `SetAlign` does for plain text, with mixed colors, sizes and
+styles on the same line. Selection and hit testing follow the aligned text:
+
+```csharp
+Now.RichText(logoRect, "<color=#4285F4>N</color><color=#EA4335>o</color><color=#FBBC05>w</color>")
+    .ParseDefaultTags()
+    .SetFontSize(82f)
+    .SetTextAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
+    .Draw();
+```
+
 Default tag parsing is opt-in. Without `.ParseDefaultTags()`, markup-like text
 is rendered literally. In the editor and development builds, a value that
 contains recognizable tags with no parser attached logs a one-time hint;

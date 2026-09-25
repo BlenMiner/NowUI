@@ -103,11 +103,20 @@ internal static class NowLandingPageShared
         NowId id,
         NowTextStyle textStyle = NowTextStyle.Muted)
     {
+        return Link(rect, label, textStyle).SetId(id).Draw();
+    }
+
+    /// <summary>The width a link takes, so rows of links are sized by their labels.</summary>
+    internal static float LinkWidth(string label, NowTextStyle textStyle = NowTextStyle.Muted)
+    {
+        return Link(default, label, textStyle).Measure().x;
+    }
+
+    static NowButton Link(NowRect rect, string label, NowTextStyle textStyle)
+    {
         return Now.Button(rect, label)
-            .SetId(id)
             .SetStyle(NowRectangleStyle.Ghost)
-            .SetTextStyle(textStyle)
-            .Draw();
+            .SetTextStyle(textStyle);
     }
 
     internal static void DrawCenteredText(

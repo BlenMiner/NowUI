@@ -170,30 +170,27 @@ namespace NowUI.Editor
                 }
             }
 
+            // The capture owns the clock, so it drives the transition's progress.
             const float slideFrames = 6f;
-            float t = NowEase.Smoothstep((age - 1) / slideFrames);
-            Vector2 numberOrigin = MonthDialCenter + new Vector2(0f, -30f);
-            Vector2 unitOrigin = MonthDialCenter + new Vector2(0f, 44f);
+            float progress = (age - 1) / slideFrames;
+            var numberSlide = NowTextTransition.SlideUp(distance: 22f / 92f).WithEasing(NowEasing.Smoothstep);
+            var unitSlide = NowTextTransition.SlideUp(distance: 10f / 22f).WithEasing(NowEasing.Smoothstep);
 
-            if (t < 1f)
-            {
-                float leave = 1f - t;
-                DrawMonthCenteredText(numberOrigin + new Vector2(0f, -22f * t), previous.ToString(), 92f, MonthInk.WithAlpha(leave), true);
-                DrawMonthCenteredText(unitOrigin + new Vector2(0f, -10f * t), previous == 1 ? "month" : "months", 22f, MonthInk.WithAlpha(leave), true);
-            }
-
-            DrawMonthCenteredText(numberOrigin + new Vector2(0f, 22f * (1f - t)), month.ToString(), 92f, MonthInk.WithAlpha(t), true);
-            DrawMonthCenteredText(unitOrigin + new Vector2(0f, 10f * (1f - t)), month == 1 ? "month" : "months", 22f, MonthInk.WithAlpha(t), true);
+            MonthText(MonthDialCenter + new Vector2(0f, -30f), 92f)
+                .DrawTransition(previous.ToString(), month.ToString(), progress, numberSlide);
+            MonthText(MonthDialCenter + new Vector2(0f, 44f), 22f)
+                .DrawTransition(MonthUnit(previous), MonthUnit(month), progress, unitSlide);
         }
 
-        static void DrawMonthCenteredText(Vector2 center, string value, float size, Color color, bool bold)
+        static string MonthUnit(int count) => count == 1 ? "month" : "months";
+
+        static NowText MonthText(Vector2 center, float size)
         {
-            Now.Text(NowRect.FromCenter(center, 400f, size * 2f))
+            return Now.Text(NowRect.FromCenter(center, 400f, size * 2f))
                 .SetFontSize(size)
-                .SetColor(color)
-                .SetBold(bold)
-                .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle)
-                .Draw(value);
+                .SetColor(MonthInk)
+                .SetBold()
+                .SetAlign(NowTextAlign.Center, NowTextVerticalAlign.Middle);
         }
 
         /// <summary>
