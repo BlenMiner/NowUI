@@ -70,9 +70,16 @@ when enabled. No manual NowUI input define is required.
   animation (`NowTextAnimations.Custom`). See
   [Text Layout, Gradients, And Animation](TextStyling.md).
 - `NowEase` and `NowEasing`: stateless, allocation-free easing curves (Sine,
-  polynomial, Expo, Circ, Back, Elastic, Bounce, Spring, and CSS
-  `CubicBezier`), plus `Progress` for caller-owned time windows. See
-  [Easing](Easing.md).
+  polynomial, Expo, Circ, Back, Elastic, Bounce, Spring, Smoothstep, and CSS
+  `CubicBezier`), plus `Progress` for caller-owned time windows and `Window`
+  for fade-in/hold/fade-out envelopes. `NowKey<T>`, `NowKey.At`, and
+  `NowKeyframes` evaluate sorted keyframe tracks of `float`, `Vector2`,
+  `Vector3`, and `Color`. See [Easing](Easing.md).
+- `NowShadow` (`Now.Shadow(rect)`): a soft drop shadow for any surface, with
+  explicit offset/blur/spread/color or the theme's elevation presets. See
+  [Feature Usage](Features.md#rectangles).
+- `NowColor`: `WithAlpha`, `MultiplyAlpha`, `Lighten`, `Darken`, `MixRgb`, and
+  `Luminance` extension methods for authored colors.
 - `NowGlass`, `NowGlassSettings`, and diagnostics structs: backdrop pane
   drawing, quality selection, and non-alloc diagnostic reporting.
 - `NowLine`, `NowPolyline`, `NowArc`, `NowLineCap`, and `NowLineArrow`:
@@ -80,6 +87,9 @@ when enabled. No manual NowUI input define is required.
   circular arcs, and rings, sharing width, cap, gradient, dash, arrow, and
   mask styling. `Now.DrawPolyline` is the one-call solid-stroke form. See
   [Lines](Lines.md).
+- `NowSubdivision` (`Auto`, `None`, `Fixed`, `MaxCellSize`): how effect
+  modifiers split captured quads; `Auto`, the default, lets built-in deformers
+  choose. See [Effects](Effects.md#subdivision).
 - `Now.Transform`, `Now.TransformAround`, `Now.Rotate`, `Now.Opacity`, and
   `Now.Tint` with their `NowTransformScope`, `NowRotationScope`, and
   `NowTintScope` values, plus `Now.currentTint`: stack-backed scopes that scale,

@@ -46,7 +46,8 @@ namespace NowUI
             Align = 1 << 10,
             AlignItems = 1 << 11,
             Grow = 1 << 12,
-            Justify = 1 << 13
+            Justify = 1 << 13,
+            Wrap = 1 << 14
         }
 
         float _width;
@@ -77,6 +78,8 @@ namespace NowUI
 
         NowLayoutJustify _justify;
 
+        float _wrapLineGap;
+
         /// <summary>Configured fixed width; meaningful only after <see cref="SetWidth"/>.</summary>
         public readonly float width => _width;
 
@@ -106,6 +109,12 @@ namespace NowUI
         public readonly float grow => _grow;
 
         public readonly NowLayoutJustify justify => _justify;
+
+        /// <summary>True after <see cref="SetWrap"/>: children flow onto new lines instead of overflowing.</summary>
+        public readonly bool wrap => Has(Field.Wrap);
+
+        /// <summary>Gap between wrapped lines; negative means "use the spacing between children".</summary>
+        public readonly float wrapLineGap => _wrapLineGap;
 
         internal Field fields;
 
@@ -290,6 +299,22 @@ namespace NowUI
             RequireJustify(justify, nameof(justify));
             _justify = justify;
             fields |= Field.Justify;
+            return this;
+        }
+
+        /// <summary>
+        /// Lets a group's children flow onto new lines (rows wrap downward, columns
+        /// to the right) when the next child would not fit. Each line keeps the
+        /// group's spacing and cross-axis alignment; stretching or growing children
+        /// fill the rest of their line, and a flexible space ends the line. Main-axis
+        /// justification does not apply to wrapped groups. Only used by groups.
+        /// </summary>
+        /// <param name="lineGap">Gap between lines; negative uses the spacing between children.</param>
+        public NowLayoutOptions SetWrap(float lineGap = -1f)
+        {
+            RequireFinite(lineGap, nameof(lineGap));
+            _wrapLineGap = lineGap;
+            fields |= Field.Wrap;
             return this;
         }
 
@@ -1130,6 +1155,33 @@ namespace NowUI
 
             public float parentCrossMax;
 
+            /// <summary>Children flow onto new lines instead of overflowing the main axis.</summary>
+            public bool wrap;
+
+            public float lineGap;
+
+            /// <summary>Cross-axis offset of the current wrapped line.</summary>
+            public float lineStart;
+
+            /// <summary>Cross size of the current wrapped line so far.</summary>
+            public float lineCross;
+
+            /// <summary>Longest completed wrapped line on the main axis.</summary>
+            public float maxLineMain;
+
+            public int lineIndex;
+
+            public int lineChildCount;
+
+            /// <summary>Cross-axis extent before the most recent allocation (the current line's for wrapped groups).</summary>
+            public float allocCrossBefore;
+
+            public float[] cachedLineCross;
+
+            public int cachedLineCount;
+
+            public float[] measuredLineCross;
+
             /// <summary>Set when a cached measurement existed for this group at begin;
             /// flex shares read the snapshot below instead of re-probing the cache.</summary>
             public bool hasCache;
@@ -1154,6 +1206,10 @@ namespace NowUI
             public int flexCount;
 
             public int childCount;
+
+            public float[] lineCross;
+
+            public int lineCount;
 
             public double lastUsed;
         }
@@ -1443,6 +1499,10 @@ namespace NowUI
                 hasAlignItems = options.Has(NowLayoutOptions.Field.AlignItems),
                 justify = options.Has(NowLayoutOptions.Field.Justify) ? options.justify : NowLayoutJustify.Start,
                 parentMainMax = float.MaxValue,
+                wrap = options.wrap,
+                lineGap = WrapLineGap(options),
+                cachedLineCross = hasCache ? cached.lineCross : null,
+                cachedLineCount = hasCache ? cached.lineCount : 0,
                 hasCache = hasCache,
                 cachedFixedMain = hasCache ? cached.fixedMain : 0f,
                 cachedChildCount = hasCache ? cached.childCount : 0,
@@ -1475,7 +1535,18 @@ namespace NowUI
 
             throw new InvalidOperationException(
                 "Root layout areas already have explicit bounds. Their options may configure only spacing, padding, " +
-                "child alignment, and justification; put sizing, stretching, Grow, or self-alignment on a nested element.");
+                "child alignment, justification, and wrapping; put sizing, stretching, Grow, or self-alignment on a nested element.");
+        }
+
+        static float WrapLineGap(in NowLayoutOptions options)
+        {
+            if (!options.wrap)
+                return 0f;
+
+            if (options.wrapLineGap >= 0f)
+                return options.wrapLineGap;
+
+            return options.Has(NowLayoutOptions.Field.Spacing) ? options.spacing : 0f;
         }
 
         /// <summary>
@@ -2105,6 +2176,15 @@ namespace NowUI
         {
             NowLayoutOptions.RequirePositiveFinite(weight, nameof(weight));
             ref var group = ref RequireGroup();
+
+            if (group.wrap)
+            {
+                // Wrapped lines have no shared remainder to divide; a flexible space
+                // pushes whatever follows onto the next line.
+                group.cursor = Mathf.Max(group.cursor, MainAvailable(group));
+                return;
+            }
+
             group.cursor += FlexShare(ref group, weight, 0f, float.MaxValue);
         }
 
@@ -2510,9 +2590,9 @@ namespace NowUI
             bool crossAuto =
                 !options.Has(mainIsWidth ? NowLayoutOptions.Field.Height : NowLayoutOptions.Field.Width) &&
                 !options.Has(mainIsWidth ? NowLayoutOptions.Field.StretchHeight : NowLayoutOptions.Field.StretchWidth);
-            float crossBefore = parent.maxCross;
 
             var rect = Allocate(ref parent, options, autoSize, true, out bool mainAuto, out float mainAllocated);
+            float crossBefore = parent.allocCrossBefore;
 
             int token = Push(new Group
             {
@@ -2524,6 +2604,10 @@ namespace NowUI
                 alignItems = options.Has(NowLayoutOptions.Field.AlignItems) ? options.alignItems : NowLayoutAlign.Start,
                 hasAlignItems = options.Has(NowLayoutOptions.Field.AlignItems),
                 justify = options.Has(NowLayoutOptions.Field.Justify) ? options.justify : NowLayoutJustify.Start,
+                wrap = options.wrap,
+                lineGap = WrapLineGap(options),
+                cachedLineCross = hasCache ? cached.lineCross : null,
+                cachedLineCount = hasCache ? cached.lineCount : 0,
                 parentMainAuto = mainAuto,
                 parentMainAllocated = mainAllocated,
                 parentMainMin = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinWidth : NowLayoutOptions.Field.MinHeight)
@@ -2608,7 +2692,11 @@ namespace NowUI
             {
                 float actualCross = parent.horizontal ? contentHeight : contentWidth;
                 actualCross = Mathf.Clamp(actualCross, ended.parentCrossMin, ended.parentCrossMax);
-                parent.maxCross = Mathf.Max(ended.parentCrossBefore, actualCross);
+
+                if (parent.wrap)
+                    parent.lineCross = Mathf.Max(ended.parentCrossBefore, actualCross);
+                else
+                    parent.maxCross = Mathf.Max(ended.parentCrossBefore, actualCross);
             }
         }
 
@@ -2734,6 +2822,15 @@ namespace NowUI
             float contentMain = group.cursor;
             float contentCross = group.maxCross;
 
+            if (group.wrap)
+            {
+                RecordLineCross(ref group);
+                contentMain = Mathf.Max(group.maxLineMain, group.cursor);
+                contentCross = group.lineStart + group.lineCross;
+            }
+
+            int lineCount = group.wrap ? group.lineIndex + 1 : 0;
+
             contentWidth = (group.horizontal ? contentMain : contentCross) + group.padding.x + group.padding.z;
             contentHeight = (group.horizontal ? contentCross : contentMain) + group.padding.y + group.padding.w;
 
@@ -2744,7 +2841,22 @@ namespace NowUI
                 Mathf.Abs(previous.contentHeight - contentHeight) > 0.25f ||
                 Mathf.Abs(previous.fixedMain - group.fixedMain) > 0.25f ||
                 previous.flexCount != group.flexCount ||
-                previous.childCount != group.childCount;
+                previous.childCount != group.childCount ||
+                previous.lineCount != lineCount;
+
+            if (!changed && lineCount > 0)
+            {
+                for (int i = 0; i < lineCount; ++i)
+                {
+                    if (previous.lineCross == null ||
+                        previous.lineCross.Length <= i ||
+                        Mathf.Abs(previous.lineCross[i] - group.measuredLineCross[i]) > 0.25f)
+                    {
+                        changed = true;
+                        break;
+                    }
+                }
+            }
 
             // Compare before copying: cachedFlexItems aliases the previous
             // snapshot, so overwriting it first would hide descriptor-only
@@ -2781,8 +2893,18 @@ namespace NowUI
             if (group.flexCount > 0)
                 Array.Copy(group.measuredFlexItems, flexItems, group.flexCount);
 
+            float[] lineCross = group.cachedLineCross;
+
+            if (lineCount > 0)
+            {
+                EnsureCapacity(ref lineCross, lineCount);
+                Array.Copy(group.measuredLineCross, lineCross, lineCount);
+            }
+
             _cache[group.id] = new CachedGroup
             {
+                lineCross = lineCross,
+                lineCount = lineCount,
                 horizontal = group.horizontal,
                 contentWidth = contentWidth,
                 contentHeight = contentHeight,
@@ -2870,7 +2992,25 @@ namespace NowUI
             float cross = mainIsWidth ? height : width;
             bool mainFlex = mainIsWidth ? widthFlex : heightFlex;
             mainAuto = mainIsWidth ? widthAuto : heightAuto;
+
+            if (group.wrap)
+            {
+                return AllocateWrapped(
+                    ref group,
+                    options,
+                    autoSize,
+                    implicitCrossStretch,
+                    mainIsWidth,
+                    contentX,
+                    contentY,
+                    main,
+                    cross,
+                    mainFlex,
+                    out mainAllocated);
+            }
+
             mainAllocated = main;
+            group.allocCrossBefore = group.maxCross;
 
             float gap = group.childCount > 0 ? group.spacing + group.justifyGap : 0f;
             float mainPos = group.cursor + gap;
@@ -2896,6 +3036,138 @@ namespace NowUI
 
             group.childCount++;
             return rect;
+        }
+
+        static float MainAvailable(in Group group)
+        {
+            return group.horizontal
+                ? group.rect.width - group.padding.x - group.padding.z
+                : group.rect.height - group.padding.y - group.padding.w;
+        }
+
+        /// <summary>
+        /// Places a child of a wrapped group: breaks to a new line when it would not
+        /// fit, lets stretching children fill the rest of their line, and aligns
+        /// across the line using the line's size from the previous measurement.
+        /// </summary>
+        static NowRect AllocateWrapped(
+            ref Group group,
+            in NowLayoutOptions options,
+            Vector2 autoSize,
+            bool implicitCrossStretch,
+            bool mainIsWidth,
+            float contentX,
+            float contentY,
+            float main,
+            float cross,
+            bool mainFlex,
+            out float mainAllocated)
+        {
+            float available = MainAvailable(group);
+            float spacing = group.lineChildCount > 0 ? group.spacing : 0f;
+
+            if (mainFlex)
+            {
+                float minMain = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinWidth : NowLayoutOptions.Field.MinHeight)
+                    ? (mainIsWidth ? options.minWidth : options.minHeight)
+                    : 0f;
+                float maxMain = options.Has(mainIsWidth ? NowLayoutOptions.Field.MaxWidth : NowLayoutOptions.Field.MaxHeight)
+                    ? (mainIsWidth ? options.maxWidth : options.maxHeight)
+                    : float.MaxValue;
+                float rest = available - group.cursor - spacing;
+
+                if (group.lineChildCount > 0 && rest < Mathf.Max(minMain, 1f))
+                {
+                    StartLine(ref group);
+                    spacing = 0f;
+                    rest = available;
+                }
+
+                main = Mathf.Clamp(rest, minMain, maxMain);
+            }
+            else if (group.lineChildCount > 0 && group.cursor + spacing + main > available + 0.01f)
+            {
+                StartLine(ref group);
+                spacing = 0f;
+            }
+
+            mainAllocated = main;
+            group.allocCrossBefore = group.lineCross;
+
+            // A cross-stretching child fills its line, not the whole group, so start
+            // from its natural size (the resolved size already filled the group).
+            bool crossFixed = options.Has(mainIsWidth ? NowLayoutOptions.Field.Height : NowLayoutOptions.Field.Width);
+            bool crossStretch = !crossFixed &&
+                (options.Has(mainIsWidth ? NowLayoutOptions.Field.StretchHeight : NowLayoutOptions.Field.StretchWidth) ||
+                    implicitCrossStretch);
+            bool hasCrossMin = options.Has(mainIsWidth ? NowLayoutOptions.Field.MinHeight : NowLayoutOptions.Field.MinWidth);
+            bool hasCrossMax = options.Has(mainIsWidth ? NowLayoutOptions.Field.MaxHeight : NowLayoutOptions.Field.MaxWidth);
+            float crossMin = mainIsWidth ? options.minHeight : options.minWidth;
+            float crossMax = mainIsWidth ? options.maxHeight : options.maxWidth;
+
+            if (crossStretch)
+            {
+                cross = mainIsWidth ? autoSize.y : autoSize.x;
+
+                if (hasCrossMin)
+                    cross = Mathf.Max(cross, crossMin);
+
+                if (hasCrossMax)
+                    cross = Mathf.Min(cross, crossMax);
+            }
+
+            // Items align across the line they sit on. The line's size is only known
+            // once it ends, so use the previous measurement (the item's own size on
+            // the first frame).
+            float lineCross = group.cachedLineCross != null && group.lineIndex < group.cachedLineCount
+                ? Mathf.Max(group.cachedLineCross[group.lineIndex], cross)
+                : cross;
+
+            if (crossStretch)
+            {
+                cross = lineCross;
+
+                if (hasCrossMax)
+                    cross = Mathf.Min(cross, crossMax);
+            }
+
+            NowLayoutAlign align = options.Has(NowLayoutOptions.Field.Align) ? options.align : group.alignItems;
+            float alignFactor = align switch
+            {
+                NowLayoutAlign.Center => 0.5f,
+                NowLayoutAlign.End => 1f,
+                _ => 0f
+            };
+
+            float mainPos = group.cursor + spacing;
+            float crossPos = group.lineStart + Mathf.Max(0f, lineCross - cross) * alignFactor;
+            var rect = mainIsWidth
+                ? new NowRect(contentX + mainPos, contentY + crossPos, main, cross)
+                : new NowRect(contentX + crossPos, contentY + mainPos, cross, main);
+
+            group.cursor = mainPos + main;
+            group.lineCross = Mathf.Max(group.lineCross, cross);
+            group.fixedMain += spacing + main;
+            group.lineChildCount++;
+            group.childCount++;
+            return rect;
+        }
+
+        static void StartLine(ref Group group)
+        {
+            RecordLineCross(ref group);
+            group.maxLineMain = Mathf.Max(group.maxLineMain, group.cursor);
+            group.lineStart += group.lineCross + group.lineGap;
+            group.lineCross = 0f;
+            group.cursor = 0f;
+            group.lineChildCount = 0;
+            group.lineIndex++;
+        }
+
+        static void RecordLineCross(ref Group group)
+        {
+            EnsureCapacity(ref group.measuredLineCross, group.lineIndex + 1);
+            group.measuredLineCross[group.lineIndex] = group.lineCross;
         }
 
         static void ResolveAxis(
@@ -3112,7 +3384,7 @@ namespace NowUI
 
         static void ResolveJustification(ref Group group)
         {
-            if (!group.hasCache || group.cachedChildCount == 0 || group.justify == NowLayoutJustify.Start)
+            if (!group.hasCache || group.cachedChildCount == 0 || group.justify == NowLayoutJustify.Start || group.wrap)
                 return;
 
             float available = group.horizontal
@@ -3163,10 +3435,12 @@ namespace NowUI
 
             FlexItem[] measuredFlexItems = _groups[_depth].measuredFlexItems;
             float[] resolvedFlexSizes = _groups[_depth].resolvedFlexSizes;
+            float[] measuredLineCross = _groups[_depth].measuredLineCross;
 
             _groups[_depth] = group;
             _groups[_depth].measuredFlexItems = measuredFlexItems;
             _groups[_depth].resolvedFlexSizes = resolvedFlexSizes;
+            _groups[_depth].measuredLineCross = measuredLineCross;
 
             var occurrences = _groupSiteOccurrences[_depth];
 

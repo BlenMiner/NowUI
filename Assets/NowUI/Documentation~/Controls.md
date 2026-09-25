@@ -179,6 +179,12 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
   focus, hover/pressed/selected visuals, and activation.
 - `Checkbox(...).Draw(ref value)` / `Slider(...).Draw(ref value)` mutate the
   ref and return true when it changed.
+- `Slider(...).SetLabel("Volume").SetValueFormat("0'%'")` draws a label to the
+  left of the track and the formatted value to the right, inside the slider's
+  own rect; the measured width includes both, and the readout reserves the
+  width of the wider range end so the track does not shift while dragging.
+  Pressing the label or readout does not move the knob. `SetMinWidth` and
+  `SetMaxWidth` bound a stretching slider in layout flow.
 - `FloatField` / `IntField` are typed text-field helpers with optional
   `SetRange(...)`, arithmetic input, and external-label scrubbing via
   `SetScrubRect(...)`; `Slider(...).Draw(ref int)` snaps to whole numbers, and

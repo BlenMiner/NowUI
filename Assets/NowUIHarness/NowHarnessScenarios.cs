@@ -1073,7 +1073,6 @@ namespace NowUI.Editor
                     {
                         using (NowEffects.Modifier(NowDeformers.Wave(0.08f, 6f, 52f, NowWaveAxis.Y))
                             .SetId(0x4D504556)
-                            .SetSubdivision(12)
                             .SetRenderToTexture()
                             .SetSourceRect(modelRect)
                             .Begin())

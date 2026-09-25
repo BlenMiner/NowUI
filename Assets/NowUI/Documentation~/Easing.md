@@ -66,6 +66,42 @@ is running in a host that repaints on demand, call
 for hover and press states; shape it with any curve, for example
 `NowEase.OutCubic(hoverT)`. See [Custom Controls](CustomControls.md).
 
+## Windows and keyframes
+
+`NowEase.Window` is the envelope of anything that appears, stays and leaves:
+0 before `inStart`, easing up to 1 at `inEnd`, holding, and easing back to 0
+between `outStart` and `outEnd`.
+
+```csharp
+float toast = NowEase.Window(now, shownAt, shownAt + 0.25f, shownAt + 3f, shownAt + 3.4f);
+
+using (Now.Opacity(toast))
+    DrawToast();
+```
+
+For a longer path, list keyframes once and evaluate them with the same clock.
+Each key names the value reached at its time and the curve used to arrive
+there; repeat a value to hold it. `NowKey.At` infers the value type, and
+`float`, `Vector2`, `Vector3` and `Color` tracks are supported. Keys must be
+sorted by time; before the first key and after the last the end values hold.
+
+```csharp
+static readonly NowKey<Vector2>[] Cursor =
+{
+    NowKey.At(0.0f, new Vector2(40, 300)),
+    NowKey.At(0.6f, new Vector2(420, 180), NowEasing.InOutCubic),
+    NowKey.At(1.4f, new Vector2(420, 180)),                     // hold
+    NowKey.At(2.0f, new Vector2(640, 260), NowEasing.OutBack),  // overshoots, then lands
+};
+
+Vector2 cursor = NowKeyframes.Evaluate(time, Cursor);
+```
+
+Evaluation is a scan over the array with no allocation; wrap the clock with
+`Mathf.Repeat(time, NowKeyframes.Duration<Vector2>(Cursor))` to loop.
+`NowEasing.Smoothstep` (and `NowEase.Smoothstep`) is the gentle `t * t * (3 - 2t)`
+curve many hand-written animations use.
+
 ## CSS cubic-bezier
 
 `CubicBezier` matches CSS `cubic-bezier(x1, y1, x2, y2)`: the curve runs from

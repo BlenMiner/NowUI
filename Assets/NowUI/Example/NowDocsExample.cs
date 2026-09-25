@@ -2905,34 +2905,40 @@ public class NowDocsExample : NowLayoutGraphic
                 queueRender = true;
         }
 
-        using (NowLayout.HorizontalScope(spacing: 10f, alignItems: NowLayoutAlign.Center))
+        // Labelled sliders size themselves, and the row wraps instead of running
+        // off the page when the docs column is narrow.
+        using (NowLayout.Row().FillWidth().Gap(24f).Wrap(8f).AlignChildren(NowLayoutAlign.Center).Begin())
         {
-            NowLayout.Label("Angle").SetWidth(46f).Draw();
-
             if (_modelPreviewDemoAutoRotate)
             {
-                NowLayout.Label("Driven by the docs repaint loop")
-                    .SetFontSize(12f)
-                    .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
-                    .SetWidth(190f)
-                    .Draw();
+                using (NowLayout.Row().Gap(NowSlider.LabelGap).AlignChildren(NowLayoutAlign.Center).Begin())
+                {
+                    NowLayout.Label("Angle").Draw();
+                    NowLayout.Label("Driven by the docs repaint loop")
+                        .SetFontSize(12f)
+                        .SetColor(themeAsset.GetColor(NowColorToken.TextMuted, Color.gray))
+                        .Draw();
+                }
             }
             else
             {
                 NowLayout.Slider(-180f, 180f)
-                    .SetWidth(190f)
+                    .SetLabel("Angle")
+                    .SetValueFormat("0°")
+                    .SetWidth(270f)
                     .Draw(ref _modelPreviewDemoAngle);
             }
 
-            NowLayout.Label("Resolution").SetWidth(72f).Draw();
             NowLayout.Slider(0.25f, 1f)
-                .SetWidth(130f)
+                .SetLabel("Resolution")
+                .SetValueFormat("0.00x")
+                .SetWidth(290f)
                 .Draw(ref _modelPreviewDemoResolutionScale);
-            NowLayout.Label($"{_modelPreviewDemoResolutionScale:0.00}x").SetWidth(40f).Draw();
 
-            NowLayout.Label("Wave").SetWidth(42f).Draw();
             NowLayout.Slider(0f, 12f)
-                .SetStretchWidth()
+                .SetLabel("Wave")
+                .SetValueFormat("0.0")
+                .SetWidth(240f)
                 .Draw(ref _modelPreviewDemoWaveAmplitude);
         }
 
@@ -3107,7 +3113,6 @@ public class NowDocsExample : NowLayoutGraphic
             {
                 using (NowEffects.Modifier(NowDeformers.Wave(Time.time * 0.35f, waveAmplitude, 52f, NowWaveAxis.Y))
                     .SetId(3001)
-                    .SetSubdivision(10)
                     .SetRenderToTexture()
                     .SetSourceRect(modelRect)
                     .Begin())

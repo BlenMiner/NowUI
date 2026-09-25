@@ -480,11 +480,10 @@ namespace NowUI.Editor
             float windowMinimize = WindowMinimizeProgress(frameIndex);
             var windowMinimizeTarget = new NowRect(464f, 494f, 36f, 18f);
             var windowEffectBounds = new NowRect(48f, 36f, 864f, 486f);
-            using (NowEffects.Modifier(new ReadmeGenieDeformer(windowMinimizeTarget, windowMinimize))
+            using (NowEffects.Modifier(NowDeformers.Genie(windowMinimizeTarget, windowMinimize))
                 .SetId("readme-desktop-window-minimize")
                 .SetRenderToTexture()
                 .SetSourceRect(windowEffectBounds)
-                .SetSubdivision(24)
                 .Begin())
             {
                 DrawDesktopWindow(window, u, cursor, minimizePress);
@@ -499,51 +498,7 @@ namespace NowUI.Editor
 
         static float WindowMinimizeProgress(float frame)
         {
-            if (frame < 42f)
-                return 0f;
-            if (frame < 57f)
-                return Mathf.InverseLerp(42f, 57f, frame);
-            if (frame < 64f)
-                return 1f;
-            if (frame < 80f)
-                return 1f - Mathf.InverseLerp(64f, 80f, frame);
-            return 0f;
-        }
-
-        readonly struct ReadmeGenieDeformer : INowVertexDeformer
-        {
-            readonly NowRect _target;
-            readonly float _progress;
-
-            public ReadmeGenieDeformer(NowRect target, float progress)
-            {
-                _target = target;
-                _progress = Mathf.Clamp01(progress);
-            }
-
-            public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
-            {
-                float eased = Smooth(_progress);
-                float along = vertex.normalized.y;
-                float delay = (1f - along) * 0.35f;
-                float local = Mathf.Clamp01((eased - delay) / (1f - delay));
-                float localPull = Smooth(local);
-                var target = new Vector2(
-                    Mathf.Lerp(_target.x, _target.xMax, vertex.normalized.x),
-                    Mathf.Lerp(_target.y, _target.yMax, vertex.normalized.y));
-                Vector2 result = Vector2.Lerp(vertex.position, target, localPull);
-
-                Vector2 pull = _target.center - context.sourceRect.center;
-                if (pull.sqrMagnitude > 0.001f)
-                {
-                    var perpendicular = new Vector2(-pull.y, pull.x).normalized;
-                    float side = vertex.normalized.x - 0.5f;
-                    float curve = Mathf.Sin(along * Mathf.PI) * Mathf.Sin(eased * Mathf.PI) * 0.15f;
-                    result += perpendicular * side * curve * Mathf.Max(context.sourceRect.width, context.sourceRect.height);
-                }
-
-                return result;
-            }
+            return NowEase.Window(frame, 42f, 57f, 64f, 80f, NowEasing.Linear);
         }
 
         static void DrawDesktopWallpaper(NowRect rect, float u)

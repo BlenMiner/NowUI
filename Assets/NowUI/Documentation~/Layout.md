@@ -98,6 +98,9 @@ The container methods cover the common cases:
   otherwise-unused main-axis space.
 - `Spacer(weight)` is an invisible flexible child. `Space(pixels)` inserts a
   fixed-size gap.
+- `Wrap(lineGap)` flows children onto new lines when the next one would not
+  fit: a row wraps downward, a column to the right. See
+  [Wrapping rows](#wrapping-rows).
 
 Nested containers keep the legacy cross-axis fill only when no alignment is
 declared. Once `AlignChildren` or `AlignSelf` expresses placement intent, an
@@ -122,6 +125,33 @@ When updating code written before the fluent aliases were added, rename
 `Horizontal(...)` to `HorizontalScope(...)` and `Vertical(...)` to
 `VerticalScope(...)` if that call returned a disposable scope directly. Fluent
 container declarations keep the directional names and end with `.Begin()`.
+
+## Wrapping rows
+
+A wrapped container keeps its children's sizes and starts a new line when the
+next child would overflow, instead of clipping or running past the edge. It is
+the tool for toolbars, tag lists and rows of labelled controls that must fit
+narrow panels:
+
+```csharp
+using (NowLayout.Row().FillWidth().Gap(24f).Wrap(8f).AlignChildren(NowLayoutAlign.Center).Begin())
+{
+    NowLayout.Slider(-180f, 180f).SetLabel("Angle").SetValueFormat("0°").SetWidth(270f).Draw(ref angle);
+    NowLayout.Slider(0.25f, 1f).SetLabel("Resolution").SetValueFormat("0.00x").SetWidth(290f).Draw(ref scale);
+    NowLayout.Slider(0f, 12f).SetLabel("Wave").SetValueFormat("0.0").SetWidth(240f).Draw(ref wave);
+}
+```
+
+- Lines are separated by the `Wrap` gap; a negative gap reuses `Gap`.
+- `AlignChildren` and `AlignSelf` align each child across its own line. A line's
+  size is only known once it ends, so alignment uses the previous measurement:
+  exact layout hosts and `RunMeasured` settle it in the same frame, one-pass
+  hosts one frame later.
+- A stretching or growing child fills what is left of its line (at least its
+  minimum, otherwise it starts a new line). A `Spacer` ends the line.
+- `Justify` does not apply to wrapped containers.
+- The container reports the widest line and the total height of its lines, so
+  parents place the next sibling below every line.
 
 ## Mixing layout with explicit drawing
 

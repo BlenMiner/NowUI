@@ -103,7 +103,10 @@ namespace NowUI
         InOutBounce,
 
         /// <summary>Damped spring overshoot that lands exactly on one.</summary>
-        Spring
+        Spring,
+
+        /// <summary>Hermite smoothstep, <c>t * t * (3 - 2t)</c>: a gentle S-curve, as used by Mathf.SmoothStep.</summary>
+        Smoothstep
     }
 
     /// <summary>
@@ -196,6 +199,7 @@ namespace NowUI
                 case NowEasing.OutBounce: return OutBounce(t);
                 case NowEasing.InOutBounce: return InOutBounce(t);
                 case NowEasing.Spring: return Spring(t);
+                case NowEasing.Smoothstep: return Smoothstep(t);
                 default: return Linear(t);
             }
         }
@@ -211,6 +215,47 @@ namespace NowUI
         public static float Evaluate(NowEasing easing, float time, float start, float end)
         {
             return Evaluate(easing, Progress(time, start, end));
+        }
+
+        /// <summary>
+        /// A fade-in, hold, fade-out envelope over caller-owned time: 0 before
+        /// <paramref name="inStart"/>, easing up to 1 at <paramref name="inEnd"/>,
+        /// 1 until <paramref name="outStart"/>, and easing back to 0 at
+        /// <paramref name="outEnd"/>. Use it for anything that appears, stays and
+        /// leaves: a toast, a highlight, a caption.
+        /// </summary>
+        /// <param name="time">Caller-owned clock value.</param>
+        /// <param name="inStart">Time the value starts rising from 0.</param>
+        /// <param name="inEnd">Time the value reaches 1.</param>
+        /// <param name="outStart">Time the value starts falling; clamped to no earlier than <paramref name="inEnd"/>.</param>
+        /// <param name="outEnd">Time the value is back at 0.</param>
+        /// <param name="easing">Curve for both edges; the falling edge mirrors it.</param>
+        public static float Window(
+            float time,
+            float inStart,
+            float inEnd,
+            float outStart,
+            float outEnd,
+            NowEasing easing = NowEasing.InOutSine)
+        {
+            if (float.IsNaN(time))
+                return 0f;
+
+            outStart = Mathf.Max(outStart, inEnd);
+            outEnd = Mathf.Max(outEnd, outStart);
+
+            if (time >= outStart)
+                return 1f - Evaluate(easing, Progress(time, outStart, outEnd));
+
+            return Evaluate(easing, Progress(time, inStart, inEnd));
+        }
+
+        /// <summary>Hermite smoothstep: <c>t * t * (3 - 2t)</c>.</summary>
+        /// <param name="t">Normalized time, clamped to [0, 1].</param>
+        public static float Smoothstep(float t)
+        {
+            t = Clamp01(t);
+            return t * t * (3f - 2f * t);
         }
 
         /// <summary>Constant-rate progress: returns the clamped <paramref name="t"/>.</summary>

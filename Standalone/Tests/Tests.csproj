@@ -145,6 +145,7 @@
     <Compile Include="../../Assets/NowUITests/NowTextLayoutTests.cs" LinkBase="UnityTests" />
     <Compile Include="../../Assets/NowUITests/NowFontTierTests.cs" LinkBase="UnityTests" />
     <Compile Include="../../Assets/NowUITests/NowGlyphBakeTests.cs" LinkBase="UnityTests" />
+    <Compile Include="../../Assets/NowUITests/NowUsabilityApiTests.cs" LinkBase="UnityTests" />
     <!-- Stroke builder geometry reads a NowDrawList mesh back through the shim's Mesh getters; no device needed. -->
     <Compile Include="../../Assets/NowUITests/NowStrokeTests.cs" LinkBase="UnityTests" />
     <!-- Tier C: CPU-only, [Category("NowUI.Overview")], which the gate command's filter "Category!=NowUI.Overview"

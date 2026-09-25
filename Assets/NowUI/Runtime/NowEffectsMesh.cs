@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Collections.LowLevel.Unsafe;
 using NowUI.Internal;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -115,6 +116,7 @@ namespace NowUI
                 return;
 
             var context = new NowEffectContext(effectId, sourceRect, time);
+            subdivision = ResolveAutoSubdivision(subdivision, deformer, context);
             var batches = drawList.batches;
             int subMeshCount = Mathf.Min(batches.Count, mesh.subMeshCount);
 
@@ -142,6 +144,32 @@ namespace NowUI
 
                 CopyTrianglesWithSubdivision(targetMesh, deformer, context, subdivision);
             }
+        }
+
+        /// <summary>
+        /// Resolves <see cref="NowSubdivision.Auto"/> into the density a built-in
+        /// deformer asks for at this source size. The type tests fold away per
+        /// generic instantiation, and the reinterpretation avoids boxing the struct.
+        /// </summary>
+        static NowSubdivision ResolveAutoSubdivision<TDeformer>(
+            NowSubdivision subdivision,
+            TDeformer deformer,
+            in NowEffectContext context)
+            where TDeformer : struct, INowVertexDeformer
+        {
+            if (subdivision.mode != NowSubdivision.SubdivisionMode.Auto)
+                return subdivision;
+
+            if (typeof(TDeformer) == typeof(NowWaveDeformer))
+                return UnsafeUtility.As<TDeformer, NowWaveDeformer>(ref deformer).AutoSubdivision(context);
+
+            if (typeof(TDeformer) == typeof(NowGenieDeformer))
+                return UnsafeUtility.As<TDeformer, NowGenieDeformer>(ref deformer).AutoSubdivision(context);
+
+            if (typeof(TDeformer) == typeof(NowPerspectiveDeformer))
+                return UnsafeUtility.As<TDeformer, NowPerspectiveDeformer>(ref deformer).AutoSubdivision(context);
+
+            return NowSubdivision.None;
         }
 
         internal static NowRect PixelSnapOutward(NowRect rect)
@@ -358,7 +386,7 @@ namespace NowUI
 
             if (subdivision.mode == NowSubdivision.SubdivisionMode.Fixed)
             {
-                divisionsX = divisionsY = Mathf.Max(1, subdivision.divisions);
+                divisionsX = divisionsY = Mathf.Clamp(subdivision.divisions, 1, NowSubdivision.MaxDivisionsPerAxis);
                 return;
             }
 
@@ -366,9 +394,16 @@ namespace NowUI
                 return;
 
             var bounds = QuadBounds(first);
-            float size = Mathf.Max(1f, subdivision.maxCellSize);
-            divisionsX = Mathf.Max(1, Mathf.CeilToInt(bounds.width / size));
-            divisionsY = Mathf.Max(1, Mathf.CeilToInt(bounds.height / size));
+            divisionsX = Divisions(bounds.width, subdivision.maxCellSize.x);
+            divisionsY = Divisions(bounds.height, subdivision.maxCellSize.y);
+        }
+
+        static int Divisions(float extent, float cell)
+        {
+            if (!(cell > 0f) || float.IsInfinity(cell) || !(extent > cell))
+                return 1;
+
+            return Mathf.Clamp(Mathf.CeilToInt(extent / Mathf.Max(1f, cell)), 1, NowSubdivision.MaxDivisionsPerAxis);
         }
 
         static NowRect QuadBounds(int first)

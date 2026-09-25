@@ -52,6 +52,7 @@ public class NowEaseTests
         ("Spring(0.2,5)", t => NowEase.Spring(t, 0.2f, 5f)),
         ("Spring(1,2)", t => NowEase.Spring(t, 1f, 2f)),
         ("Spring(0.5,0)", t => NowEase.Spring(t, 0.5f, 0f)),
+        ("Smoothstep", NowEase.Smoothstep),
         ("CubicBezier(ease)", t => NowEase.CubicBezier(0.25f, 0.1f, 0.25f, 1f, t)),
         ("CubicBezier(overshoot)", t => NowEase.CubicBezier(0.34f, 1.56f, 0.64f, 1f, t)),
         ("CubicBezier(out of range x)", t => NowEase.CubicBezier(-2f, 0.5f, 3f, 0.5f, t)),

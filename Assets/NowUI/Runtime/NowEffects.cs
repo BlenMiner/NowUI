@@ -21,36 +21,73 @@ namespace NowUI
         Y
     }
 
+    /// <summary>
+    /// How a modifier splits captured quads before deforming them. Deformers move
+    /// vertices, so a large quad stays a flat quad unless it is subdivided; a wave
+    /// or a perspective turn needs enough vertices to follow its curve.
+    /// </summary>
     public readonly struct NowSubdivision
     {
         internal enum SubdivisionMode
         {
             None,
             Fixed,
-            MaxCellSize
+            MaxCellSize,
+            Auto
         }
+
+        /// <summary>Largest number of cells per axis a single quad is split into.</summary>
+        public const int MaxDivisionsPerAxis = 128;
 
         internal readonly SubdivisionMode mode;
         internal readonly int divisions;
-        internal readonly float maxCellSize;
+        internal readonly Vector2 maxCellSize;
 
-        NowSubdivision(SubdivisionMode mode, int divisions, float maxCellSize)
+        NowSubdivision(SubdivisionMode mode, int divisions, Vector2 maxCellSize)
         {
             this.mode = mode;
             this.divisions = divisions;
             this.maxCellSize = maxCellSize;
         }
 
+        /// <summary>No subdivision: every captured vertex is deformed as drawn.</summary>
         public static NowSubdivision None => default;
 
+        /// <summary>
+        /// The default for modifiers. Built-in deformers choose the density their
+        /// shape needs at the size being deformed: <see cref="NowDeformers.Wave"/>
+        /// samples each wavelength along its axis, <see cref="NowDeformers.Genie"/>
+        /// finely along the direction it pulls (and coarsely across it), and <see cref="NowDeformers.Perspective(float, float)"/>
+        /// both axes. Custom deformers are not subdivided unless the modifier sets a
+        /// mode explicitly.
+        /// </summary>
+        public static NowSubdivision Auto => new NowSubdivision(SubdivisionMode.Auto, 0, default);
+
+        /// <summary>Splits every quad into the same number of cells per axis, whatever its size.</summary>
         public static NowSubdivision Fixed(int divisions)
         {
-            return new NowSubdivision(SubdivisionMode.Fixed, Mathf.Max(1, divisions), 0f);
+            return new NowSubdivision(SubdivisionMode.Fixed, Mathf.Clamp(divisions, 1, MaxDivisionsPerAxis), default);
         }
 
+        /// <summary>Splits each quad into cells no larger than <paramref name="size"/> UI units.</summary>
         public static NowSubdivision MaxCellSize(float size)
         {
-            return new NowSubdivision(SubdivisionMode.MaxCellSize, 0, Mathf.Max(1f, size));
+            size = Mathf.Max(1f, size);
+            return new NowSubdivision(SubdivisionMode.MaxCellSize, 0, new Vector2(size, size));
+        }
+
+        /// <summary>
+        /// Splits each quad into cells no larger than <paramref name="width"/> by
+        /// <paramref name="height"/> UI units. Pass <see cref="float.PositiveInfinity"/>
+        /// for an axis the deformer does not bend.
+        /// </summary>
+        public static NowSubdivision MaxCellSize(float width, float height)
+        {
+            return new NowSubdivision(
+                SubdivisionMode.MaxCellSize,
+                0,
+                new Vector2(float.IsNaN(width) ? float.PositiveInfinity : Mathf.Max(1f, width),
+                    float.IsNaN(height) ? float.PositiveInfinity : Mathf.Max(1f, height)));
         }
     }
 
@@ -140,6 +177,21 @@ namespace NowUI
             _axis = axis;
         }
 
+        /// <summary>
+        /// Twelve samples per wavelength along the axis the offset varies with; the
+        /// other axis moves rigidly and needs none.
+        /// </summary>
+        internal NowSubdivision AutoSubdivision(in NowEffectContext context)
+        {
+            if (Mathf.Abs(_amplitude) < 0.05f)
+                return NowSubdivision.None;
+
+            float cell = _wavelength / 12f;
+            return _axis == NowWaveAxis.Y
+                ? NowSubdivision.MaxCellSize(cell, float.PositiveInfinity)
+                : NowSubdivision.MaxCellSize(float.PositiveInfinity, cell);
+        }
+
         public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
         {
             var position = vertex.position;
@@ -170,9 +222,30 @@ namespace NowUI
             _direction = direction;
         }
 
+        /// <summary>
+        /// The pull varies along the genie's direction, so that axis gets fine cells.
+        /// Each row still narrows toward the target, and a trapezoid drawn as two
+        /// triangles skews its texture along the diagonal, so the cross axis gets
+        /// coarser cells too.
+        /// </summary>
+        internal NowSubdivision AutoSubdivision(in NowEffectContext context)
+        {
+            if (_progress <= 0f)
+                return NowSubdivision.None;
+
+            bool vertical = _direction == NowEffectDirection.Top || _direction == NowEffectDirection.Bottom;
+            float along = vertical ? context.sourceRect.height : context.sourceRect.width;
+            float across = vertical ? context.sourceRect.width : context.sourceRect.height;
+            float alongCell = Mathf.Max(2f, along / 32f);
+            float acrossCell = Mathf.Max(2f, across / 16f);
+            return vertical
+                ? NowSubdivision.MaxCellSize(acrossCell, alongCell)
+                : NowSubdivision.MaxCellSize(alongCell, acrossCell);
+        }
+
         public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
         {
-            float eased = _progress * _progress * (3f - 2f * _progress);
+            float eased = Smooth(_progress);
             Vector2 normalized = vertex.normalized;
             Vector2 target = new Vector2(
                 Mathf.Lerp(_targetRect.x, _targetRect.xMax, normalized.x),
@@ -186,7 +259,11 @@ namespace NowUI
                 _ => normalized.y
             };
 
-            float localPull = Mathf.Clamp01(eased * Mathf.Lerp(0.35f, 1f, along));
+            // The edge nearest the target leads and the far edge follows up to
+            // 35% of the timeline later, so every vertex reaches the target
+            // exactly when progress reaches 1.
+            float delay = (1f - along) * 0.35f;
+            float localPull = Smooth(Mathf.Clamp01((eased - delay) / (1f - delay)));
             Vector2 result = Vector2.Lerp(vertex.position, target, localPull);
 
             float curve = Mathf.Sin(along * Mathf.PI) * Mathf.Sin(eased * Mathf.PI) * 0.12f;
@@ -204,6 +281,11 @@ namespace NowUI
             }
 
             return result;
+        }
+
+        static float Smooth(float t)
+        {
+            return t * t * (3f - 2f * t);
         }
     }
 
@@ -233,6 +315,21 @@ namespace NowUI
             _pivot = pivot;
         }
 
+        /// <summary>
+        /// Perspective divides by depth, which a single flat quad cannot express;
+        /// sixteen cells across the source keep large quads, gradients and SDF
+        /// scenes from folding along their diagonal.
+        /// </summary>
+        internal NowSubdivision AutoSubdivision(in NowEffectContext context)
+        {
+            if (Mathf.Abs(_sinYaw) < 0.0001f && Mathf.Abs(_sinPitch) < 0.0001f)
+                return NowSubdivision.None;
+
+            float cellWidth = Mathf.Abs(_sinYaw) < 0.0001f ? float.PositiveInfinity : Mathf.Max(2f, context.sourceRect.width / 16f);
+            float cellHeight = Mathf.Abs(_sinPitch) < 0.0001f ? float.PositiveInfinity : Mathf.Max(2f, context.sourceRect.height / 16f);
+            return NowSubdivision.MaxCellSize(cellWidth, cellHeight);
+        }
+
         public Vector2 Deform(in NowEffectVertex vertex, in NowEffectContext context)
         {
             NowRect source = context.sourceRect;
@@ -257,10 +354,10 @@ namespace NowUI
     public static class NowDeformers
     {
         /// <summary>
-        /// A 3D card turn around the center of the source rect. Use a subdivided
-        /// modifier (for example <c>SetSubdivision(6)</c>) so large quads, gradients
-        /// and SDF scenes stay in perspective instead of folding along their
-        /// diagonal.
+        /// A 3D card turn around the center of the source rect. The modifier's
+        /// default <see cref="NowSubdivision.Auto"/> subdivides large quads,
+        /// gradients and SDF scenes so they stay in perspective instead of folding
+        /// along their diagonal.
         /// </summary>
         /// <param name="yawDegrees">Turn about the vertical axis; positive moves the right edge away.</param>
         /// <param name="pitchDegrees">Turn about the horizontal axis; positive moves the top edge away.</param>
@@ -287,6 +384,13 @@ namespace NowUI
             return new NowPerspectiveDeformer(yawDegrees, pitchDegrees, distance, normalizedPivot);
         }
 
+        /// <summary>
+        /// Pulls the captured content into <paramref name="targetRect"/> like a
+        /// window minimizing into a dock icon. <paramref name="progress"/> runs from
+        /// 0 (untouched) to 1 (fully inside the target); the edge nearest the target
+        /// leads and the far edge follows. <paramref name="direction"/> names the side
+        /// of the source the target lies toward.
+        /// </summary>
         public static NowGenieDeformer Genie(
             NowRect targetRect,
             float progress,
@@ -775,7 +879,7 @@ namespace NowUI
             _deformer = deformer;
             _site = site;
             _id = default;
-            _subdivision = NowSubdivision.None;
+            _subdivision = NowSubdivision.Auto;
             _renderToTexture = false;
             _subdivideText = false;
             _hasSourceRect = false;
@@ -796,12 +900,23 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Splits every captured quad into <paramref name="divisions"/> cells per
+        /// axis. Prefer the default <see cref="NowSubdivision.Auto"/> for built-in
+        /// deformers, or <see cref="NowSubdivision.MaxCellSize(float)"/>, which scales
+        /// with the quad's size.
+        /// </summary>
         public NowModifierBuilder<TDeformer> SetSubdivision(int divisions)
         {
             _subdivision = NowSubdivision.Fixed(divisions);
             return this;
         }
 
+        /// <summary>
+        /// Chooses how captured quads are split before deforming. The default,
+        /// <see cref="NowSubdivision.Auto"/>, lets built-in deformers pick their own
+        /// density; custom deformers need an explicit mode to bend large quads.
+        /// </summary>
         public NowModifierBuilder<TDeformer> SetSubdivision(NowSubdivision subdivision)
         {
             _subdivision = subdivision;

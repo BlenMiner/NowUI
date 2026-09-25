@@ -223,6 +223,23 @@ Now.Rectangle(new Vector4(24, 24, 180, 48))
 The rectangle API covers fill color, radius, padding, outline, outline color,
 blur, mask, position, textures, sprites, and custom materials.
 
+`Now.Shadow(rect)` draws a soft drop shadow for any surface, whether it is a
+rectangle, a glass pane, an SDF scene or an image. Draw it first, so it sits
+beneath the surface. Set the offset, blur, spread, radius and color yourself,
+or use `SetElevation` to reuse the theme's shadow presets, the same ones the
+stock controls cast:
+
+```csharp
+Now.Shadow(card).SetRadius(18f).SetOffset(0f, 12f).SetBlur(28f).SetSpread(-4f).Draw();
+Now.Shadow(card).SetRadius(18f).SetElevation(NowElevationToken.Overlay).Draw();
+Now.Rectangle(card).SetRadius(18f).SetColor(surface).Draw();
+```
+
+`NowColor` adds extension methods for authored colors:
+`accent.WithAlpha(0.4f)`, `accent.MultiplyAlpha(fade)`, `panel.Lighten(0.1f)`,
+`panel.Darken(0.2f)`, `a.MixRgb(b, t)` (keeping `a`'s alpha) and
+`color.Luminance()`.
+
 ## Masks
 
 Use the existing `Now.Mask(NowRect)` scope for an exact rectangular clip. Use

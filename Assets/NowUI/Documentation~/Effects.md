@@ -15,13 +15,15 @@ deformer.
 NowRect target = new NowRect(520, 320, 72, 40);
 float progress = Mathf.PingPong(Time.time * 0.5f, 1f);
 
-using (NowEffects.Modifier(NowDeformers.Genie(target, progress))
-    .SetSubdivision(4)
-    .Begin())
+using (NowEffects.Modifier(NowDeformers.Genie(target, progress)).Begin())
 {
     DrawWindow();
 }
 ```
+
+`Genie` pulls the content into `target` like a window minimizing into a dock
+icon: at `progress` 0 nothing moves, the edge nearest the target leads, the far
+edge follows, and at 1 every vertex is inside the target.
 
 Use mesh modifiers for crisp vector/text effects such as wobble, bend, pull,
 and highlight deformation. Built-in deformers are value types, and custom
@@ -141,19 +143,38 @@ enough source pixels to line up with the original content.
 
 ## Subdivision
 
-Subdivision is explicit. No automatic backend or tessellation switching happens
-in v1.
+A deformer moves vertices, so a large quad only bends where it has vertices.
+Modifiers default to `NowSubdivision.Auto`: each built-in deformer splits quads
+as finely as its shape needs at the size being deformed.
+
+- `Wave` samples every wavelength twelve times along the axis its offset
+  follows, and leaves the other axis whole.
+- `Genie` subdivides finely along the direction it pulls in and coarsely across
+  it, since each narrowing row would otherwise skew its texture.
+- `Perspective` splits the turned axes into sixteen cells across the source.
+
+Custom deformers are not subdivided by `Auto`; give them an explicit mode.
 
 ```csharp
-// A fixed 4 x 4 grid for each quad-like rectangle or texture surface.
-.SetSubdivision(4)
+// The default: built-in deformers choose.
+.SetSubdivision(NowSubdivision.Auto)
 
 // Keep original vertices.
 .SetSubdivision(NowSubdivision.None)
 
-// Adapt by size, useful for large rectangles or texture surfaces.
+// Adapt by size: cells no larger than 18 UI units, or per axis. Pass
+// float.PositiveInfinity for an axis the deformer does not bend.
 .SetSubdivision(NowSubdivision.MaxCellSize(18f))
+.SetSubdivision(NowSubdivision.MaxCellSize(6f, float.PositiveInfinity))
+
+// A fixed grid for every quad, whatever its size.
+.SetSubdivision(4)
 ```
+
+`MaxCellSize` is usually the right choice for custom deformers: a fixed count
+gives a small quad the same grid as a large one, and a large quad too few
+vertices to follow a short wavelength. Every mode caps a quad at
+`NowSubdivision.MaxDivisionsPerAxis` (128) cells per axis.
 
 Text glyph quads are not subdivided by default because large text blocks can
 produce thousands of tiny quads. They still deform as glyph quads. Opt in only
@@ -161,7 +182,6 @@ when a deformer needs to bend inside each glyph.
 
 ```csharp
 using (NowEffects.Modifier(NowDeformers.Wave(Time.time, 3f, 36f))
-    .SetSubdivision(3)
     .SetSubdivideText()
     .Begin())
 {

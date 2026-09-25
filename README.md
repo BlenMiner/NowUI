@@ -269,7 +269,8 @@ Toolkit, world-space, and manual-host examples, see
 ## Features
 
 - **Rectangles** — rounded corners (per-corner radii), outlines, blur,
-  padding, masks, textures, sprites, and custom materials.
+  padding, masks, textures, sprites, custom materials, and drop shadows
+  (`Now.Shadow`).
   [Documentation~/Features.md](Assets/NowUI/Documentation~/Features.md), [Documentation~/CustomMaterials.md](Assets/NowUI/Documentation~/CustomMaterials.md)
 - **Masks** — exact rectangular clips plus anti-aliased analytic rectangles,
   rounded rectangles, circles, ellipses, and capsules with soft screen-pixel
@@ -306,8 +307,8 @@ Toolkit, world-space, and manual-host examples, see
   `SetRaw()` opt-outs for verbatim text.
   [Documentation~/TextPreprocessor.md](Assets/NowUI/Documentation~/TextPreprocessor.md)
 - **Layout** — fluent `Row`/`Horizontal` and `Column`/`Vertical` container
-  aliases with gaps, padding, growth, alignment, justification, and
-  exact-measure layout hosts.
+  aliases with gaps, padding, growth, alignment, justification, wrapping,
+  and exact-measure layout hosts.
   [Documentation~/Layout.md](Assets/NowUI/Documentation~/Layout.md)
 - **Input** — immediate-mode `NowInput.Interact` with hover, press, drag,
   and click across mouse, touch, and keyboard on either built-in backend, plus

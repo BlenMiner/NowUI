@@ -118,10 +118,10 @@ Host lifecycle rules:
 | --- | --- | --- |
 | Frame lifecycle, rectangles, input, text, fonts, renderer | `Now`, `NowInput`, `NowRenderer` | [Feature Usage](Features.md) |
 | Text alignment, letter spacing, font metrics, outlines, gradients, reveals, and glyph animation | `Now.Text`, `NowTextAnimations` | [Text Layout, Gradients, And Animation](TextStyling.md) |
-| Easing curves for caller-timed motion | `NowEase`, `NowEasing` | [Easing](Easing.md) |
+| Easing curves, fade windows, and keyframe tracks for caller-timed motion | `NowEase`, `NowEasing`, `NowKeyframes` | [Easing](Easing.md) |
 | Localization and shared text transformations | `Now.SetTextPreprocessor` | [Text Preprocessor](TextPreprocessor.md) |
 | Supported public assemblies and types | Runtime and extension namespaces | [Public API](API.md) |
-| Rows, columns, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
+| Rows, columns, wrapping rows, sizing, measurement | `NowLayout` and layout hosts | [Layout](Layout.md) |
 | Buttons, fields, pickers, lists, dialogs, inspection | `Now` / `NowLayout` controls | [Controls](Controls.md) |
 | New or restyled controls | Control builders and interaction primitives | [Custom Controls](CustomControls.md) |
 | Authored, resolved, repeated, or composite identity | `NowId`, `NowResolvedId`, `KeyedItem` | [Identity](Identity.md) |
@@ -132,6 +132,7 @@ Host lifecycle rules:
 | Non-rectangular or soft clipping | `NowMaskShape` and `Now.Mask` | [Masks](Masks.md) |
 | Backdrop blur panes | `Now.Glass` | [Glass](Glass.md) |
 | Custom rectangle shaders/materials | `SetMaterial` | [Custom Materials](CustomMaterials.md) |
+| Drop shadows and color helpers (`WithAlpha`, `Lighten`) | `Now.Shadow`, `NowColor` | [Feature Usage](Features.md#rectangles) |
 | Scale, rotate, fade, or tint a group of draws | `Now.Transform`, `Now.Rotate`, `Now.Opacity`, `Now.Tint` | [Transforms](Transforms.md) |
 | Mesh or texture visual modifiers, perspective turns | `NowEffects`, `NowDeformers` | [Effects](Effects.md) |
 | 3D object previews | `NowModelPreview` | [Model Previews](ModelPreviews.md) |

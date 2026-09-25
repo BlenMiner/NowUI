@@ -624,6 +624,9 @@ namespace NowUI
     [NowBuilder]
     public struct NowSlider
     {
+        /// <summary>Space between the label, the track and the value readout, in UI units.</summary>
+        public const float LabelGap = 12f;
+
         readonly float _min;
         readonly float _max;
         NowLayoutOptions _options;
@@ -633,6 +636,8 @@ namespace NowUI
         NowControlIdentity _id;
         NowFocusNavigation _navigation;
         float _step;
+        string _label;
+        string _valueFormat;
 
         internal NowSlider(float min, float max, int site)
         {
@@ -645,6 +650,8 @@ namespace NowUI
             _id = default;
             _navigation = default;
             _step = 0f;
+            _label = null;
+            _valueFormat = null;
         }
 
         internal NowSlider(NowRect rect, float min, float max, int site) : this(min, max, site)
@@ -665,6 +672,28 @@ namespace NowUI
         /// <summary>Stretches to fill available width, weighted against stretching siblings.</summary>
         public NowSlider SetStretchWidth(float weight = 1f) { _options = _options.SetStretchWidth(weight); return this; }
 
+        /// <summary>Minimum width in layout flow, label and value readout included.</summary>
+        public NowSlider SetMinWidth(float width) { _options = _options.SetMinWidth(width); return this; }
+
+        /// <summary>Maximum width in layout flow, label and value readout included; keeps a stretching slider from running to the container's edge.</summary>
+        public NowSlider SetMaxWidth(float width) { _options = _options.SetMaxWidth(width); return this; }
+
+        /// <summary>
+        /// Draws <paramref name="label"/> in the layout label style to the left of the
+        /// track, inside the slider's own rect, separated by <see cref="LabelGap"/>.
+        /// The measured width includes it, so labelled sliders never touch their
+        /// neighbours.
+        /// </summary>
+        public NowSlider SetLabel(string label) { _label = string.IsNullOrEmpty(label) ? null : label; return this; }
+
+        /// <summary>
+        /// Shows the current value to the right of the track, formatted with a .NET
+        /// numeric format string such as <c>"0"</c>, <c>"0.00x"</c> or <c>"0'%'"</c>.
+        /// The readout reserves the width of the wider of the range's ends, so the
+        /// track does not shift while dragging.
+        /// </summary>
+        public NowSlider SetValueFormat(string format) { _valueFormat = format ?? ""; return this; }
+
         /// <summary>Snap values to increments anchored at the slider minimum. Use 1 for integer sliders.</summary>
         public NowSlider SetStep(float step) { _step = Mathf.Max(0f, step); return this; }
 
@@ -684,12 +713,61 @@ namespace NowUI
             NowResolvedId id = _id.Resolve(_site);
 
             float knobSize = theme.controlStyles.sliderKnobSize;
-
-            NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, renderer.MeasureSlider(theme));
-            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
-
             float min = Mathf.Min(_min, _max);
             float max = Mathf.Max(_min, _max);
+            Vector2 trackSize = renderer.MeasureSlider(theme);
+            bool decorated = _label != null || _valueFormat != null;
+            NowText textStyle = decorated ? NowLayout.labelStyle : default;
+            float labelWidth = 0f;
+            float valueWidth = 0f;
+            float textHeight = 0f;
+
+            if (_label != null)
+            {
+                Vector2 size = textStyle.Measure(_label);
+                labelWidth = size.x;
+                textHeight = size.y;
+            }
+
+            if (_valueFormat != null)
+            {
+                Vector2 lower = textStyle.Measure((double)min, _valueFormat);
+                Vector2 upper = textStyle.Measure((double)max, _valueFormat);
+                valueWidth = Mathf.Max(lower.x, upper.x);
+                textHeight = Mathf.Max(textHeight, Mathf.Max(lower.y, upper.y));
+            }
+
+            var measured = decorated
+                ? new Vector2(
+                    labelWidth + (_label != null ? LabelGap : 0f) + trackSize.x + (_valueFormat != null ? LabelGap : 0f) + valueWidth,
+                    Mathf.Max(trackSize.y, textHeight))
+                : trackSize;
+
+            NowRect outer = NowControls.ReserveRect(_hasRect, _rect, _options, measured);
+            NowRect rect = outer;
+            NowRect labelRect = default;
+            NowRect valueRect = default;
+
+            if (decorated)
+            {
+                if (_label != null)
+                {
+                    labelRect = rect.TakeLeft(Mathf.Min(labelWidth, rect.width), out rect);
+                    rect = rect.TakeRight(Mathf.Max(0f, rect.width - LabelGap));
+                }
+
+                if (_valueFormat != null)
+                {
+                    valueRect = rect.TakeRight(Mathf.Min(valueWidth, rect.width), out rect);
+                    rect = rect.TakeLeft(Mathf.Max(0f, rect.width - LabelGap));
+                }
+
+                float trackHeight = Mathf.Min(trackSize.y, outer.height);
+                rect = new NowRect(rect.x, outer.y + (outer.height - trackHeight) * 0.5f, rect.width, trackHeight);
+            }
+
+            var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out _);
+
             float range = Mathf.Max(max - min, 0.0001f);
             float previous = value;
 
@@ -716,6 +794,23 @@ namespace NowUI
             float normalized = (value - min) / range;
             var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
             renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));
+
+            if (_label != null && labelRect.width > 0f)
+            {
+                textStyle
+                    .SetPosition(new NowRect(labelRect.x, outer.y, labelRect.width, outer.height))
+                    .SetAlign(NowTextAlign.Left, NowTextVerticalAlign.CapMiddle)
+                    .Draw(_label);
+            }
+
+            if (_valueFormat != null && valueRect.width > 0f)
+            {
+                textStyle
+                    .SetPosition(new NowRect(valueRect.x, outer.y, valueRect.width, outer.height))
+                    .SetAlign(NowTextAlign.Right, NowTextVerticalAlign.CapMiddle)
+                    .Draw((double)value, _valueFormat);
+            }
+
             return !Mathf.Approximately(previous, value);
         }
 

@@ -196,6 +196,25 @@ namespace NowUI
             return this;
         }
 
+        /// <summary>
+        /// Flows children onto new lines when the next one would not fit: a row wraps
+        /// downward, a column to the right. Stretching children fill the rest of their
+        /// line. See <see cref="NowLayoutOptions.SetWrap(float)"/>.
+        /// <code>
+        /// using (NowLayout.Row().Gap(16).Wrap(8).AlignChildren(NowLayoutAlign.Center).Begin())
+        /// {
+        ///     NowLayout.Slider(0f, 1f).SetLabel("Angle").SetWidth(260f).Draw(ref angle);
+        ///     NowLayout.Slider(0f, 1f).SetLabel("Wave").SetWidth(260f).Draw(ref wave);
+        /// }
+        /// </code>
+        /// </summary>
+        /// <param name="lineGap">Gap between lines; negative uses <see cref="Gap(float)"/>.</param>
+        public NowLayoutContainer Wrap(float lineGap = -1f)
+        {
+            _options = _options.SetWrap(lineGap);
+            return this;
+        }
+
         [NowConsumer]
         public NowLayoutScope Begin()
         {
@@ -239,7 +258,7 @@ namespace NowUI
 
             throw new System.InvalidOperationException(
                 "Root Row(rect)/Horizontal(rect)/Column(rect)/Vertical(rect) options may configure only " +
-                "Gap, Padding, AlignChildren, and Justify. " +
+                "Gap, Padding, AlignChildren, Justify, and Wrap. " +
                 "The explicit rect already fixes the root's size and placement; put sizing, stretching, Grow, or " +
                 "AlignSelf on a nested container instead.");
         }
