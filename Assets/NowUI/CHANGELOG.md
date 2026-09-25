@@ -1,3 +1,10 @@
+## [1.19.3](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.2...nowui-v1.19.3) (2026-09-25)
+
+
+### Bug Fixes
+
+* render Now.Gradient in the native and browser hosts ([209503d](https://github.com/BlenMiner/NowUI/commit/209503d321b23a4f58913ca61127597becbff344))
+
 ## [1.19.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.19.1...nowui-v1.19.2) (2026-09-11)
 
 
