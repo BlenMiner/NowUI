@@ -220,9 +220,9 @@ namespace NowUI
         internal bool layoutResolved;
 
         /// <summary>Whether glyphs need the per-glyph path (animation or letter spacing).</summary>
-        internal bool perGlyph => animation.isAnimated || letterSpacing != 0f;
+        internal readonly bool perGlyph => animation.isAnimated || letterSpacing != 0f;
 
-        internal bool needsBlockLayout =>
+        internal readonly bool needsBlockLayout =>
             !layoutResolved &&
             (align != NowTextAlign.Left || verticalAlign != NowTextVerticalAlign.Top || letterSpacing != 0f);
 
@@ -362,6 +362,15 @@ namespace NowUI
 
             this.rect = rect;
             return this;
+        }
+
+        /// <summary><see cref="SetPosition(NowRect)"/> without returning a copy.</summary>
+        internal void SetPositionInPlace(NowRect rect)
+        {
+            if (!hasExplicitMask && mask == this.rect)
+                mask = rect;
+
+            this.rect = rect;
         }
 
         /// <summary>
@@ -763,7 +772,7 @@ namespace NowUI
             return DrawFormatted(value, format, buffer);
         }
 
-        public Vector2 Measure(string value)
+        public readonly Vector2 Measure(string value)
         {
             if (!raw)
                 value = Now.PreprocessText(value);
@@ -771,7 +780,15 @@ namespace NowUI
             if (font == null)
                 return default;
 
-            using var renderScale = Now.PushTextRenderScale();
+            if (Now.IsTextRenderScaleCurrent(out float scale))
+                return MeasureAtScale(value);
+
+            using (NowFont.PushRenderScale(scale))
+                return MeasureAtScale(value);
+        }
+
+        readonly Vector2 MeasureAtScale(string value)
+        {
             Vector2 size = font.MeasureText(value, fontSize, fontStyle);
 
             if (letterSpacing != 0f && !string.IsNullOrEmpty(value))
@@ -780,12 +797,20 @@ namespace NowUI
             return size;
         }
 
-        public Vector2 Measure(System.ReadOnlySpan<char> value)
+        public readonly Vector2 Measure(System.ReadOnlySpan<char> value)
         {
             if (font == null)
                 return default;
 
-            using var renderScale = Now.PushTextRenderScale();
+            if (Now.IsTextRenderScaleCurrent(out float scale))
+                return MeasureAtScale(value);
+
+            using (NowFont.PushRenderScale(scale))
+                return MeasureAtScale(value);
+        }
+
+        readonly Vector2 MeasureAtScale(System.ReadOnlySpan<char> value)
+        {
             Vector2 size = font.MeasureText(value, fontSize, fontStyle);
 
             if (letterSpacing != 0f && !value.IsEmpty)
@@ -794,25 +819,25 @@ namespace NowUI
             return size;
         }
 
-        public Vector2 Measure(int value, System.ReadOnlySpan<char> format = default)
+        public readonly Vector2 Measure(int value, System.ReadOnlySpan<char> format = default)
         {
             Span<char> buffer = stackalloc char[16];
             return MeasureFormatted(value, format, buffer);
         }
 
-        public Vector2 Measure(long value, System.ReadOnlySpan<char> format = default)
+        public readonly Vector2 Measure(long value, System.ReadOnlySpan<char> format = default)
         {
             Span<char> buffer = stackalloc char[32];
             return MeasureFormatted(value, format, buffer);
         }
 
-        public Vector2 Measure(float value, System.ReadOnlySpan<char> format = default)
+        public readonly Vector2 Measure(float value, System.ReadOnlySpan<char> format = default)
         {
             Span<char> buffer = stackalloc char[32];
             return MeasureFormatted(value, format, buffer);
         }
 
-        public Vector2 Measure(double value, System.ReadOnlySpan<char> format = default)
+        public readonly Vector2 Measure(double value, System.ReadOnlySpan<char> format = default)
         {
             Span<char> buffer = stackalloc char[64];
             return MeasureFormatted(value, format, buffer);
@@ -829,7 +854,7 @@ namespace NowUI
         /// buffer from a first call. Use it to place per-letter decoration, carets, or
         /// hit targets without measuring substrings.
         /// </summary>
-        public int GetUnitRects(string value, Span<NowRect> rects)
+        public readonly int GetUnitRects(string value, Span<NowRect> rects)
         {
             if (!raw)
                 value = Now.PreprocessText(value);
@@ -845,8 +870,11 @@ namespace NowUI
             if (font == null)
                 return default;
 
-            using var renderScale = Now.PushTextRenderScale();
-            return font.MeasureTextBounds(value, fontSize, fontStyle);
+            if (Now.IsTextRenderScaleCurrent(out float scale))
+                return font.MeasureTextBounds(value, fontSize, fontStyle);
+
+            using (NowFont.PushRenderScale(scale))
+                return font.MeasureTextBounds(value, fontSize, fontStyle);
         }
 
         [NowConsumer]
@@ -895,28 +923,28 @@ namespace NowUI
             return this;
         }
 
-        Vector2 MeasureFormatted(int value, System.ReadOnlySpan<char> format, Span<char> buffer)
+        readonly Vector2 MeasureFormatted(int value, System.ReadOnlySpan<char> format, Span<char> buffer)
         {
             return value.TryFormat(buffer, out int written, format, CultureInfo.InvariantCulture)
                 ? Measure(buffer.Slice(0, written))
                 : default;
         }
 
-        Vector2 MeasureFormatted(long value, System.ReadOnlySpan<char> format, Span<char> buffer)
+        readonly Vector2 MeasureFormatted(long value, System.ReadOnlySpan<char> format, Span<char> buffer)
         {
             return value.TryFormat(buffer, out int written, format, CultureInfo.InvariantCulture)
                 ? Measure(buffer.Slice(0, written))
                 : default;
         }
 
-        Vector2 MeasureFormatted(float value, System.ReadOnlySpan<char> format, Span<char> buffer)
+        readonly Vector2 MeasureFormatted(float value, System.ReadOnlySpan<char> format, Span<char> buffer)
         {
             return value.TryFormat(buffer, out int written, format, CultureInfo.InvariantCulture)
                 ? Measure(buffer.Slice(0, written))
                 : default;
         }
 
-        Vector2 MeasureFormatted(double value, System.ReadOnlySpan<char> format, Span<char> buffer)
+        readonly Vector2 MeasureFormatted(double value, System.ReadOnlySpan<char> format, Span<char> buffer)
         {
             return value.TryFormat(buffer, out int written, format, CultureInfo.InvariantCulture)
                 ? Measure(buffer.Slice(0, written))

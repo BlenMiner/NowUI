@@ -94,7 +94,9 @@ namespace NowUI
             float onT = NowControlState.Transition(interaction, "on", value, 14f);
             var glyphRect = renderer.SwitchGlyphRect(theme, rect);
 
-            renderer.DrawSwitch(new NowSwitchRenderContext(theme, rect, glyphRect, value, onT, interaction, focused, hoverT));
+            // See NowButton.Draw: built-in visuals of a control clipped away cannot show.
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+                renderer.DrawSwitch(new NowSwitchRenderContext(theme, rect, glyphRect, value, onT, interaction, focused, hoverT));
 
             if (!string.IsNullOrEmpty(_label))
                 NowControls.DrawLeftLabel(theme, renderer.SwitchContentRect(theme, rect), _label, _textPreset);

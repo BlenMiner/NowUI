@@ -2469,14 +2469,14 @@ namespace NowUI
         }
 
         /// <summary>Measures, allocates and draws a label at the current layout position.</summary>
-        internal static NowText PlaceLabel(NowText style, string value, in NowLayoutOptions options)
+        internal static NowText PlaceLabel(in NowText style, string value, in NowLayoutOptions options)
         {
             var rect = ReserveLabel(style, value, options);
             return DrawLabelAt(style, value, rect);
         }
 
         /// <summary>Allocates layout space for a label without drawing it.</summary>
-        internal static NowRect ReserveLabel(NowText style, string value, in NowLayoutOptions options)
+        internal static NowRect ReserveLabel(in NowText style, string value, in NowLayoutOptions options)
         {
             ref var group = ref RequireGroup();
             var measured = style.Measure(value);
@@ -2484,16 +2484,23 @@ namespace NowUI
         }
 
         /// <summary>Draws a label into an already-reserved rect, consuming no layout space.</summary>
-        internal static NowText DrawLabelAt(NowText style, string value, NowRect rect)
+        internal static NowText DrawLabelAt(in NowText style, string value, NowRect rect)
         {
-            style = style
-                .SetPosition(rect)
-                .SetAutomaticMask(LabelMask(style, value, rect));
+            // One local, set in place: the text builder is large, and this runs for
+            // every label of a list each frame.
+            NowText placed = style;
+            placed.SetPositionInPlace(rect);
 
-            if (style.font != null && !string.IsNullOrEmpty(value))
-                style.Draw(value);
+            // Labels scrolled out of view, and the measure pass of a measured layout,
+            // skip the glyph-bounds measurement their clip mask needs; the draw
+            // would be culled or suppressed anyway.
+            if (placed.font == null || string.IsNullOrEmpty(value) || Now.IsTextDrawSkipped(placed, rect))
+                return placed;
 
-            return style;
+            placed.mask = LabelMask(placed, value, rect);
+            placed.hasExplicitMask = false;
+            placed.Draw(value);
+            return placed;
         }
 
         /// <summary>Clears all layout state, including cached measurements. Intended for tests and domain reloads.</summary>

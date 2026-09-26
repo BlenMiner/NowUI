@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <Optimize>true</Optimize>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../NowUI.Desktop/NowUI.Desktop.csproj" />
+    <ProjectReference Include="../../Extensions/NowUI.Extensions.NodeGraph/NowUI.Extensions.NodeGraph.csproj" />
+  </ItemGroup>
+</Project>

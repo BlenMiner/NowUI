@@ -321,6 +321,52 @@ namespace NowUI
                 : mask;
         }
 
+        /// <summary>True when <see cref="IsOutsideAmbientMask"/> can cull anything.</summary>
+        internal static bool hasAmbientCulling =>
+            earlyAmbientCulling && (_suppressDrawDepth > 0 || _maskStack.Count > 0);
+
+        /// <summary>
+        /// Test hook: false turns every <see cref="IsOutsideAmbientMask"/> early out
+        /// off, so tests can prove the culled output matches a full draw.
+        /// </summary>
+        internal static bool earlyAmbientCulling = true;
+
+        /// <summary>
+        /// True when nothing drawn within <paramref name="reach"/> UI units of
+        /// <paramref name="rect"/> (both in the current local space) can show:
+        /// drawing is suppressed, or the padded rect misses the ambient mask. Such
+        /// draws would emit nothing, so callers may skip building them, as controls
+        /// scrolled out of a view do.
+        /// </summary>
+        internal static bool IsOutsideAmbientMask(NowRect rect, float reach)
+        {
+            if (!earlyAmbientCulling)
+                return false;
+
+            if (_suppressDrawDepth > 0)
+                return true;
+
+            int count = _maskStack.Count;
+
+            if (count == 0)
+                return false;
+
+            NowRect ambient = _maskStack[count - 1].bounds;
+
+            if (ambient.isEmpty)
+                return true;
+
+            if (_transformStack.Count > 0)
+            {
+                rect = ApplyTransformRect(rect);
+                reach *= _transformMaxScale;
+            }
+
+            // Geometry keeps its antialiasing padding and snaps to physical pixels
+            // at any transform scale, so the margin stays in screen units.
+            return !ambient.Overlaps(rect.Outset(reach + 2f + ScreenPixelsToUiUnits(1f)));
+        }
+
         internal static bool IsInsideAmbientMask(Vector2 position)
         {
             int count = _maskStack.Count;
@@ -427,6 +473,47 @@ namespace NowUI
 
         static readonly List<NowTransform> _transformStack = new List<NowTransform>(4);
 
+        // The top of the transform stack, mirrored so per-vertex and per-glyph math
+        // reads four floats instead of copying the transform (which carries a
+        // matrix) out of the list. SyncTransformCache runs after every mutation.
+        static float _transformScaleX = 1f;
+
+        static float _transformScaleY = 1f;
+
+        static float _transformOriginX;
+
+        static float _transformOriginY;
+
+        static float _transformMaxScale = 1f;
+
+        static void SyncTransformCache()
+        {
+            if (_transformStack.Count == 0)
+            {
+                _transformScaleX = 1f;
+                _transformScaleY = 1f;
+                _transformOriginX = 0f;
+                _transformOriginY = 0f;
+                _transformMaxScale = 1f;
+                return;
+            }
+
+            var transform = _transformStack[_transformStack.Count - 1];
+            _transformScaleX = transform.scale.x;
+            _transformScaleY = transform.scale.y;
+            _transformOriginX = transform.origin.x;
+            _transformOriginY = transform.origin.y;
+            _transformMaxScale = Mathf.Max(Mathf.Abs(transform.scale.x), Mathf.Abs(transform.scale.y));
+        }
+
+        /// <summary>
+        /// True inside a transform whose scale is the same positive factor on both
+        /// axes: text then draws exactly like untransformed text at a scaled size
+        /// from a transformed origin, so it can keep the bulk glyph path.
+        /// </summary>
+        static bool hasUniformPositiveTransform =>
+            _transformScaleX == _transformScaleY && _transformScaleX > 0f;
+
         static readonly NowScopeGuard _transformScopes = new NowScopeGuard("Now.Transform");
 
         /// <summary>
@@ -456,6 +543,7 @@ namespace NowUI
                 ? NowTransform.Compose(_transformStack[_transformStack.Count - 1], local)
                 : local;
             _transformStack.Add(effective);
+            SyncTransformCache();
             return new NowTransformScope(_transformScopes.Enter());
         }
 
@@ -496,13 +584,17 @@ namespace NowUI
                 return default;
 
             _transformStack.Add(snapshot.transform);
+            SyncTransformCache();
             return new NowTransformScope(_transformScopes.Enter());
         }
 
         internal static void PopTransform(int token)
         {
             if (_transformScopes.Exit(token) && _transformStack.Count > 0)
+            {
                 _transformStack.RemoveAt(_transformStack.Count - 1);
+                SyncTransformCache();
+            }
         }
 
         /// <summary>
@@ -513,10 +605,9 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return position;
 
-            var transform = _transformStack[_transformStack.Count - 1];
             return new Vector2(
-                position.x * transform.scale.x + transform.origin.x,
-                position.y * transform.scale.y + transform.origin.y);
+                position.x * _transformScaleX + _transformOriginX,
+                position.y * _transformScaleY + _transformOriginY);
         }
 
         /// <summary>
@@ -527,8 +618,7 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return size;
 
-            var transform = _transformStack[_transformStack.Count - 1];
-            return new Vector2(size.x * Mathf.Abs(transform.scale.x), size.y * Mathf.Abs(transform.scale.y));
+            return new Vector2(size.x * Mathf.Abs(_transformScaleX), size.y * Mathf.Abs(_transformScaleY));
         }
 
         /// <summary>
@@ -551,7 +641,19 @@ namespace NowUI
         /// </summary>
         internal static NowFont.RenderScaleScope PushTextRenderScale()
         {
-            return NowFont.PushRenderScale(TextRenderScale());
+            float scale = TextRenderScale();
+            return scale == NowFont.renderScale ? default : NowFont.PushRenderScale(scale);
+        }
+
+        /// <summary>
+        /// True when text drawn now already resolves glyph tiers at the current
+        /// <see cref="NowFont.renderScale"/>, the usual case, so the hot text paths
+        /// can skip the render-scale scope (a try/finally that is costly under Mono).
+        /// </summary>
+        internal static bool IsTextRenderScaleCurrent(out float scale)
+        {
+            scale = TextRenderScale();
+            return scale == NowFont.renderScale;
         }
 
         static float ApplyTransformScalar(float value)
@@ -559,8 +661,7 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return value;
 
-            var transform = _transformStack[_transformStack.Count - 1];
-            return value * Mathf.Max(Mathf.Abs(transform.scale.x), Mathf.Abs(transform.scale.y));
+            return value * _transformMaxScale;
         }
 
         /// <summary>
@@ -599,8 +700,7 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return vector;
 
-            var transform = _transformStack[_transformStack.Count - 1];
-            return new Vector2(vector.x * transform.scale.x, vector.y * transform.scale.y);
+            return new Vector2(vector.x * _transformScaleX, vector.y * _transformScaleY);
         }
 
         /// <summary>Converts a screen point into the local space of the active transform stack.</summary>
@@ -609,10 +709,9 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return position;
 
-            var transform = _transformStack[_transformStack.Count - 1];
             return new Vector2(
-                Mathf.Approximately(transform.scale.x, 0f) ? 0f : (position.x - transform.origin.x) / transform.scale.x,
-                Mathf.Approximately(transform.scale.y, 0f) ? 0f : (position.y - transform.origin.y) / transform.scale.y);
+                Mathf.Approximately(_transformScaleX, 0f) ? 0f : (position.x - _transformOriginX) / _transformScaleX,
+                Mathf.Approximately(_transformScaleY, 0f) ? 0f : (position.y - _transformOriginY) / _transformScaleY);
         }
 
         /// <summary>Converts a screen vector into the local space of the active transform stack.</summary>
@@ -621,10 +720,9 @@ namespace NowUI
             if (_transformStack.Count == 0)
                 return vector;
 
-            var transform = _transformStack[_transformStack.Count - 1];
             return new Vector2(
-                Mathf.Approximately(transform.scale.x, 0f) ? 0f : vector.x / transform.scale.x,
-                Mathf.Approximately(transform.scale.y, 0f) ? 0f : vector.y / transform.scale.y);
+                Mathf.Approximately(_transformScaleX, 0f) ? 0f : vector.x / _transformScaleX,
+                Mathf.Approximately(_transformScaleY, 0f) ? 0f : vector.y / _transformScaleY);
         }
 
         #endregion
@@ -1393,6 +1491,7 @@ namespace NowUI
             ResetMaskShaderState();
             _transformStack.Clear();
             _transformScopes.Clear();
+            SyncTransformCache();
             ResetColorMultiplier();
             _rotationStack.Clear();
             _rotationScopes.Clear();
@@ -1584,6 +1683,7 @@ namespace NowUI
             }
             _ambientAnalyticMaskCount = inheritContext ? state.analyticMaskCount : 0;
             _ambientTextureMaskCount = inheritContext ? state.textureMaskCount : 0;
+            SyncTransformCache();
             InvalidateMaskShaderState();
             _captureMesh = true;
             _meshes = RentCaptureMeshes();
@@ -1844,6 +1944,7 @@ namespace NowUI
             _transformStack.Clear();
             _transformStack.AddRange(state.transformStack);
             _transformScopes.RestoreFrom(state.transformScopeTokens);
+            SyncTransformCache();
             _colorMultiplier = state.colorMultiplier;
             _colorMultiplierStack.Clear();
             _colorMultiplierStack.AddRange(state.colorMultiplierStack);
@@ -2507,6 +2608,15 @@ namespace NowUI
             position.width = position.width + pad.x + pad.z;
             position.height = position.height + pad.y + pad.w;
 
+            // Rects clipped away entirely (rows scrolled out of a view) skip the
+            // material, snapping and color work below. The reach covers blur and
+            // outline; the final per-quad mask test stays authoritative.
+            if (_maskStack.Count > 0 &&
+                IsOutsideAmbientMask(position, Mathf.Max(0f, rectangle.blur) + Mathf.Max(0f, rectangle.outline)))
+            {
+                return;
+            }
+
             // A plain rectangle has no texture or material reference at all; the
             // reference test skips Unity's native lifetime check in that case.
             bool hasTexture = rectangle.texture is not null && rectangle.texture != null;
@@ -2780,10 +2890,9 @@ namespace NowUI
                     transformedRect.x,
                     -transformedRect.y - transformedRect.height);
 
-                Vector2 signedScale = _transformStack[_transformStack.Count - 1].scale;
                 sourceDirection = new Vector2(
-                    signedScale.x < 0f ? -1f : 1f,
-                    signedScale.y < 0f ? -1f : 1f);
+                    _transformScaleX < 0f ? -1f : 1f,
+                    _transformScaleY < 0f ? -1f : 1f);
             }
             else
             {
@@ -2905,6 +3014,44 @@ namespace NowUI
                     mesh.AddRect(_tmpVertex, 0f, 0f);
                 }
             }
+        }
+
+        /// <summary>
+        /// True when drawing <paramref name="style"/> at <paramref name="rect"/> would
+        /// produce nothing: drawing is suppressed (a layout measure pass), or the
+        /// rect lies outside the ambient mask by more than the visual padding
+        /// <see cref="PrepareTextDraw"/> allows. It is the same final test, so
+        /// callers can skip work (such as measuring glyph bounds for a clip mask)
+        /// for text that would be culled.
+        /// </summary>
+        internal static bool IsTextDrawSkipped(in NowText style, NowRect rect)
+        {
+            if (!earlyAmbientCulling)
+                return false;
+
+            if (_suppressDrawDepth > 0)
+                return true;
+
+            if (_maskStack.Count == 0)
+                return false;
+
+            NowRect ambient = _maskStack[_maskStack.Count - 1].bounds;
+
+            if (ambient.isEmpty)
+                return true;
+
+            bool hasTransform = _transformStack.Count > 0;
+            float motionOutset = style.animation.isAnimated ? style.animation.boundedOutset : 0f;
+            float outlineOutset = Mathf.Max(0f, style.outline * style.fontSize);
+            // One extra unit (and the baseline-snap half pixel) keeps this at least
+            // as generous as the draw-time test.
+            float outset = 9f + outlineOutset + motionOutset;
+            NowRect overlapRect = hasTransform ? ApplyTransformRect(rect) : rect;
+            overlapRect = overlapRect.Outset(hasTransform
+                ? ApplyTransformScalar(outset)
+                : outset + ScreenPixelsToUiUnits(0.5f));
+
+            return !ambient.Overlaps(overlapRect);
         }
 
         static bool PrepareTextDraw(ref NowText style)
@@ -3057,8 +3204,18 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
-            using var renderScale = PushTextRenderScale();
+            if (IsTextRenderScaleCurrent(out float scale))
+            {
+                DrawStringAtScale(ref style, value);
+                return;
+            }
 
+            using (NowFont.PushRenderScale(scale))
+                DrawStringAtScale(ref style, value);
+        }
+
+        static void DrawStringAtScale(ref NowText style, string value)
+        {
             if (style.needsBlockLayout)
             {
                 DrawTextBlock(style, value);
@@ -3086,23 +3243,23 @@ namespace NowUI
                 style.outlineOnlyPass = true;
                 style.resolvedGradientPayload = default;
                 style.resolvedGradientRamp = 0f;
-                DrawStringPass(style, value);
+                DrawStringPass(ref style, value);
 
                 fillStyle.outline = 0f;
                 fillStyle.rangeOutline = 0f;
-                DrawStringPass(fillStyle, value);
+                DrawStringPass(ref fillStyle, value);
                 return;
             }
 
-            DrawStringPass(style, value);
+            DrawStringPass(ref style, value);
         }
 
-        static void DrawStringPass(NowText style, string value)
+        static void DrawStringPass(ref NowText style, string value)
         {
             if (style.outlineOnlyPass && IsTextWhitespaceOnly(value.AsSpan()))
                 style.rangeOutline = 0f;
 
-            if (textShaping && TryDrawShapedString(style, value))
+            if (textShaping && TryDrawShapedString(ref style, value))
                 return;
 
             // Prepared runs bake one font and range in bulk. A whitespace-bearing
@@ -3128,7 +3285,7 @@ namespace NowUI
                 PrepareTextAnimation(
                     ref style,
                     style.animation.isAnimated ? NowTextUnitCursor.Count(value.AsSpan()) : 0);
-                DrawPreparedCodepointRun(style, preparedFont, preparedRun);
+                DrawPreparedCodepointRun(ref style, preparedFont, preparedRun);
                 return;
             }
 
@@ -3140,7 +3297,7 @@ namespace NowUI
             PrepareTextAnimation(
                 ref style,
                 style.animation.isAnimated ? NowTextUnitCursor.Count(value.AsSpan()) : 0);
-            DrawStringCodepoints(style, value.AsSpan());
+            DrawStringCodepoints(ref style, value.AsSpan());
         }
 
         /// <summary>
@@ -3153,8 +3310,18 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
                 return;
 
-            using var renderScale = PushTextRenderScale();
+            if (IsTextRenderScaleCurrent(out float scale))
+            {
+                DrawStringAtScale(ref style, value);
+                return;
+            }
 
+            using (NowFont.PushRenderScale(scale))
+                DrawStringAtScale(ref style, value);
+        }
+
+        static void DrawStringAtScale(ref NowText style, ReadOnlySpan<char> value)
+        {
             if (style.needsBlockLayout)
             {
                 DrawTextBlock(style, value);
@@ -3175,18 +3342,18 @@ namespace NowUI
                 style.outlineOnlyPass = true;
                 style.resolvedGradientPayload = default;
                 style.resolvedGradientRamp = 0f;
-                DrawStringSpanPass(style, value);
+                DrawStringSpanPass(ref style, value);
 
                 fillStyle.outline = 0f;
                 fillStyle.rangeOutline = 0f;
-                DrawStringSpanPass(fillStyle, value);
+                DrawStringSpanPass(ref fillStyle, value);
                 return;
             }
 
-            DrawStringSpanPass(style, value);
+            DrawStringSpanPass(ref style, value);
         }
 
-        static void DrawStringSpanPass(NowText style, ReadOnlySpan<char> value)
+        static void DrawStringSpanPass(ref NowText style, ReadOnlySpan<char> value)
         {
             if (style.outlineOnlyPass && IsTextWhitespaceOnly(value))
                 style.rangeOutline = 0f;
@@ -3194,10 +3361,10 @@ namespace NowUI
             PrepareTextAnimation(
                 ref style,
                 style.animation.isAnimated ? NowTextUnitCursor.Count(value) : 0);
-            DrawStringCodepoints(style, value);
+            DrawStringCodepoints(ref style, value);
         }
 
-        static void PrewarmBaseStringResources(NowText style, string value)
+        static void PrewarmBaseStringResources(in NowText style, string value)
         {
             if (textShaping && TryPrewarmBaseShapedResources(style, value))
                 return;
@@ -3221,7 +3388,7 @@ namespace NowUI
             PrewarmBaseSpanResources(style, value.AsSpan());
         }
 
-        static bool TryPrewarmBaseShapedResources(NowText style, string value)
+        static bool TryPrewarmBaseShapedResources(in NowText style, string value)
         {
             if (!style.font.TryResolveFont(style.fontStyle, out var font) ||
                 font == null ||
@@ -3263,7 +3430,7 @@ namespace NowUI
             PrewarmCodepointResources(style, value);
         }
 
-        static void PrewarmCodepointResources(NowText style, ReadOnlySpan<char> value)
+        static void PrewarmCodepointResources(in NowText style, ReadOnlySpan<char> value)
         {
             for (int i = 0; i < value.Length; ++i)
             {
@@ -3415,7 +3582,7 @@ namespace NowUI
                 : style.rect.y;
         }
 
-        static void DrawStringCodepoints(NowText style, ReadOnlySpan<char> value)
+        static void DrawStringCodepoints(ref NowText style, ReadOnlySpan<char> value)
         {
             bool hasTransform = _transformStack.Count > 0;
 
@@ -3660,7 +3827,7 @@ namespace NowUI
             }
         }
 
-        static void DrawPreparedCodepointRun(NowText style, NowFont font, NowFont.PreparedCodepointRun run)
+        static void DrawPreparedCodepointRun(ref NowText style, NowFont font, NowFont.PreparedCodepointRun run)
         {
             bool hasTransform = _transformStack.Count > 0;
             var fontSize = style.fontSize;
@@ -3677,13 +3844,17 @@ namespace NowUI
             float lineHeight = style.font.GetLineHeight(style.fontStyle) * fontSize;
             float leftPos = style.rect.x;
 
-            if (!hasTransform && !style.perGlyph)
+            // A uniform positive transform only scales and offsets glyphs, which the
+            // bulk writer reproduces from the transformed origin at the scaled size.
+            if (!style.perGlyph && (!hasTransform || hasUniformPositiveTransform))
             {
-                DrawPreparedCodepointRunUntransformed(
+                DrawPreparedCodepointRunBulk(
                     ref style,
                     font,
                     run,
                     fontSize,
+                    textScale,
+                    hasTransform,
                     scaledBaseline,
                     color,
                     outlineColor,
@@ -3703,7 +3874,7 @@ namespace NowUI
 
             for (int i = 0; i < run.length; ++i)
             {
-                var prepared = glyphs[i];
+                ref readonly var prepared = ref glyphs[i];
 
                 if (prepared.lineBreak)
                 {
@@ -3812,11 +3983,20 @@ namespace NowUI
             }
         }
 
-        static void DrawPreparedCodepointRunUntransformed(
+        /// <summary>
+        /// Emits a prepared codepoint run through the bulk glyph writer. With
+        /// <paramref name="transformed"/> set (a uniform positive transform), the pen
+        /// runs in transformed space at <paramref name="textScale"/> times the size,
+        /// while <paramref name="style"/> keeps advancing in local units.
+        /// <paramref name="baseline"/> and <paramref name="outline"/> are already scaled.
+        /// </summary>
+        static void DrawPreparedCodepointRunBulk(
             ref NowText style,
             NowFont font,
             NowFont.PreparedCodepointRun run,
             float fontSize,
+            float textScale,
+            bool transformed,
             float baseline,
             Vector4 color,
             Vector4 outlineColor,
@@ -3829,16 +4009,19 @@ namespace NowUI
             ref float pixelRange)
         {
             int i = 0;
-            float penX = style.rect.x;
+            float drawFontSize = fontSize * textScale;
+            float penX = transformed ? style.rect.x * _transformScaleX + _transformOriginX : style.rect.x;
+            float localPenX = style.rect.x;
             var glyphs = run.glyphs;
 
             while (i < run.length)
             {
-                var prepared = glyphs[i];
+                ref readonly var prepared = ref glyphs[i];
 
                 if (prepared.lineBreak)
                 {
-                    penX = leftPos;
+                    penX = transformed ? leftPos * _transformScaleX + _transformOriginX : leftPos;
+                    localPenX = leftPos;
                     style.rect.y += lineHeight;
                     ++i;
                     continue;
@@ -3846,7 +4029,8 @@ namespace NowUI
 
                 if (!prepared.visible)
                 {
-                    penX += prepared.advance * fontSize;
+                    penX += prepared.advance * drawFontSize;
+                    localPenX += prepared.advance * fontSize;
                     ++i;
                     continue;
                 }
@@ -3854,7 +4038,8 @@ namespace NowUI
                 if (style.outlineOnlyPass &&
                     font.IsColorGlyph(prepared.glyph.unicode, fontSize, style.rangeOutline))
                 {
-                    penX += prepared.advance * fontSize;
+                    penX += prepared.advance * drawFontSize;
+                    localPenX += prepared.advance * fontSize;
                     ++i;
                     continue;
                 }
@@ -3873,7 +4058,7 @@ namespace NowUI
                 if (!ReferenceEquals(pixelRangeFont, font) ||
                     !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
                 {
-                    pixelRange = font.GetScreenPixelRange(prepared.glyph.unicode, fontSize, style.rangeOutline);
+                    pixelRange = font.GetScreenPixelRange(prepared.glyph.unicode, fontSize, style.rangeOutline) * textScale;
                     pixelRangeFont = font;
                     pixelRangeMaterial = glyphMaterial;
                 }
@@ -3891,7 +4076,7 @@ namespace NowUI
 
                 while (end < run.length && visibleGlyphs < pageRoom)
                 {
-                    var next = glyphs[end];
+                    ref readonly var next = ref glyphs[end];
 
                     if (next.lineBreak)
                         break;
@@ -3907,14 +4092,26 @@ namespace NowUI
                     ++end;
                 }
 
+                // Transformed text never snaps its baseline (see PrepareTextDraw),
+                // matching the per-glyph path this replaces.
+                float originY = transformed
+                    ? style.rect.y * _transformScaleY + _transformOriginY
+                    : TextLineOriginY(style, baseline);
+
+                if (transformed)
+                {
+                    for (int k = i; k < end; ++k)
+                        localPenX += glyphs[k].advance * fontSize;
+                }
+
                 int firstGradientVertex = mesh.vertexCount;
                 penX = mesh.AddCodepointTextRunReserved(
                     run,
                     i,
                     end,
                     penX,
-                    TextLineOriginY(style, baseline),
-                    fontSize,
+                    originY,
+                    drawFontSize,
                     baseline,
                     style.mask,
                     color,
@@ -3929,7 +4126,7 @@ namespace NowUI
                 i = end;
             }
 
-            style.rect.x = penX;
+            style.rect.x = transformed ? localPenX : penX;
         }
 
         /// <summary>
@@ -4297,7 +4494,7 @@ namespace NowUI
             return written;
         }
 
-        static bool TryDrawShapedString(NowText style, string value)
+        static bool TryDrawShapedString(ref NowText style, string value)
         {
             if (!style.font.TryResolveFont(style.fontStyle, out var font) || font == null)
                 return false;
@@ -4308,7 +4505,7 @@ namespace NowUI
             var fontSize = style.fontSize;
 
             if (!HasShapedControlCharacters(value))
-                return TryDrawSingleShapedLine(style, font, value, fontSize);
+                return TryDrawSingleShapedLine(ref style, font, value, fontSize);
 
             var segmentation = GetShapedSegmentation(value);
             var segments = segmentation.segments;
@@ -4495,7 +4692,7 @@ namespace NowUI
             return false;
         }
 
-        static bool TryDrawSingleShapedLine(NowText style, NowFont font, string value, float fontSize)
+        static bool TryDrawSingleShapedLine(ref NowText style, NowFont font, string value, float fontSize)
         {
             if (!font.TryGetPreparedShapedRun(value, fontSize, style.rangeOutline, out var run))
                 return false;
@@ -4546,9 +4743,11 @@ namespace NowUI
         {
             bool hasTransform = _transformStack.Count > 0;
 
-            if (!hasTransform && !style.perGlyph)
+            // A uniform positive transform only scales and offsets glyphs, which the
+            // bulk writer reproduces from the transformed origin at the scaled size.
+            if (!style.perGlyph && (!hasTransform || hasUniformPositiveTransform))
             {
-                return AppendShapedRunUntransformed(
+                return AppendShapedRunBulk(
                     ref style,
                     font,
                     run,
@@ -4557,6 +4756,7 @@ namespace NowUI
                     color,
                     outlineColor,
                     outline,
+                    hasTransform,
                     ref mesh,
                     ref pixelRangeFont,
                     ref pixelRangeMaterial,
@@ -4573,9 +4773,8 @@ namespace NowUI
 
             for (int g = 0; g < run.length; ++g)
             {
-                var shaped = glyphs[g];
-
-                var glyph = shaped.glyph;
+                ref readonly var shaped = ref glyphs[g];
+                ref readonly var glyph = ref shaped.glyph;
                 var glyphMaterial = shaped.material;
 
                 if (shaped.visible)
@@ -4666,7 +4865,13 @@ namespace NowUI
             return true;
         }
 
-        static bool AppendShapedRunUntransformed(
+        /// <summary>
+        /// Emits a shaped run through the bulk glyph writer. With
+        /// <paramref name="transformed"/> set (a uniform positive transform), the pen
+        /// runs in transformed space at the scaled size, while <paramref name="style"/>
+        /// keeps advancing in local units exactly as the per-glyph path does.
+        /// </summary>
+        static bool AppendShapedRunBulk(
             ref NowText style,
             NowFont font,
             NowFont.PreparedShapedRun run,
@@ -4675,27 +4880,44 @@ namespace NowUI
             Vector4 color,
             Vector4 outlineColor,
             float outline,
+            bool transformed,
             ref NowMesh mesh,
             ref NowFont pixelRangeFont,
             ref Material pixelRangeMaterial,
             ref float pixelRange)
         {
             int g = 0;
-            float penX = style.rect.x;
             var glyphs = run.glyphs;
+            float textScale = 1f;
+            float drawFontSize = fontSize;
+            float drawBaseline = baseline;
+            float drawOutline = outline;
+            float penX = style.rect.x;
+            // Transformed text never snaps its baseline (see PrepareTextDraw),
+            // matching the per-glyph path this replaces.
+            float originY = transformed ? style.rect.y : TextLineOriginY(style, baseline);
+
+            if (transformed)
+            {
+                textScale = _transformMaxScale;
+                drawFontSize = fontSize * textScale;
+                drawBaseline = baseline * textScale;
+                drawOutline = outline * textScale;
+                penX = penX * _transformScaleX + _transformOriginX;
+                originY = originY * _transformScaleY + _transformOriginY;
+            }
 
             while (g < run.length)
             {
-                var shaped = glyphs[g];
+                ref readonly var shaped = ref glyphs[g];
 
                 if (!shaped.visible)
                 {
-                    penX += shaped.xAdvance * fontSize;
+                    penX += shaped.xAdvance * drawFontSize;
                     ++g;
                     continue;
                 }
 
-                var glyph = shaped.glyph;
                 var glyphMaterial = shaped.material;
                 bool sameMaterial = mesh != null && ReferenceEquals(mesh.material, glyphMaterial);
 
@@ -4710,7 +4932,7 @@ namespace NowUI
                 if (!ReferenceEquals(pixelRangeFont, font) ||
                     !ReferenceEquals(pixelRangeMaterial, glyphMaterial))
                 {
-                    pixelRange = font.GetScreenPixelRange(glyph.unicode, fontSize, style.rangeOutline);
+                    pixelRange = font.GetScreenPixelRange(shaped.glyph.unicode, fontSize, style.rangeOutline) * textScale;
                     pixelRangeFont = font;
                     pixelRangeMaterial = glyphMaterial;
                 }
@@ -4728,7 +4950,7 @@ namespace NowUI
 
                 while (end < run.length && visibleGlyphs < pageRoom)
                 {
-                    var next = glyphs[end];
+                    ref readonly var next = ref glyphs[end];
 
                     if (next.visible)
                     {
@@ -4747,13 +4969,13 @@ namespace NowUI
                     g,
                     end,
                     penX,
-                    TextLineOriginY(style, baseline),
-                    fontSize,
-                    baseline,
+                    originY,
+                    drawFontSize,
+                    drawBaseline,
                     style.mask,
                     color,
                     outlineColor,
-                    outline,
+                    drawOutline,
                     pixelRange,
                     style.outlineOnlyPass);
                 mesh.SetTextGradient(
@@ -4763,7 +4985,17 @@ namespace NowUI
                 g = end;
             }
 
-            style.rect.x = penX;
+            if (transformed)
+            {
+                // Advance in local units, glyph by glyph like the per-glyph path.
+                for (int i = 0; i < run.length; ++i)
+                    style.rect.x += glyphs[i].xAdvance * fontSize;
+            }
+            else
+            {
+                style.rect.x = penX;
+            }
+
             return true;
         }
 

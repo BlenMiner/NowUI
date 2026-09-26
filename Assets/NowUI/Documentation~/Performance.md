@@ -74,3 +74,24 @@ properties or time-varying custom coverage: each use recopies the template,
 forces the standard SDF arrays to be uploaded again, and prevents a custom mask
 capture from being reused. `NowSdf.Release(id)` and `NowSdf.Reset()` release
 these owned clones; the caller-owned template remains alive.
+
+## Clipped and transformed content
+
+Content outside the active mask, such as rows scrolled out of a scroll view,
+still runs layout, interaction and focus registration. Keyboard navigation can
+therefore reach controls that are out of view. Drawing work for that content is
+skipped early:
+
+- Labels and rectangles clipped away return before styling, measuring or
+  emitting geometry.
+- Controls drawn by the built-in renderers skip the renderer. The skip allows
+  for the theme's shadows, focus rings, state layers and rectangle presets.
+
+A custom `NowControlRenderer` subclass is always called, because it may draw
+beyond the control rect. Long lists still pay layout for every row, so keep
+row counts bounded or page them.
+
+Text inside a `Now.Transform` whose scale is the same positive value on both
+axes uses the same bulk glyph writer as untransformed text. Zoomable canvases
+therefore cost about the same as unzoomed ones. Non-uniform or mirrored
+transforms, letter spacing and text animations place glyphs one at a time.

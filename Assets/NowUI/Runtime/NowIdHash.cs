@@ -297,15 +297,18 @@ namespace NowUI
         {
             unchecked
             {
-                ulong hash = StringSeed ^ ((ulong)value.Length * GoldenRatio);
+                int length = value.Length;
+                ulong hash = StringSeed ^ ((ulong)length * GoldenRatio);
 
-                for (int i = 0; i < value.Length; ++i)
+                // RotateLeft(hash, 27) written out: every string id is hashed per
+                // draw, and a call per character is costly in debug Mono builds.
+                for (int i = 0; i < length; ++i)
                 {
                     hash ^= (ulong)value[i] + SegmentSeed;
-                    hash = RotateLeft(hash, 27) * MixMultiplier1 + MixMultiplier2;
+                    hash = ((hash << 27) | (hash >> 37)) * MixMultiplier1 + MixMultiplier2;
                 }
 
-                return Avalanche(hash ^ ((ulong)value.Length * MixMultiplier2));
+                return Avalanche(hash ^ ((ulong)length * MixMultiplier2));
             }
         }
 

@@ -163,7 +163,10 @@ namespace NowUI.Internal
 
         public readonly bool IsOutsideMask(Vector4 rect)
         {
-            return rect.x + rect.z < mask.x ||
+            // An empty mask (an own clip rect disjoint from the ambient mask)
+            // clips everything; the shader would discard every fragment.
+            return mask.z <= 0f || mask.w <= 0f ||
+                rect.x + rect.z < mask.x ||
                 rect.x >= mask.x + mask.z ||
                 -rect.y < mask.y ||
                 -rect.y - rect.w >= mask.y + mask.w;
@@ -783,17 +786,17 @@ namespace NowUI.Internal
         }
 
         internal void AddTextGlyphReserved(
-            NowFontAtlasInfo.Glyph glyph,
+            in NowFontAtlasInfo.Glyph glyph,
             float x,
             float y,
             float fontSize,
             float baseline,
-            Vector4 mask,
-            Vector4 color,
-            Vector4 outlineColor,
+            in Vector4 mask,
+            in Vector4 color,
+            in Vector4 outlineColor,
             float outline,
             float pixelRange,
-            Vector4 gradient = default,
+            in Vector4 gradient = default,
             float encodedGradient = 0f,
             bool outlineOnly = false)
         {

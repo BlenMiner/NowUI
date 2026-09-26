@@ -33,6 +33,10 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch] $UpdateBaselines,
+    # Launch Unity without a graphics device so it never takes window focus.
+    # Only for CPU-side runs (benchmarks, logic tests): rendering tests and
+    # visual captures need the GPU and fail or skip without it.
+    [switch] $NoGraphics,
 
     [Parameter(Mandatory = $false)]
     [string] $Ffmpeg,
@@ -244,6 +248,10 @@ function Invoke-Unity {
         "-projectPath", $project,
         "-logFile", $LogPath
     ) + $UnityArgs
+
+    if ($NoGraphics) {
+        $args += "-nographics"
+    }
 
     Write-Host "Running Unity from '$editor' for project '$project': $($UnityArgs -join ' ')"
     $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
