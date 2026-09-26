@@ -163,6 +163,70 @@ namespace NowUI
             return true;
         }
 
+        [NonSerialized] float _builtInControlReach;
+
+        [NonSerialized] int _builtInControlReachVersion = -1;
+
+        /// <summary>
+        /// How far past its rect a control drawn by a built-in renderer can paint:
+        /// focus rings, state layers, slider knobs, elevation shadows, and
+        /// rectangle presets with padding, blur or outline. Controls clipped away
+        /// by more than this skip the renderer. Memoized until theme content changes.
+        /// </summary>
+        internal float builtInControlReach
+        {
+            get
+            {
+                if (_builtInControlReachVersion != _contentVersion)
+                {
+                    _builtInControlReach = ComputeBuiltInControlReach();
+                    _builtInControlReachVersion = _contentVersion;
+                }
+
+                return _builtInControlReach;
+            }
+        }
+
+        float ComputeBuiltInControlReach()
+        {
+            // Rectangles grow by two units of antialiasing beyond blur and outline;
+            // the rest of the margin covers state-scaled rects and rounding.
+            const float Margin = 8f;
+
+            ref readonly var styles = ref _controlStyles;
+            float reach = styles.focusRingOffset + Mathf.Max(0f, styles.focusOutline);
+            reach = Mathf.Max(reach, 0.5f * Mathf.Max(
+                styles.toggleStateLayerSize,
+                Mathf.Max(styles.sliderStateLayerSize, styles.sliderKnobSize)));
+
+            for (var level = NowElevationToken.Raised; level <= NowElevationToken.Modal; ++level)
+            {
+                if (!TryGetShadow(level, out var preset))
+                    continue;
+
+                reach = Mathf.Max(reach, ShadowReach(preset.key));
+                reach = Mathf.Max(reach, ShadowReach(preset.ambient));
+            }
+
+            for (int style = 0; style < ResolvedRectangleStyleCount; ++style)
+            {
+                if (!TryGetResolvedRectanglePreset((NowRectangleStyle)style, out var resolved) || !resolved.hasPreset)
+                    continue;
+
+                float padding = Mathf.Max(
+                    Mathf.Max(resolved.padding.x, resolved.padding.y),
+                    Mathf.Max(resolved.padding.z, resolved.padding.w));
+                reach = Mathf.Max(reach, Mathf.Max(0f, padding) + Mathf.Max(0f, resolved.blur) + Mathf.Max(0f, resolved.outline));
+            }
+
+            return reach + Margin;
+        }
+
+        static float ShadowReach(in NowShadowLayer layer)
+        {
+            return Mathf.Abs(layer.offsetY) + Mathf.Max(0f, layer.spread) + Mathf.Max(0f, layer.blur) + 2f;
+        }
+
         public NowRectangleStyle defaultRectangleStyle => _defaultRectangleStyle;
 
         public NowTextStyle defaultTextStyle => _defaultTextStyle;

@@ -555,9 +555,14 @@ namespace NowUI
 
         static void EnsureMaskShaderState()
         {
-            int textureValidity = NowUI.Internal.NowMaskShader.TextureValidityBits(_cachedMaskShaderState);
-            if (!_maskShaderStateDirty && textureValidity == _cachedMaskTextureValidity)
+            // Every batch lookup lands here. Without texture masks the validity
+            // bits are always zero, so skip recomputing them.
+            if (!_maskShaderStateDirty &&
+                (_cachedMaskShaderState.textureCount == 0 ||
+                    NowUI.Internal.NowMaskShader.TextureValidityBits(_cachedMaskShaderState) == _cachedMaskTextureValidity))
+            {
                 return;
+            }
 
             NowUI.Internal.NowMaskShaderState state = default;
 

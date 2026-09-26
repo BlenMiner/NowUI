@@ -1075,6 +1075,11 @@ namespace NowUI
 
         static void DrawCenteredLabel(NowThemeAsset activeThemeAsset, NowRect rect, string label, NowTextStyle textStyle, NowRect mask, Color color, bool overrideColor)
         {
+            // The explicit mask bounds every glyph, so a label clipped away (a
+            // control scrolled out of view) skips styling, measuring and shaping.
+            if (!mask.isEmpty && Now.IsOutsideAmbientMask(mask, 0f))
+                return;
+
             var text = Text(activeThemeAsset, textStyle);
             Vector2 size = MeasureLabel(in text, label);
             float pad = 1f;
@@ -1136,6 +1141,12 @@ namespace NowUI
             bool overrideColor,
             bool italic = false)
         {
+            NowRect mask = rect.Outset(0f, 4f);
+
+            // The explicit mask bounds every glyph; see DrawCenteredLabel.
+            if (Now.IsOutsideAmbientMask(mask, 0f))
+                return;
+
             var text = Text(activeThemeAsset, textStyle);
 
             if (italic)
@@ -1153,7 +1164,20 @@ namespace NowUI
             if (overrideColor)
                 text = text.SetColor(color);
 
-            text.SetMask(rect.Outset(0f, 4f)).Draw(label);
+            text.SetMask(mask).Draw(label);
+        }
+
+        /// <summary>
+        /// True when a control at <paramref name="rect"/> is clipped away entirely,
+        /// counting everything the built-in renderers draw around it (see
+        /// <see cref="NowThemeAsset.builtInControlReach"/>). Controls then skip a
+        /// built-in renderer (see <see cref="NowControlRenderer.isBuiltIn"/>);
+        /// layout, interaction and focus registration still run.
+        /// </summary>
+        internal static bool IsOutsideView(NowThemeAsset themeAsset, NowRect rect)
+        {
+            return Now.hasAmbientCulling &&
+                Now.IsOutsideAmbientMask(rect, themeAsset != null ? themeAsset.builtInControlReach : 64f);
         }
     }
 

@@ -158,6 +158,52 @@ backends. They are included by the default `Performance` selection. The new
 overview category supplements that coverage rather than changing those older
 workloads or their measurement conventions.
 
+## Feature frame builds
+
+[`NowFeaturePerformanceTests`](../Assets/NowUITests/NowFeaturePerformanceTests.cs)
+times fixed draw-list workloads for features the older suites do not isolate:
+
+- drop-shadowed cards;
+- rounded gradient fills;
+- rotation scopes and a uniformly zoomed canvas;
+- nested opacity scopes;
+- 1,140 short text draws per frame, which measures per-draw overhead;
+- aligned, letter-spaced, outlined, wave-animated and gradient text.
+
+The cases follow the `NowRuntimePerformanceTests` conventions: five warmups and
+20 frames, and timings only. Select them with `-Filter NowFeaturePerformanceTests`.
+
+## Standalone CPU runner
+
+`Standalone/Benchmarks/FrameCpu` draws the same kinds of scenes on the
+engine-free build with the null render backend. It covers:
+
+- rectangles, text runs and lines, labels and measurement;
+- layout, scroll rows, 1,000 controls in a scroll view, and a 100-node graph;
+- the feature scenes above.
+
+Timings exclude GPU work and Unity Editor noise, and a sampling profiler can
+attach directly:
+
+```powershell
+dotnet build -c Release Standalone/Benchmarks/FrameCpu
+Standalone/Benchmarks/FrameCpu/bin/Release/net9.0/FrameCpu.exe --samples 300 --only controls,node-graph
+dotnet-trace collect --profile dotnet-sampled-thread-time --format speedscope `
+  -- Standalone/Benchmarks/FrameCpu/bin/Release/net9.0/FrameCpu.exe --profile controls --seconds 15
+```
+
+The runner pins itself to one core at high priority (`--core -1` disables this).
+It also warms each scene for at least a second so tiered JIT has promoted the
+hot methods. Even so, separate processes can settle up to about 1.5 times apart
+because of memory layout. Compare builds with interleaved processes, at least
+six per side, and use the median of the per-process medians.
+
+The CoreCLR JIT inlines and optimizes far more than the Editor's debug-mode
+Mono. Struct copies, call depth and property calls cost much more in Unity than
+this runner suggests. Profiling with `DOTNET_JITMinOpts=1` or
+`DOTNET_JitNoInline=1` is a closer proxy for Editor attribution. Confirm any
+change with a Unity A/B before claiming a speedup.
+
 ## Reading timing and memory metrics
 
 | Metric | Timed work and limits |

@@ -66,6 +66,43 @@ public class NowUsabilityApiTests
 
     static void DrawCard() => Now.Rectangle(Card).SetColor(Color.white).Draw();
 
+    // ---------------------------------------------------------------- label culling
+
+    [Test]
+    public void LabelsOutsideTheMaskSkipWorkButVisibleOnesStillDraw()
+    {
+        var style = Now.Text(default).SetFontSize(14f);
+        var clip = new NowRect(0f, 0f, 200f, 100f);
+
+        Assert.IsFalse(Now.IsTextDrawSkipped(style, new NowRect(0f, 400f, 100f, 20f)), "Without a mask nothing is culled.");
+
+        using (Now.Mask(clip))
+        {
+            Assert.IsFalse(Now.IsTextDrawSkipped(style, new NowRect(10f, 10f, 100f, 20f)));
+            // Just outside the mask, within the padding glyph overhang may use.
+            Assert.IsFalse(Now.IsTextDrawSkipped(style, new NowRect(10f, 104f, 100f, 20f)));
+            Assert.IsTrue(Now.IsTextDrawSkipped(style, new NowRect(10f, 400f, 100f, 20f)));
+
+            // Outlines widen the reach.
+            var outlined = style.SetOutline(1f);
+            Assert.IsFalse(Now.IsTextDrawSkipped(outlined, new NowRect(10f, 120f, 100f, 20f)));
+        }
+
+        // Labels culled by a scroll mask draw nothing; visible ones match a plain draw.
+        using (_drawList.Begin(Surface))
+        using (Now.Mask(clip))
+        using (NowLayout.Area("cull-area", new NowRect(0f, 0f, 200f, 1000f)))
+        {
+            NowLayout.Label("Visible").Draw();
+            NowLayout.Space(600f);
+            NowLayout.Label("Hidden").Draw();
+        }
+
+        foreach (var vertex in UiVertices(_drawList))
+            Assert.Less(vertex.y, 110f, "Only the visible label emits geometry.");
+        Assert.Greater(UiVertices(_drawList).Count, 0, "The visible label still draws.");
+    }
+
     // ---------------------------------------------------------------- genie
 
     [Test]

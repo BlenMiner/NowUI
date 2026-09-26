@@ -116,8 +116,11 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
-            renderer.DrawButton(new NowButtonRenderContext(
-                theme, rect, null, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+            {
+                renderer.DrawButton(new NowButtonRenderContext(
+                    theme, rect, null, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
+            }
 
             // Content is clipped to the button: with deferred sizing the first
             // frames can be smaller than the content, and oversized children should
@@ -152,8 +155,13 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
-            renderer.DrawButton(new NowButtonRenderContext(
-                theme, rect, _label, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
+            // A built-in renderer draws nothing that could show once the control
+            // (with its shadow and focus ring) is clipped away, e.g. scrolled out.
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+            {
+                renderer.DrawButton(new NowButtonRenderContext(
+                    theme, rect, _label, _rectPreset, _textPreset, interaction, focused, submitted, hoverT));
+            }
 
             return interaction.clicked || submitted;
         }
@@ -476,7 +484,9 @@ namespace NowUI
             float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
-            renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
+
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+                renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, glyphRect, value, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
@@ -518,7 +528,9 @@ namespace NowUI
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var boxRect = renderer.ToggleGlyphRect(theme, rect, box);
 
-            renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, boxRect, value, interaction, focused, hoverT));
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+                renderer.DrawCheckbox(new NowToggleRenderContext(theme, rect, boxRect, value, interaction, focused, hoverT));
+
             NowControls.DrawLeftLabel(theme, renderer.ToggleContentRect(theme, rect, box), _label, _textPreset);
             return changed;
         }
@@ -622,7 +634,9 @@ namespace NowUI
             float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
-            renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
+
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+                renderer.DrawRadio(new NowToggleRenderContext(theme, rect, glyphRect, _isOn, interaction, focused, hoverT));
 
             var mask = Now.Mask(rect);
             var area = NowLayout.Area(areaKey, renderer.ToggleContentRect(theme, rect, glyphSize));
@@ -660,7 +674,9 @@ namespace NowUI
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var circleRect = renderer.ToggleGlyphRect(theme, rect, circle);
 
-            renderer.DrawRadio(new NowToggleRenderContext(theme, rect, circleRect, _isOn, interaction, focused, hoverT));
+            if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
+                renderer.DrawRadio(new NowToggleRenderContext(theme, rect, circleRect, _isOn, interaction, focused, hoverT));
+
             NowControls.DrawLeftLabel(theme, renderer.ToggleContentRect(theme, rect, circle), _label, _textPreset);
             return interaction.clicked || submitted;
         }
@@ -889,6 +905,16 @@ namespace NowUI
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             float normalized = (value - min) / range;
+            // Skip the visuals of a slider clipped away (see NowButton.Draw); the value,
+            // keyboard stepping and repeat state above are already up to date.
+            if (NowControls.IsOutsideView(theme, outer))
+            {
+                if (!renderer.isBuiltIn)
+                    renderer.DrawSlider(new NowSliderRenderContext(theme, rect, renderer.CalculateSliderMetrics(theme, rect, normalized), interaction, focused, hoverT));
+
+                return !Mathf.Approximately(previous, value);
+            }
+
             var metrics = renderer.CalculateSliderMetrics(theme, rect, normalized);
             renderer.DrawSlider(new NowSliderRenderContext(theme, rect, metrics, interaction, focused, hoverT));
 
