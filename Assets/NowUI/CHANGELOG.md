@@ -1,3 +1,10 @@
+## [1.23.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.23.0...nowui-v1.23.1) (2026-09-26)
+
+
+### Performance Improvements
+
+* skip clipped controls, labels and rects; bulk text under uniform transforms ([18ced11](https://github.com/BlenMiner/NowUI/commit/18ced115ca45392a939d621970676d2f9e94d831))
+
 # [1.23.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.22.0...nowui-v1.23.0) (2026-09-25)
 
 
