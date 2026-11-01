@@ -96,7 +96,8 @@ float sdBox(float2 p, float2 b)
 
 float sdRoundBox(float2 p, float2 b, float4 r)
 {
-    float radius;
+    // Explicit defaults keep Metal definite-assignment analysis stable after inlining.
+    float radius = 0.0;
 
     if (p.x < 0.0)
         radius = p.y < 0.0 ? r.z : r.w;
@@ -613,8 +614,8 @@ float2 NowSdfRotatedShapeUvV2(
     float2 relativeScenePos,
     float2 pivot)
 {
-    float2 minPoint;
-    float2 maxPoint;
+    float2 minPoint = float2(0.0, 0.0);
+    float2 maxPoint = float2(0.0, 0.0);
 
     if (type < 0.5)
     {
@@ -653,7 +654,7 @@ float2 NowSdfRotatedShapeUvV2(
         float2 minNormalized = min(float2(0.0, 0.0), min(data1.zw, data2.xy));
         float2 maxNormalized = max(float2(0.0, 0.0), max(data1.zw, data2.xy));
         float2 span = maxNormalized - minNormalized;
-        float2 uv;
+        float2 uv = float2(0.5, 0.5);
         uv.x = span.x > 0.0
             ? saturate((normalizedPosition.x - minNormalized.x) / span.x)
             : 0.5;
@@ -700,8 +701,8 @@ float2 shapeUv(int index, float type, float4 data1, float4 data2, float2 scenePo
             pivot);
     }
 
-    float2 minPoint;
-    float2 maxPoint;
+    float2 minPoint = float2(0.0, 0.0);
+    float2 maxPoint = float2(0.0, 0.0);
 
     if (type < 0.5)
     {
@@ -739,7 +740,7 @@ float2 shapeUv(int index, float type, float4 data1, float4 data2, float2 scenePo
         float2 minNormalized = min(float2(0.0, 0.0), min(data1.zw, data2.xy));
         float2 maxNormalized = max(float2(0.0, 0.0), max(data1.zw, data2.xy));
         float2 span = maxNormalized - minNormalized;
-        float2 uv;
+        float2 uv = float2(0.5, 0.5);
         uv.x = span.x > 0.0
             ? saturate((normalizedPosition.x - minNormalized.x) / span.x)
             : 0.5;
