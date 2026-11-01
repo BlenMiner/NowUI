@@ -1,3 +1,10 @@
+## [1.23.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.23.1...nowui-v1.23.2) (2026-11-01)
+
+
+### Bug Fixes
+
+* initialize SDF shader locals for Metal ([3dbf80f](https://github.com/BlenMiner/NowUI/commit/3dbf80f1a6c8c6acebf61849c0737367e5c23687))
+
 ## [1.23.1](https://github.com/BlenMiner/NowUI/compare/nowui-v1.23.0...nowui-v1.23.1) (2026-09-26)
 
 
