@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/BlenMiner/NowUI/compare/nowui-v1.23.2...nowui-v1.24.0) (2026-11-26)
+
+
+### Features
+
+* NowCapture API for observing what hosts draw ([ba927b0](https://github.com/BlenMiner/NowUI/commit/ba927b07d339ee41dbfac126175c9d052d910cd6))
+
 ## [1.23.2](https://github.com/BlenMiner/NowUI/compare/nowui-v1.23.1...nowui-v1.23.2) (2026-11-01)
 
 
