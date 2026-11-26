@@ -84,6 +84,9 @@ use the relevant Unity host and tests when those are part of the requested work.
 Read [Render Pipeline Integrations](RenderPipelines.md) before creating UGUI,
 UI Toolkit, URP, or HDRP integration. Read [World Space](WorldSpace.md) for
 mesh surfaces and ray-mapped input, and [IMGUI](EditorGUI.md) for `OnGUI`.
+To observe what any of these hosts drew, subscribe to `NowCapture.onFrame`
+rather than reading meshes; custom controls describe themselves with
+`NowCapture.Describe`. Read [Capture](Capture.md).
 
 Host lifecycle rules:
 
@@ -151,6 +154,7 @@ Host lifecycle rules:
 | Mobile scale, safe areas, touch | `NowScreen`, `NowInput` | [Mobile](Mobile.md) |
 | World-space panels and input | World graphic hosts | [World Space](WorldSpace.md) |
 | UGUI, UI Toolkit, Built-in, URP, HDRP | Host and pipeline types | [Render Pipelines](RenderPipelines.md) |
+| Observe what hosts drew (recorders, accessibility, tests) | `NowCapture.onFrame`, `NowCapture.Describe` | [Capture](Capture.md) |
 | Runtime or editor `OnGUI` | `NowGUI`, `NowEditorGUI` | [IMGUI](EditorGUI.md) |
 | Inspector preview of a UI host | `NowPreviewEditor`, `INowPreviewHost` | [IMGUI](EditorGUI.md) |
 | Warmup and allocation expectations | Warmup APIs | [Performance](Performance.md) |

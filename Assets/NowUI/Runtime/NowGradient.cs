@@ -943,6 +943,20 @@ namespace NowUI
             return ramp.row + (flags + 0.5f) / 256f;
         }
 
+        /// <summary>Reports a gradient fill as a Rect with its average stop colour.</summary>
+        static void CaptureGradient(in NowGradient gradient, bool defaultMask)
+        {
+            Vector4 color = gradient.ramp != null
+                ? (Vector4)(gradient.ramp.Evaluate(0f) + gradient.ramp.Evaluate(1f)) * 0.5f
+                : (gradient.colorFrom + gradient.colorTo) * 0.5f;
+            var position = _tmpVertex.position;
+            NowCaptureRecorder.Primitive(
+                NowCaptureKind.Rect,
+                new NowRect(position.x, -position.y - position.w, position.z, position.w),
+                defaultMask ? ApplyAmbientMask(default) : _tmpVertex.mask,
+                ApplyColorMultiplier(color));
+        }
+
         internal static void DrawGradient(in NowGradient gradient)
         {
             if (_suppressDrawDepth > 0 || _defaultMaterial == null)
@@ -1036,6 +1050,9 @@ namespace NowUI
 
             if (_tmpVertex.IsOutsideMask(geometry))
                 return;
+
+            if (NowCaptureRecorder.collecting)
+                CaptureGradient(gradient, defaultMask || gradient.mask.isEmpty);
 
             NowGradientRampHandle ramp = gradient.ramp != null
                 ? NowGradientRampCache.Get(gradient.ramp, gradient.rampRevision)

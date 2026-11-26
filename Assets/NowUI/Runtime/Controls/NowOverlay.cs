@@ -204,6 +204,7 @@ namespace NowUI
             public NowResolvedId controlIdScope;
             public NowInputContextSnapshot inputContext;
             public OverlayHostContext hostContext;
+            public int captureFrame;
         }
 
         struct OverlayBlock
@@ -849,7 +850,8 @@ namespace NowUI
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
-                hostContext = CurrentHostContext()
+                hostContext = CurrentHostContext(),
+                captureFrame = NowCaptureRecorder.currentToken
             });
             AddBlock(Now.TransformScreenRect(blockRect), overlaySourceId, overlayId);
         }
@@ -900,7 +902,8 @@ namespace NowUI
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
-                hostContext = CurrentHostContext()
+                hostContext = CurrentHostContext(),
+                captureFrame = NowCaptureRecorder.currentToken
             });
             AddBlock(blockRect, overlaySourceId, overlayId);
         }
@@ -961,7 +964,8 @@ namespace NowUI
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
-                hostContext = CurrentHostContext()
+                hostContext = CurrentHostContext(),
+                captureFrame = NowCaptureRecorder.currentToken
             });
             AddBlock(Now.TransformScreenRect(blockRect), overlaySourceId, overlayId);
         }
@@ -1019,7 +1023,8 @@ namespace NowUI
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
-                hostContext = CurrentHostContext()
+                hostContext = CurrentHostContext(),
+                captureFrame = NowCaptureRecorder.currentToken
             });
             AddBlock(blockRect, overlaySourceId, overlayId);
         }
@@ -1076,7 +1081,8 @@ namespace NowUI
                 theme = NowTheme.currentScopeTheme,
                 controlIdScope = NowControls.CaptureIdScope(),
                 inputContext = NowInput.CaptureContext(),
-                hostContext = CurrentHostContext()
+                hostContext = CurrentHostContext(),
+                captureFrame = NowCaptureRecorder.currentToken
             });
         }
 
@@ -1859,6 +1865,7 @@ namespace NowUI
                     try
                     {
                         using (ApplyHostContext(deferred.hostContext))
+                        using (NowCaptureRecorder.Route(deferred.captureFrame))
                         using (NowInput.ApplyContext(deferred.inputContext))
                         using (NowControls.RestoreIdScope(deferred.controlIdScope))
                         using (Now.ApplyTransformSnapshot(deferred.transform))

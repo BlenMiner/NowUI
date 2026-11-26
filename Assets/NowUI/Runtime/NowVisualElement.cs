@@ -395,6 +395,7 @@ namespace NowUI
                 trackRepaint: true,
                 dynamicTextureHost: this);
             NowDrawScope scope = default;
+            int captureToken = 0;
 
             try
             {
@@ -405,12 +406,14 @@ namespace NowUI
                 {
                     using (NowControls.RestoreIdScope(_scopeId))
                     {
+                        captureToken = NowCaptureRecorder.Begin(this, nowRect);
                         var content = new FrameContent(this);
                         _measuredContentSize = NowFrame.DrawContent(
                             ref content,
                             nowRect,
                             useLayoutMeasurePass,
                             trackContent: true);
+                        NowCaptureRecorder.Detach(captureToken);
                     }
                 }
                 catch
@@ -436,12 +439,16 @@ namespace NowUI
                 ClearInteractionRepaintRequest();
                 scope.Cancel();
                 renderer.Clear();
+                NowCaptureRecorder.End(captureToken, publish: false);
+                captureToken = 0;
                 Debug.LogException(ex);
             }
             finally
             {
                 frame.Dispose();
             }
+
+            NowCaptureRecorder.End(captureToken, publish: true);
         }
 
         internal void SetInteractionRepaintRequest(bool immediate, float nextRepaintAt)

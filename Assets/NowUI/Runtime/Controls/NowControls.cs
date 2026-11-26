@@ -27,6 +27,9 @@ namespace NowUI
     {
         static readonly List<NowResolvedId> _idStack = new List<NowResolvedId>(8);
 
+        /// <summary>Depth of the active id-scope stack (capture parenting).</summary>
+        internal static int idScopeDepth => _idStack.Count;
+
         static readonly NowScopeGuard _idScopes = new NowScopeGuard("NowControls.IdScope", 8);
 
         static int _idScopeStartedAt = int.MinValue;
@@ -901,6 +904,9 @@ namespace NowUI
 
             focused = NowFocus.IsFocused(id);
             submitted = acceptsSubmit && NowFocus.SubmitPressed(id);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.SetFocused(id, focused);
 
             if (!NowInput.isPassive)
             {

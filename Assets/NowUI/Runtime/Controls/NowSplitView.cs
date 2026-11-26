@@ -118,6 +118,10 @@ namespace NowUI
 
             NowResolvedId dividerId = id.Child(DividerSeed);
             var interaction = NowControls.Interact(dividerId, hitRect, _navigation, out bool focused, out _);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(dividerId, "Splitter", 0f, NowCaptureFlags.None, null);
+
             ref float grabOffset = ref NowControlState.Get<float>(dividerId, "grab-offset");
 
             if (interaction.pressed)

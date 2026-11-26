@@ -250,6 +250,10 @@ using (NowLayout.Column(NowScreen.safeArea).Padding(16).Gap(8).Begin())
   field to the value it had when it gained focus, then blurs. Word and line
   navigation follow the platform: Ctrl+arrows jump words on Windows/Linux,
   while macOS uses Option+arrows for words and Cmd+arrows for line ends.
+  `SetPassword()` masks the text (one `•` per UTF-16 unit, or a custom mask
+  character), disables copy and cut, selects all on double/triple click, uses
+  the secure touch keyboard, and is reported to [Capture](Capture.md) as a
+  secret field without its text.
 - `TextArea` is the multi-line editor: word-wrapped with every character
   preserved, caret up/down with a pixel goal column, Home/End per line and
   Ctrl+Home/End per document, shift-selection on every movement, click/drag,

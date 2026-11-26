@@ -1247,6 +1247,9 @@ namespace NowUI
                 ? NowInput.Interact(entry.pathId.Child("ctx-interaction"), itemRect)
                 : default;
 
+            if (NowCaptureRecorder.collecting && interaction.id.hasValue)
+                NowCaptureRecorder.Describe(interaction.id, "MenuItem", 0f, NowCaptureFlags.None, entry.label);
+
             if (entry.enabled && interaction.hovered && _pointerMoved &&
                 (_highlightMenuOverlay != menu.overlayId || _highlightEntryPath != entry.pathId))
             {

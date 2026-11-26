@@ -90,6 +90,9 @@ namespace NowUI
             if (changed)
                 value = !value;
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Switch", value ? 1f : 0f, value ? NowCaptureFlags.Selected : NowCaptureFlags.None, _label);
+
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             float onT = NowControlState.Transition(interaction, "on", value, 14f);
             var glyphRect = renderer.SwitchGlyphRect(theme, rect);

@@ -92,6 +92,9 @@ namespace NowUI
                 }
             }
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.OpenControl(ResolveControlId(), rect, "ProgressBar", _indeterminate ? 0f : _value01);
+
             renderer.DrawProgressBar(new NowProgressBarRenderContext(
                 theme, rect, _value01, _indeterminate, phase01));
         }

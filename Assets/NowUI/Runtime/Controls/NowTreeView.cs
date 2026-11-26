@@ -317,6 +317,17 @@ namespace NowUI
                 out bool submitted);
             bool activated = false;
 
+            if (NowCaptureRecorder.collecting)
+            {
+                bool selectedRow = _frame.state.selectedKey == node.key;
+                NowCaptureRecorder.Describe(
+                    node.controlId,
+                    "TreeItem",
+                    expanded ? 1f : 0f,
+                    selectedRow ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                    label);
+            }
+
             if (interaction.clicked && !toggled)
             {
                 if (_frame.state.selectedKey != node.key)

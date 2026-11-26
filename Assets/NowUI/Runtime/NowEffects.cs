@@ -596,6 +596,9 @@ namespace NowUI
                     var target = entry.GetTarget(textureRect);
                     Now.RenderDrawListToTexture(entry.capture, textureRect, target, entry.commandBuffer);
 
+                    // The flattened surface re-presents content that was
+                    // already captured item by item; keep it out of the capture.
+                    using (NowCaptureRecorder.SuspendScope())
                     using (Now.SuppressShaderMaskCapture())
                     using (entry.surface.Begin(
                         CaptureSize(),

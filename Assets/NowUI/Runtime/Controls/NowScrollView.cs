@@ -168,6 +168,14 @@ namespace NowUI
             scroll.y = Mathf.Clamp(scroll.y, 0f, scrollLayout.maxScrollY);
             EnsureFocusedControlVisible(id, scrollLayout.contentViewport, scrollLayout.maxScrollX, scrollLayout.maxScrollY, ref scroll);
 
+            if (NowCaptureRecorder.collecting)
+            {
+                float scrollValue = scrollLayout.maxScrollY > 0f
+                    ? scroll.y / scrollLayout.maxScrollY
+                    : scrollLayout.maxScrollX > 0f ? scroll.x / scrollLayout.maxScrollX : 0f;
+                NowCaptureRecorder.OpenControl(id, viewport, "ScrollView", scrollValue);
+            }
+
             var mask = Now.Mask(scrollLayout.contentViewport);
             var layout = NowLayout.Area(areaKey, new NowRect(
                 viewport.x - scroll.x,
@@ -628,7 +636,12 @@ namespace NowUI
         bool ApplyPanScroll(ref Vector2 scroll, out Vector2 anchor)
         {
             NowResolvedId panId = _id.Child(PanSeed);
-            var interaction = NowInput.Interact(panId, _contentViewport, NowPointerButton.Middle);
+            NowInteraction interaction;
+
+            // The middle-button pan region is the scroll view itself, already reported.
+            using (NowCaptureRecorder.SuspendScope())
+                interaction = NowInput.Interact(panId, _contentViewport, NowPointerButton.Middle);
+
             ref var pan = ref NowControlState.Get<PanScrollState>(panId);
             var snapshot = NowInput.current;
 

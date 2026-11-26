@@ -130,6 +130,16 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             ref bool open = ref NowControlState.Get<bool>(id);
 
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Describe(
+                    id,
+                    "Dropdown",
+                    0f,
+                    NowCaptureFlags.None,
+                    selected >= 0 && selected < optionCount ? _options[selected] : null);
+            }
+
             if (interaction.clicked || submitted)
             {
                 open = !open;
@@ -382,6 +392,19 @@ namespace NowUI
                 scroll.y = bottom - viewHeight;
         }
 
+        static void DescribeItem(PopupState state, int index, bool isCurrent)
+        {
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Describe(
+                    state.itemSeed.Child(index + 1),
+                    "DropdownItem",
+                    isCurrent ? 1f : 0f,
+                    isCurrent ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                    state.options[index]);
+            }
+        }
+
         static void DrawItems(PopupState state)
         {
             for (int i = 0; i < state.optionCount; ++i)
@@ -396,6 +419,7 @@ namespace NowUI
 
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
                 bool isCurrent = i == state.selected;
+                DescribeItem(state, i, isCurrent);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,
@@ -441,6 +465,7 @@ namespace NowUI
                 NowRect itemRect = NowLayout.ReserveRect(height: itemHeight, stretchWidth: true);
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(i + 1), itemRect);
                 bool isCurrent = i == state.selected;
+                DescribeItem(state, i, isCurrent);
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,
                     itemRect,

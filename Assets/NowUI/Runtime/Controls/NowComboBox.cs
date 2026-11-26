@@ -180,6 +180,10 @@ namespace NowUI
 
                 float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
                 string current = selected >= 0 && selected < optionCount ? _options[selected] : string.Empty;
+
+                if (NowCaptureRecorder.collecting)
+                    NowCaptureRecorder.Describe(id, "ComboBox", 0f, NowCaptureFlags.None, current.Length > 0 ? current : null);
+
                 // A combo box that holds no selection is common — an "add
                 // something" picker keeps none by design — and drew as an
                 // empty box with a chevron until the placeholder reached the
@@ -293,6 +297,10 @@ namespace NowUI
                 }
 
                 float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
+
+                if (NowCaptureRecorder.collecting)
+                    NowCaptureRecorder.Describe(id, "ComboBox", 0f, NowCaptureFlags.None, string.IsNullOrEmpty(value) ? null : value);
+
                 renderer.DrawDropdownField(new NowDropdownFieldRenderContext(theme, rect, value, false, interaction, focused, hoverT, _placeholder));
                 return changed;
             }
@@ -617,6 +625,17 @@ namespace NowUI
                 NowRect itemRect = ItemRect(state, row);
                 var itemInteraction = NowInput.Interact(state.itemSeed.Child(optionIndex + 1), itemRect);
                 bool isCurrent = optionIndex == state.selected;
+
+                if (NowCaptureRecorder.collecting)
+                {
+                    NowCaptureRecorder.Describe(
+                        itemInteraction.id,
+                        "DropdownItem",
+                        isCurrent ? 1f : 0f,
+                        isCurrent ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                        state.options[optionIndex]);
+                }
+
                 bool highlighted = row == state.highlight || isCurrent;
                 state.themeAsset.controlRenderer.DrawPopupItem(new NowPopupItemRenderContext(
                     state.themeAsset,

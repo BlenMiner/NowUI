@@ -90,6 +90,10 @@ namespace NowUI
                 out _);
             ref var state = ref NowControlState.Get<ListenState>(id);
             bool submitted = state.listening == 0 && NowFocus.SubmitPressed(id);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "KeyBindingField", 0f, NowCaptureFlags.None, null);
+
             bool changed = false;
 
             if (!NowInput.isPassive)

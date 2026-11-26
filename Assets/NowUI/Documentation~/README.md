@@ -73,6 +73,9 @@ installed NowUI revision. AI coding agents should begin with the
   `OnGUI` without inheriting a NowUI-specific base class.
 - [Render Pipeline Integrations](RenderPipelines.md): Built-in, optional UGUI
   and UI Toolkit hosts, URP, and HDRP integration patterns.
+- [Capture](Capture.md): read-only `NowCapture.onFrame` view of every control
+  and visible primitive a host drew, with stable ids, parents, state flags and
+  secret-field redaction, for recorders, accessibility bridges and tests.
 - [Performance](Performance.md): warmup, allocation expectations, control
   state, glyphs, effects, material batches, and diagnostics storage.
 - [Styles And Themes](StylesAndThemes.md): ScriptableObject themes, palette

@@ -236,6 +236,16 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Describe(
+                    id,
+                    "Chip",
+                    _selected ? 1f : 0f,
+                    _selected ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                    _label);
+            }
+
             renderer.DrawChip(new NowChipRenderContext(
                 theme, rect, _label, _selected, _removable, removeRect, removeHovered, _textPreset, interaction, focused, hoverT));
 

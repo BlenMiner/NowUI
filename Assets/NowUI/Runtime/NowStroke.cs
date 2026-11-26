@@ -458,6 +458,16 @@ namespace NowUI
             if (mask.isEmpty || !StrokeBoundsOverlapMask(minX, minY, maxX, maxY, style, scaledWidth, hasTransform, mask))
                 return;
 
+            if (NowCaptureRecorder.collecting)
+            {
+                float half = scaledWidth * 0.5f;
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Rect,
+                    new NowRect(minX - half, minY - half, maxX - minX + scaledWidth, maxY - minY + scaledWidth),
+                    mask,
+                    color.w > 0.0005f ? color : colorEnd);
+            }
+
             EmitStrokePath(
                 style,
                 closed,
@@ -512,6 +522,16 @@ namespace NowUI
                     mask))
             {
                 return;
+            }
+
+            if (NowCaptureRecorder.collecting)
+            {
+                float half = scaledWidth * 0.5f;
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Rect,
+                    new NowRect(center.x - radiusX - half, center.y - radiusY - half, radiusX * 2f + scaledWidth, radiusY * 2f + scaledWidth),
+                    mask,
+                    color.w > 0.0005f ? color : colorEnd);
             }
 
             // Tolerate float error in callers' full turns so a full ring never opens.

@@ -441,6 +441,7 @@ namespace NowUI
             _size = currentSize;
             _pixelsPerUnit = SanitizePixelsPerUnit(_pixelsPerUnit);
             NowDrawScope scope = default;
+            int captureToken = 0;
             var frame = NowFrame.Begin(
                 ResolveScreenPixelsPerUIUnit(currentSize),
                 trackRepaint: true,
@@ -469,12 +470,14 @@ namespace NowUI
                         {
                             _repaintTracker.StoreFrameInput(NowInput.current, currentSize);
 
+                            captureToken = NowCaptureRecorder.Begin(this, new NowRect(0f, 0f, currentSize.x, currentSize.y));
                             var content = new FrameContent(this);
                             NowFrame.DrawContent(
                                 ref content,
                                 new NowRect(0f, 0f, currentSize.x, currentSize.y),
                                 useLayoutMeasurePass,
                                 trackContent: false);
+                            NowCaptureRecorder.Detach(captureToken);
                         }
                     }
                     catch
@@ -502,12 +505,16 @@ namespace NowUI
                 scope.Cancel();
                 _drawList.Clear();
                 ApplyRendererState();
+                NowCaptureRecorder.End(captureToken, publish: false);
+                captureToken = 0;
                 Debug.LogException(ex, this);
             }
             finally
             {
                 frame.Dispose();
             }
+
+            NowCaptureRecorder.End(captureToken, publish: true);
 
             _overlayFootprintCulled = !IsVisibleForRebuild();
 

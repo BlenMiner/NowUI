@@ -459,6 +459,10 @@ namespace NowUI.CodeEditor
 
             var interaction = NowControls.Interact(id, rect, _navigation,
                 NowFocusNavigationLock.All, true, false, out bool focused, out _);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "CodeEditor", 0f, NowCaptureFlags.Editable, text);
+
             bool verticalMove = false;
             bool revealCaret = false;
 

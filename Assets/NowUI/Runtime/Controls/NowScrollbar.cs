@@ -93,6 +93,15 @@ namespace NowUI
 
             var interaction = NowInput.Interact(id, metrics.track.Outset(4f, 2f));
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
+
+            if (NowCaptureRecorder.collecting)
+            {
+                float offset = axis == NowScrollbarAxis.Vertical
+                    ? metrics.thumb.y - metrics.track.y
+                    : metrics.thumb.x - metrics.track.x;
+                NowCaptureRecorder.Describe(id, "Scrollbar", metrics.travel > 0f ? offset / metrics.travel : 0f, NowCaptureFlags.None, null);
+            }
+
             themeAsset.controlRenderer.DrawScrollbar(new NowScrollbarRenderContext(
                 themeAsset,
                 axis,

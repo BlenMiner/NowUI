@@ -166,6 +166,11 @@ namespace NowUI
 
                         using (NowControls.RestoreIdScope(graphic.GetScopeId()))
                         {
+                            int captureToken = NowCaptureRecorder.Begin(graphic, rect);
+
+                            if (captureToken != 0)
+                                (s_captureTokens ??= new List<int>(4)).Add(captureToken);
+
                             var content = new FrameContent(graphic, camera);
                             NowFrame.DrawContent(
                                 ref content,
@@ -173,6 +178,10 @@ namespace NowUI
                                 graphic.useLayoutMeasurePass,
                                 trackContent: false,
                                 flushOverlays: false);
+
+                            // Kept open for the shared overlay flush below, which
+                            // routes each overlay back to the graphic that queued it.
+                            NowCaptureRecorder.Detach(captureToken);
                         }
                     }
 
@@ -191,10 +200,12 @@ namespace NowUI
                 }
 
                 scope.Dispose();
+                EndCaptures(publish: true);
             }
             catch
             {
                 scope.Cancel();
+                EndCaptures(publish: false);
                 throw;
             }
             finally
@@ -210,6 +221,24 @@ namespace NowUI
             }
 
             return drawList.hasGeometry;
+        }
+
+        static List<int> s_captureTokens;
+
+        static void EndCaptures(bool publish)
+        {
+            if (s_captureTokens == null || s_captureTokens.Count == 0)
+                return;
+
+            try
+            {
+                for (int i = 0; i < s_captureTokens.Count; ++i)
+                    NowCaptureRecorder.End(s_captureTokens[i], publish);
+            }
+            finally
+            {
+                s_captureTokens.Clear();
+            }
         }
 
         static void SortGraphics()

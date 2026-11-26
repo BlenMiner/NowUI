@@ -123,6 +123,9 @@ namespace NowUI
 
             bool changed = !Mathf.Approximately(previous, split);
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Splitter", split, NowCaptureFlags.None, null);
+
             if (changed)
                 NowControlState.RequestRepaint();
 

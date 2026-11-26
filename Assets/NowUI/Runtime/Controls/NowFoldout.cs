@@ -96,6 +96,9 @@ namespace NowUI
             if (toggled)
                 expanded = !expanded;
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Foldout", expanded ? 1f : 0f, expanded ? NowCaptureFlags.Selected : NowCaptureFlags.None, _label);
+
             var disclosureRect = new NowRect(
                 rect.x + 2f,
                 rect.y + (rect.height - disclosure) * 0.5f,

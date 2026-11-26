@@ -761,6 +761,7 @@ namespace NowUI
             public readonly List<int> tintScopeTokens = new List<int>(4);
             public readonly List<RotationState> rotationStack = new List<RotationState>(4);
             public readonly List<int> rotationScopeTokens = new List<int>(4);
+            public bool captureSuspended;
         }
 
         static readonly List<MeshCaptureState> _meshCaptureStack = new List<MeshCaptureState>(4);
@@ -770,6 +771,9 @@ namespace NowUI
         static readonly Stack<NowMesh[]> _meshCapturePool = new Stack<NowMesh[]>(4);
 
         static int _suppressDrawDepth;
+
+        /// <summary>True while drawing is suppressed (layout measure passes, zero-size captures).</summary>
+        internal static bool isDrawSuppressed => _suppressDrawDepth > 0;
 
         static readonly HashSet<NowFontAsset> _textGlyphResolveVisited = new HashSet<NowFontAsset>();
 
@@ -788,6 +792,9 @@ namespace NowUI
             public Vector2 pivot;
             public float cos;
             public float sin;
+            public float degrees;
+            public int captureToken;
+            public int captureStart;
         }
 
         static readonly List<RotationState> _rotationStack = new List<RotationState>(4);
@@ -1398,6 +1405,8 @@ namespace NowUI
 
         static int _screenFrameStartedAt;
 
+        static int _screenCaptureToken;
+
         static bool _warnedLeakedScreenScope;
 
         static bool _warnedLeakedSuppressScope;
@@ -1438,6 +1447,12 @@ namespace NowUI
             NowGUI.DiscardAbandonedScopes();
             NowInput.DiscardAbandonedScopes();
             NowLayout.DiscardAbandonedScopes();
+
+            if (_screenCaptureToken != 0)
+            {
+                NowCaptureRecorder.End(_screenCaptureToken, publish: false);
+                _screenCaptureToken = 0;
+            }
 
             if (_screenFrameActive)
             {
@@ -1514,6 +1529,19 @@ namespace NowUI
             _screenFrameActive = false;
             _meshes.count = 0;
             _lastUsedMeshId = -1;
+            NowCaptureRecorder.End(_screenCaptureToken, publish: false);
+            _screenCaptureToken = 0;
+        }
+
+        static void BeginScreenCapture()
+        {
+            if (!NowCaptureRecorder.enabled)
+                return;
+
+            Camera camera = Camera.current;
+            _screenCaptureToken = NowCaptureRecorder.Begin(
+                camera != null ? camera : NowCapture.screenHost,
+                screenMask);
         }
 
         public static NowUIScreenScope StartUI()
@@ -1545,6 +1573,7 @@ namespace NowUI
                     new Vector2(screenMask.width, screenMask.height),
                     new Rect(0f, 0f, Screen.width, Screen.height)));
                 Initialize();
+                BeginScreenCapture();
                 return new NowUIScreenScope(token);
             }
             catch
@@ -1599,6 +1628,7 @@ namespace NowUI
                     new Vector2(screenMask.width / uiScale, screenMask.height / uiScale),
                     new Rect(screenMask.x, screenMask.y, screenMask.width, screenMask.height)));
                 Initialize();
+                BeginScreenCapture();
                 return new NowUIScreenScope(token);
             }
             catch
@@ -1667,6 +1697,15 @@ namespace NowUI
             // current when it began, so it never reaches into a capture's list.
             _rotationStack.Clear();
             _rotationScopes.Clear();
+
+            // An independent capture (its own coordinate space, mask and id
+            // scope, e.g. a NowRenderer target) is not part of the host's
+            // displayed geometry; keep it out of the host's capture frame.
+            state.captureSuspended = !inheritContext && NowCaptureRecorder.collecting;
+
+            if (state.captureSuspended)
+                NowCaptureRecorder.Suspend();
+
             Initialize();
             if (inheritContext)
             {
@@ -1876,7 +1915,10 @@ namespace NowUI
                 lastMeshVertexCount = lastMesh >= 0 ? _meshes.array[lastMesh].vertexCount : 0,
                 pivot = ApplyTransform(pivot),
                 cos = Mathf.Cos(radians),
-                sin = Mathf.Sin(radians)
+                sin = Mathf.Sin(radians),
+                degrees = degrees,
+                captureToken = NowCaptureRecorder.currentToken,
+                captureStart = NowCaptureRecorder.itemCount
             });
 
             return new NowRotationScope(_rotationScopes.Enter());
@@ -1893,6 +1935,17 @@ namespace NowUI
 
             if (state.captureDepth != _meshCaptureStack.Count || (state.cos == 1f && state.sin == 0f))
                 return;
+
+            if (NowCaptureRecorder.collecting && state.captureToken != 0)
+            {
+                NowCaptureRecorder.Rotate(
+                    state.captureToken,
+                    state.captureStart,
+                    state.pivot,
+                    state.cos,
+                    state.sin,
+                    state.degrees);
+            }
 
             if (state.lastMesh >= 0 && state.lastMesh < _meshes.count)
                 _meshes.array[state.lastMesh].RotateVertices(state.lastMeshVertexCount, state.pivot, state.cos, state.sin);
@@ -1963,6 +2016,12 @@ namespace NowUI
             state.rotationScopeTokens.Clear();
             state.analyticMaskCount = 0;
             state.textureMaskCount = 0;
+
+            if (state.captureSuspended)
+            {
+                state.captureSuspended = false;
+                NowCaptureRecorder.Resume();
+            }
 
             state.meshes = default;
             _meshCaptureStatePool.Push(state);
@@ -2305,6 +2364,8 @@ namespace NowUI
                 return;
 
             using var profile = NowProfiler.ScreenFrameEnd.Auto();
+            bool failed = false;
+
             try
             {
                 NowOverlay.Flush();
@@ -2355,6 +2416,11 @@ namespace NowUI
                     GL.PopMatrix();
                 }
             }
+            catch
+            {
+                failed = true;
+                throw;
+            }
             finally
             {
                 try
@@ -2365,6 +2431,10 @@ namespace NowUI
                 {
                     _screenFrameActive = false;
                     _screenFrameScopes.ExitEnding(token);
+
+                    int captureToken = _screenCaptureToken;
+                    _screenCaptureToken = 0;
+                    NowCaptureRecorder.End(captureToken, publish: !failed);
                 }
             }
         }
@@ -2760,6 +2830,9 @@ namespace NowUI
             if (_tmpVertex.IsOutsideMask(paddedGeometry))
                 return;
 
+            if (NowCaptureRecorder.collecting)
+                CaptureRectangle(rectangle, hasTexture, defaultMask);
+
             NowMesh mesh;
 
             if (hasCustomMaterial)
@@ -2808,6 +2881,42 @@ namespace NowUI
         }
 
         /// <summary>
+        /// Reports the rectangle <see cref="DrawRect"/> is about to emit from the
+        /// already resolved <see cref="_tmpVertex"/>. Blurred rectangles are
+        /// shadows and glows, pixel-only effects the capture does not describe.
+        /// </summary>
+        static void CaptureRectangle(in NowRectangle rectangle, bool hasTexture, bool defaultMask)
+        {
+            if (rectangle.blur > 0f)
+                return;
+
+            var position = _tmpVertex.position;
+            var rect = new NowRect(position.x, -position.y - position.w, position.z, position.w);
+            NowRect clip = defaultMask || rectangle.mask.isEmpty
+                ? ApplyAmbientMask(default)
+                : _tmpVertex.mask;
+
+            if (hasTexture)
+            {
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Image,
+                    rect,
+                    clip,
+                    _tmpVertex.color,
+                    texture: NowCaptureRecorder.NameOf(rectangle.texture));
+                return;
+            }
+
+            Vector4 color = _tmpVertex.color;
+
+            // A hollow or transparent-fill rectangle shows only its outline.
+            if (color.w <= 0.002f && rectangle.outline > 0f)
+                color = _tmpVertex.outlineColor;
+
+            NowCaptureRecorder.Primitive(NowCaptureKind.Rect, rect, clip, color);
+        }
+
+        /// <summary>
         /// Draws a material-driven full-rect effect using the same quad, mask,
         /// texture coordinate and canvas capture path as NowRectangle. Extensions
         /// provide the material shader and per-material data.
@@ -2826,6 +2935,9 @@ namespace NowUI
         {
             DrawSdf(rect, mask, material, color, snapToPixels: false);
         }
+
+        /// <summary>Texture name reported for composed SDF scenes.</summary>
+        internal const string SdfCaptureName = "NowSdf";
 
         static void DrawSdf(
             NowRect rect,
@@ -2859,6 +2971,8 @@ namespace NowUI
 
             if (rectWidth <= 0 || rectHeight <= 0)
                 return;
+
+            bool defaultSdfMask = mask.isEmpty || mask == rect;
 
             if (!mask.isEmpty && mask == rect)
                 mask = mask.Outset(2f);
@@ -2903,6 +3017,17 @@ namespace NowUI
             _tmpVertex.position.y = position.y;
             _tmpVertex.position.z = size.x;
             _tmpVertex.position.w = size.y;
+
+            if (NowCaptureRecorder.collecting)
+            {
+                // A composed SDF scene is one vector image: report its bounds and tint.
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Image,
+                    new NowRect(position.x, -position.y - size.y, size.x, size.y),
+                    defaultSdfMask ? ApplyAmbientMask(default) : _tmpVertex.mask,
+                    _tmpVertex.color,
+                    texture: SdfCaptureName);
+            }
 
             var mesh = UseSdfMaterial(material);
 
@@ -3204,6 +3329,29 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || string.IsNullOrEmpty(value) || !style.font)
                 return;
 
+            if (NowCaptureRecorder.collecting)
+            {
+                // One item per text run: nested line and glyph draws stay silent.
+                CaptureText(in style, value, default);
+                NowCaptureRecorder.Suspend();
+
+                try
+                {
+                    DrawStringScaled(style, value);
+                }
+                finally
+                {
+                    NowCaptureRecorder.Resume();
+                }
+
+                return;
+            }
+
+            DrawStringScaled(style, value);
+        }
+
+        static void DrawStringScaled(NowText style, string value)
+        {
             if (IsTextRenderScaleCurrent(out float scale))
             {
                 DrawStringAtScale(ref style, value);
@@ -3310,6 +3458,48 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || value.IsEmpty || !style.font)
                 return;
 
+            if (NowCaptureRecorder.collecting)
+            {
+                CaptureText(in style, null, value);
+                NowCaptureRecorder.Suspend();
+
+                try
+                {
+                    DrawStringScaled(style, value);
+                }
+                finally
+                {
+                    NowCaptureRecorder.Resume();
+                }
+
+                return;
+            }
+
+            DrawStringScaled(style, value);
+        }
+
+        /// <summary>
+        /// Reports a text run in host space. A string value is reported as the
+        /// same instance; a span reuses the string captured for this item last frame.
+        /// </summary>
+        static void CaptureText(in NowText style, string value, ReadOnlySpan<char> span)
+        {
+            bool hasTransform = _transformStack.Count > 0;
+            NowRect rect = hasTransform ? ApplyTransformRect(style.rect) : style.rect;
+            NowRect clip = style.hasExplicitMask && !style.mask.isEmpty
+                ? ApplyAmbientMask(hasTransform ? ApplyTransformRect(style.mask) : style.mask)
+                : ApplyAmbientMask(default);
+            float fontSize = hasTransform ? ApplyTransformScalar(style.fontSize) : style.fontSize;
+            Vector4 color = ApplyColorMultiplier(style.color);
+
+            if (value != null)
+                NowCaptureRecorder.Primitive(NowCaptureKind.Text, rect, clip, color, fontSize: fontSize, text: value);
+            else
+                NowCaptureRecorder.Text(rect, clip, color, fontSize, span);
+        }
+
+        static void DrawStringScaled(NowText style, ReadOnlySpan<char> value)
+        {
             if (IsTextRenderScaleCurrent(out float scale))
             {
                 DrawStringAtScale(ref style, value);
@@ -5004,6 +5194,13 @@ namespace NowUI
             if (_suppressDrawDepth > 0 || style.font == null)
                 return;
 
+            if (NowCaptureRecorder.collecting)
+            {
+                Span<char> single = stackalloc char[1];
+                single[0] = character;
+                CaptureText(in style, null, single);
+            }
+
             using var renderScale = PushTextRenderScale();
 
             if (!PrepareTextDraw(ref style))
@@ -5233,6 +5430,16 @@ namespace NowUI
 
             if (lottieMask.isEmpty || !lottieMask.Overlaps(drawRect))
                 return;
+
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Image,
+                    drawRect,
+                    !lottie.mask.isEmpty && lottie.mask != lottie.rect ? lottieMask : ApplyAmbientMask(default),
+                    tint,
+                    texture: NowCaptureRecorder.NameOf(lottie.asset));
+            }
 
             var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 

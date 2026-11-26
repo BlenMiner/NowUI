@@ -98,6 +98,16 @@ namespace NowUI
 
                 bool isSelected = i == selected;
                 float selectedT = NowControlState.Transition(tabId, isSelected, 14f);
+
+                if (NowCaptureRecorder.collecting)
+                {
+                    NowCaptureRecorder.Describe(
+                        tabId,
+                        "Tab",
+                        isSelected ? 1f : 0f,
+                        isSelected ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                        _labels[i]);
+                }
                 float hoverT = NowControlState.Transition(tabInteraction, "hover", tabInteraction.hovered || tabInteraction.held);
 
                 renderer.DrawTab(new NowTabRenderContext(

@@ -116,6 +116,9 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Button", 0f, NowCaptureFlags.None, null);
+
             if (!renderer.isBuiltIn || !NowControls.IsOutsideView(theme, rect))
             {
                 renderer.DrawButton(new NowButtonRenderContext(
@@ -154,6 +157,9 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Button", 0f, NowCaptureFlags.None, _label);
 
             // A built-in renderer draws nothing that could show once the control
             // (with its shadow and focus ring) is clipped away, e.g. scrolled out.
@@ -284,6 +290,16 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(ResolveControlId(), rect, _navigation, out bool focused, out bool submitted);
+
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Describe(
+                    interaction.id,
+                    "SelectableRow",
+                    _selected ? 1f : 0f,
+                    _selected ? NowCaptureFlags.Selected : NowCaptureFlags.None,
+                    _label);
+            }
 
             DrawBackground(theme, rect, interaction, focused);
 
@@ -481,6 +497,9 @@ namespace NowUI
             if (clicked)
                 value = !value;
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Toggle", value ? 1f : 0f, value ? NowCaptureFlags.Selected : NowCaptureFlags.None, null);
+
             float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
@@ -524,6 +543,9 @@ namespace NowUI
 
             if (changed)
                 value = !value;
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Toggle", value ? 1f : 0f, value ? NowCaptureFlags.Selected : NowCaptureFlags.None, _label);
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var boxRect = renderer.ToggleGlyphRect(theme, rect, box);
@@ -631,6 +653,9 @@ namespace NowUI
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Radio", _isOn ? 1f : 0f, _isOn ? NowCaptureFlags.Selected : NowCaptureFlags.None, null);
+
             float glyphSize = theme.controlStyles.toggleSize;
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var glyphRect = renderer.ToggleGlyphRect(theme, rect, glyphSize);
@@ -670,6 +695,9 @@ namespace NowUI
 
             NowRect rect = NowControls.ReserveRect(_hasRect, _rect, _options, contentSize);
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Radio", _isOn ? 1f : 0f, _isOn ? NowCaptureFlags.Selected : NowCaptureFlags.None, _label);
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             var circleRect = renderer.ToggleGlyphRect(theme, rect, circle);
@@ -905,6 +933,9 @@ namespace NowUI
 
             float hoverT = NowControlState.Transition(interaction, interaction.hovered || interaction.held);
             float normalized = (value - min) / range;
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "Slider", normalized, NowCaptureFlags.None, _label);
             // Skip the visuals of a slider clipped away (see NowButton.Draw); the value,
             // keyboard stepping and repeat state above are already up to date.
             if (NowControls.IsOutsideView(theme, outer))

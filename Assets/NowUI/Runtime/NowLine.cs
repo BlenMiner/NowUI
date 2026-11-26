@@ -395,6 +395,9 @@ namespace NowUI
                 return;
             }
 
+            if (NowCaptureRecorder.collecting)
+                CaptureLine(from, control1, control2, to, line.cubic, scaledWidth, mask, color.w > 0.0005f ? color : colorEnd);
+
             _linePoints.Clear();
 
             // Solid cubic Beziers use a dedicated shader that AA's against the true
@@ -434,6 +437,46 @@ namespace NowUI
                 scaledWidth,
                 hasTransform ? ApplyTransformScalar(1f) : 1f,
                 mask);
+        }
+
+        /// <summary>
+        /// Reports a line as a Rect: a straight segment as a rotated bar along
+        /// its length, a curve as the box around its control polygon.
+        /// </summary>
+        static void CaptureLine(
+            Vector2 from,
+            Vector2 control1,
+            Vector2 control2,
+            Vector2 to,
+            bool cubic,
+            float width,
+            NowRect clip,
+            Vector4 color)
+        {
+            if (!cubic)
+            {
+                Vector2 delta = to - from;
+                float length = delta.magnitude;
+                float degrees = length > LineEpsilon ? Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg : 0f;
+                NowCaptureRecorder.Primitive(
+                    NowCaptureKind.Rect,
+                    NowRect.FromCenter((from + to) * 0.5f, length, width),
+                    clip,
+                    color,
+                    rotation: degrees);
+                return;
+            }
+
+            float minX = Mathf.Min(Mathf.Min(from.x, to.x), Mathf.Min(control1.x, control2.x));
+            float minY = Mathf.Min(Mathf.Min(from.y, to.y), Mathf.Min(control1.y, control2.y));
+            float maxX = Mathf.Max(Mathf.Max(from.x, to.x), Mathf.Max(control1.x, control2.x));
+            float maxY = Mathf.Max(Mathf.Max(from.y, to.y), Mathf.Max(control1.y, control2.y));
+            float half = width * 0.5f;
+            NowCaptureRecorder.Primitive(
+                NowCaptureKind.Rect,
+                new NowRect(minX - half, minY - half, maxX - minX + width, maxY - minY + width),
+                clip,
+                color);
         }
 
         /// <summary>

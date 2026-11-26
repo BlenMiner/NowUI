@@ -474,6 +474,10 @@ namespace NowUI
                         NowFocus.EnterUGUINavigation(GetFocusHostId(), default);
                 }
 
+                // The cleared host now displays nothing; say so.
+                NowCaptureRecorder.End(
+                    NowCaptureRecorder.Begin(this, new NowRect(0f, 0f, Mathf.Max(0f, rect.width), Mathf.Max(0f, rect.height))),
+                    publish: true);
                 return;
             }
 
@@ -488,6 +492,7 @@ namespace NowUI
             bool passiveInputActive = false;
             bool interactive = Application.isPlaying || _editModeInteraction;
             var targetCanvas = canvas;
+            int captureToken = 0;
             _insideGeometryRebuild = true;
 
             try
@@ -530,12 +535,17 @@ namespace NowUI
 
                                 _repaintTracker.StoreFrameInput(NowInput.current, inputSurface.size);
 
+                                captureToken = NowCaptureRecorder.Begin(this, drawRect);
                                 var content = new FrameContent(this);
                                 Vector2 measured = NowFrame.DrawContent(
                                     ref content,
                                     drawRect,
                                     useLayoutMeasurePass,
                                     trackContent: _driveLayoutSize);
+
+                                // Content and overlays are drawn; keep the frame for
+                                // publishing once the geometry is committed.
+                                NowCaptureRecorder.Detach(captureToken);
 
                                 if (_driveLayoutSize && (measured - _preferredSize).sqrMagnitude > 0.25f)
                                 {
@@ -610,6 +620,8 @@ namespace NowUI
 
                 scope.Cancel();
                 _drawList.Clear();
+                NowCaptureRecorder.End(captureToken, publish: false);
+                captureToken = 0;
                 Debug.LogException(ex, this);
             }
             finally
@@ -618,7 +630,19 @@ namespace NowUI
                 frame.Dispose();
             }
 
-            ApplyCanvasPages();
+            try
+            {
+                ApplyCanvasPages();
+            }
+            catch
+            {
+                NowCaptureRecorder.End(captureToken, publish: false);
+                throw;
+            }
+
+            // Published once the geometry is on the CanvasRenderer(s), after this
+            // rebuild's own scopes have closed.
+            NowCaptureRecorder.End(captureToken, publish: true);
         }
 
         protected override void UpdateMaterial()

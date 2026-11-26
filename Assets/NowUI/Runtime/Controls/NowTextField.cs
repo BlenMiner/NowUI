@@ -399,6 +399,8 @@ namespace NowUI
         bool _scrubActive;
         bool _scrubCancelled;
         bool _selectAllOnFocus;
+        bool _password;
+        char _passwordCharacter;
         NowTextFieldAppearance _appearance;
 
         const int SpinnerUpSeed = 0x4e545355;
@@ -416,6 +418,34 @@ namespace NowUI
         const int SpinDownRepeatSeed = 0x4e54460b;
         const int SpinNavRepeatSeed = 0x4e54460c;
         const int ScrubGestureSeed = 0x4e54460d;
+
+        const char DefaultPasswordCharacter = '\u2022';
+
+        static readonly System.Collections.Generic.Dictionary<int, string> s_passwordMasks =
+            new System.Collections.Generic.Dictionary<int, string>();
+
+        /// <summary>
+        /// The masked display for <paramref name="value"/>: one mask character per
+        /// UTF-16 unit, so caret and selection indices map one to one. Cached per
+        /// length and character so a steady password field does not allocate.
+        /// </summary>
+        string Mask(string value)
+        {
+            if (!_password || string.IsNullOrEmpty(value))
+                return value;
+
+            int key = (_passwordCharacter << 16) | Mathf.Min(value.Length, 0xFFFF);
+
+            if (s_passwordMasks.TryGetValue(key, out string masked) && masked.Length == value.Length)
+                return masked;
+
+            if (s_passwordMasks.Count >= 256)
+                s_passwordMasks.Clear();
+
+            masked = new string(_passwordCharacter, value.Length);
+            s_passwordMasks[key] = masked;
+            return masked;
+        }
 
         static TouchScreenKeyboard s_touchKeyboard;
         static NowResolvedId s_touchKeyboardId;
@@ -488,6 +518,8 @@ namespace NowUI
             _scrubActive = false;
             _scrubCancelled = false;
             _selectAllOnFocus = false;
+            _password = false;
+            _passwordCharacter = DefaultPasswordCharacter;
             _appearance = default;
         }
 
@@ -627,6 +659,20 @@ namespace NowUI
         /// still places the caret where the user pointed.
         /// </summary>
         public NowTextField SetSelectAllOnFocus() { _selectAllOnFocus = true; return this; }
+
+        /// <summary>
+        /// Masks the text as a password: every character draws as
+        /// <paramref name="maskCharacter"/> (U+2022 by default), copy and cut do
+        /// nothing, double/triple click selects everything, the touch keyboard
+        /// opens in secure mode, and <see cref="NowCapture"/> reports the field
+        /// as <see cref="NowCaptureFlags.Secret"/> with no text.
+        /// </summary>
+        public NowTextField SetPassword(bool password = true, char maskCharacter = DefaultPasswordCharacter)
+        {
+            _password = password;
+            _passwordCharacter = maskCharacter == '\0' ? DefaultPasswordCharacter : maskCharacter;
+            return this;
+        }
 
         /// <summary>Explicit directional/Tab focus targets for this control.</summary>
         public NowTextField SetNavigation(NowFocusNavigation navigation) { _navigation = navigation; return this; }
@@ -1420,7 +1466,7 @@ namespace NowUI
 
             if (interaction.pressed)
             {
-                int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
+                int hit = HitTest(fontAsset, resolvedFont, Mask(text), interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
 
                 if (NowTextInput.current.shift)
                 {
@@ -1432,7 +1478,13 @@ namespace NowUI
                 {
                     int streak = NowControlState.ClickStreak(id, true, interaction.pointerPosition);
 
-                    if (streak >= 3)
+                    if (streak >= 2 && _password)
+                    {
+                        // Word boundaries would reveal the password's shape.
+                        NowTextEdit.SelectAll(ref state, text);
+                        NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
+                    }
+                    else if (streak >= 3)
                     {
                         NowTextEdit.SelectLine(ref state, text, hit);
                         NowTextEdit.BeginSelectionGesture(ref gesture, NowTextSelectionGranularity.Line, in state);
@@ -1452,7 +1504,7 @@ namespace NowUI
             }
             else if (interaction.dragging)
             {
-                int hit = HitTest(fontAsset, resolvedFont, text, interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
+                int hit = HitTest(fontAsset, resolvedFont, Mask(text), interaction.pointerPosition.x - inner.x + state.scrollX, fontSize);
                 NowTextEdit.DragSelectionGesture(ref state, text, in gesture, hit);
                 NowControlState.RequestRepaint();
             }
@@ -1501,10 +1553,10 @@ namespace NowUI
                     if (frame.selectAllPressed)
                         NowTextEdit.SelectAll(ref state, text);
 
-                    if (frame.copyPressed && state.hasSelection)
+                    if (frame.copyPressed && state.hasSelection && !_password)
                         NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
 
-                    if (frame.cutPressed && state.hasSelection)
+                    if (frame.cutPressed && state.hasSelection && !_password)
                     {
                         undo.Push(text, in state, typing: false);
                         NowClipboard.Copy(NowTextEdit.GetSelection(text, state));
@@ -1594,6 +1646,16 @@ namespace NowUI
                 blinkAnchor = Time.realtimeSinceStartup;
             }
 
+            if (NowCaptureRecorder.collecting)
+            {
+                NowCaptureRecorder.Describe(
+                    id,
+                    numeric ? "NumberField" : "TextField",
+                    0f,
+                    _password ? NowCaptureFlags.Editable | NowCaptureFlags.Secret : NowCaptureFlags.Editable,
+                    _password ? null : text);
+            }
+
             string display = text;
             int displayCaret = state.caret;
 
@@ -1602,6 +1664,8 @@ namespace NowUI
                 display = text.Insert(state.caret, composition);
                 displayCaret += composition.Length;
             }
+
+            display = Mask(display);
 
             float caretX = PrefixAdvance(fontAsset, resolvedFont, display, displayCaret, fontSize);
             float totalWidth = PrefixAdvance(fontAsset, resolvedFont, display, display.Length, fontSize);
@@ -1625,8 +1689,9 @@ namespace NowUI
 
                 if (focused && state.hasSelection && composition == null)
                 {
-                    float selectionMin = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMin, fontSize);
-                    float selectionMax = PrefixAdvance(fontAsset, resolvedFont, text, state.selectionMax, fontSize);
+                    string measured = Mask(text);
+                    float selectionMin = PrefixAdvance(fontAsset, resolvedFont, measured, state.selectionMin, fontSize);
+                    float selectionMax = PrefixAdvance(fontAsset, resolvedFont, measured, state.selectionMax, fontSize);
                     renderer.DrawSelection(theme, new NowRect(textX + selectionMin, inner.y, selectionMax - selectionMin, inner.height));
                 }
 
@@ -1702,7 +1767,9 @@ namespace NowUI
             if (s_touchKeyboardId != id || s_touchKeyboard == null)
             {
                 CloseTouchKeyboard();
-                s_touchKeyboard = TouchScreenKeyboard.Open(text, TouchScreenKeyboardType.Default);
+                s_touchKeyboard = _password
+                    ? TouchScreenKeyboard.Open(text, TouchScreenKeyboardType.Default, false, false, true)
+                    : TouchScreenKeyboard.Open(text, TouchScreenKeyboardType.Default);
                 s_touchKeyboardId = id;
                 return false;
             }

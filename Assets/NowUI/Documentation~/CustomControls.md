@@ -373,3 +373,6 @@ and they are the reference for the conventions above.
 - [ ] `RequestRepaint()` for anything time-driven.
 - [ ] Manual input reads guarded by `NowInput.isPassive`.
 - [ ] `[NowBuilder]` on builder structs so misuse warns at compile time.
+- [ ] Optionally `NowCapture.Describe(id, "MyControl", value, flags, text)`
+      after interacting, so recorders and accessibility bridges see the
+      control's type and value (see [Capture](Capture.md)).

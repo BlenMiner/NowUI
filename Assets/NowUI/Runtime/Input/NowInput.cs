@@ -998,6 +998,19 @@ namespace NowUI
             in NowInteractionRegion region,
             NowPointerButton button)
         {
+            if (!NowCaptureRecorder.collecting)
+                return InteractCore(id, in region, button);
+
+            var interaction = InteractCore(id, in region, button);
+            NowCaptureRecorder.Control(in interaction, Now.TransformScreenRect(region.bounds));
+            return interaction;
+        }
+
+        static NowInteraction InteractCore(
+            NowResolvedId id,
+            in NowInteractionRegion region,
+            NowPointerButton button)
+        {
             if (!id.hasValue)
                 throw new ArgumentException("A resolved control id is required.", nameof(id));
 

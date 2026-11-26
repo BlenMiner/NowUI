@@ -156,6 +156,10 @@ namespace NowUI
             var interaction = NowControls.Interact(id, rect, _navigation, out bool focused, out bool submitted);
             ref bool open = ref NowControlState.Get<bool>(id);
 
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "MaskField", 0f, NowCaptureFlags.None, null);
+
+
             if (interaction.clicked || submitted)
                 open = !open;
 

@@ -473,6 +473,9 @@ namespace NowUI
             if (resolvedMask.isEmpty)
                 return;
 
+            if (NowCaptureRecorder.collecting)
+                CaptureShapePoints(resolvedMask, fill && fillTint.w > 0.0005f ? fillTint : strokeTint);
+
             var mesh = UseMaterial(_defaultMaterial, NowMeshKind.Rectangle);
 
             if (mesh == null)
@@ -480,6 +483,27 @@ namespace NowUI
 
             mesh = EnsureMeshCapacity(mesh, _defaultMaterial, NowMeshKind.Rectangle, _shapeBuffer.positions.count);
             mesh.AddGeometry(_shapeBuffer, Vector2.zero, 1f, Vector4.one, resolvedMask);
+        }
+
+        /// <summary>Reports a tessellated shape as a Rect covering its points.</summary>
+        static void CaptureShapePoints(NowRect clip, Vector4 color)
+        {
+            var points = _shapePoints.array;
+            float minX = points[0].x, minY = points[0].y, maxX = minX, maxY = minY;
+
+            for (int i = 1; i < _shapePoints.count; ++i)
+            {
+                minX = Mathf.Min(minX, points[i].x);
+                minY = Mathf.Min(minY, points[i].y);
+                maxX = Mathf.Max(maxX, points[i].x);
+                maxY = Mathf.Max(maxY, points[i].y);
+            }
+
+            NowCaptureRecorder.Primitive(
+                NowCaptureKind.Rect,
+                new NowRect(minX, minY, maxX - minX, maxY - minY),
+                clip,
+                color);
         }
 
         static void PrepareShapePolyline()

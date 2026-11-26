@@ -27,6 +27,11 @@ when enabled. No manual NowUI input define is required.
   inversion and conservative rectangle input. See [Masks](Masks.md).
 - `NowRenderer` and `NowDrawList`: retained/offscreen draw-list construction,
   command-buffer rendering, RenderTexture rendering, and explicit warmup.
+- `NowCapture`, `NowCaptureFrame`, `NowCaptureItem`, `NowCaptureKind`, and
+  `NowCaptureFlags`: a read-only, per-host view of the controls and visible
+  primitives each completed frame drew, collected only while an `onFrame`
+  handler is attached; `NowCapture.Describe` names custom controls. See
+  [Capture](Capture.md).
 - `NowPipelineGraphic` and `NowWorldGraphic`: one-pass, explicit-rect host
   integrations for render pipelines and world-space meshes. Their
   `NowPipelineLayoutGraphic` and `NowWorldLayoutGraphic` counterparts own exact

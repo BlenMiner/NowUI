@@ -181,6 +181,9 @@ namespace NowUI
 
             var interaction = NowControls.Interact(id, rect, _navigation,
                 NowFocusNavigationLock.Directional, true, false, out bool focused, out _);
+
+            if (NowCaptureRecorder.collecting)
+                NowCaptureRecorder.Describe(id, "TextArea", 0f, NowCaptureFlags.Editable, text);
             bool verticalMove = false;
             bool revealCaret = false;
 
